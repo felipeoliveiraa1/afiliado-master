@@ -29,7 +29,7 @@ RUN yarn workspace @afiliado-master/api build
 FROM node:20-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /app
-RUN apk add --no-cache openssl tini && \
+RUN apk add --no-cache openssl tini curl && \
     addgroup -S app && adduser -S app -G app
 COPY --from=builder --chown=app:app /repo/node_modules ./node_modules
 COPY --from=builder --chown=app:app /repo/apps/api/node_modules ./apps/api/node_modules
@@ -38,8 +38,10 @@ COPY --from=builder --chown=app:app /repo/apps/api/prisma ./apps/api/prisma
 COPY --from=builder --chown=app:app /repo/apps/api/package.json ./apps/api/package.json
 COPY --from=builder --chown=app:app /repo/packages/types ./packages/types
 COPY --from=builder --chown=app:app /repo/package.json ./package.json
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
+  CMD curl -sf http://127.0.0.1:3000/health > /dev/null || exit 1
 USER app
 WORKDIR /app/apps/api
-EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/src/index.js"]

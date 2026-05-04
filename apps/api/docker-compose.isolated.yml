@@ -11,7 +11,7 @@
 #
 # No .env da API: DATABASE_URL com host postgres, REDIS_HOST=redis
 #
-# Proxy no host: http://127.0.0.1:3047
+# Proxy no host: http://127.0.0.1:3047 (ou qualquer IP da VPS na 3047 — feche 3047 no firewall se não for usar).
 
 x-api-base: &api-base
   build:
@@ -81,7 +81,7 @@ services:
         condition: service_healthy
     command: ["node", "dist/src/index.js"]
     ports:
-      - "127.0.0.1:3047:3000"
+      - "3047:3000"
     networks:
       - internal
 
