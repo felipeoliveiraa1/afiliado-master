@@ -34,8 +34,16 @@ export const env = cleanEnv(process.env, {
 
   AMAZON_AFFILIATE_TAG: str({ default: '' }),
   APIFY_TOKEN: str({ default: '' }),
-  APIFY_AMAZON_ACTOR: str({ default: 'junglee~amazon-bestsellers-scraper' }),
   APIFY_MERCADOLIVRE_ACTOR: str({ default: 'apify~mercadolibre-scraper' }),
+
+  // PA-API 5 (Product Advertising API oficial). Liberada após 10 vendas
+  // qualificadas em 180 dias. Quando vazias, adapter lança erro claro.
+  AMAZON_PAAPI_ACCESS_KEY: str({ default: '' }),
+  AMAZON_PAAPI_SECRET_KEY: str({ default: '' }),
+  AMAZON_PAAPI_PARTNER_TAG: str({ default: '' }),
+  AMAZON_PAAPI_HOST: str({ default: 'webservices.amazon.com.br' }),
+  AMAZON_PAAPI_REGION: str({ default: 'us-east-1' }),
+  AMAZON_PAAPI_BROWSE_NODES: str({ default: '' }),
 
   MERCADOLIVRE_AFFILIATE_TAG: str({ default: '' }),
   MERCADOLIVRE_SESSION_COOKIE: str({ default: '' }),

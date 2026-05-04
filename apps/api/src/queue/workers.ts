@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { redisConnection } from '@/lib/redis.js';
 import { prisma } from '@/lib/db.js';
 import { logger } from '@/lib/logger.js';
-import { sourceRegistry } from '@/sources/index.js';
+import { getAdapter } from '@/sources/index.js';
 import { describeOffer } from '@/curator/describe.js';
 import { scoreOffer } from '@/curator/score.js';
 import { env } from '@/config/env.js';
@@ -36,8 +36,12 @@ export function startWorkers() {
   const fetchWorker = new Worker<FetchJob>(
     'fetch-offers',
     async (job) => {
-      const adapter = sourceRegistry[job.data.sourceKind];
-      if (!adapter) throw new Error(`No adapter for ${job.data.sourceKind}`);
+      const adapter = await getAdapter(job.data.sourceKind);
+      if (!adapter) {
+        // Provider 'disabled' (ex: Amazon sem PA-API liberada). Pula sem erro.
+        logger.info({ sourceKind: job.data.sourceKind }, 'no adapter (disabled) — skipping fetch');
+        return { skipped: true, reason: 'disabled' };
+      }
       const source = await prisma.source.upsert({
         where: { kind: job.data.sourceKind },
         update: {},

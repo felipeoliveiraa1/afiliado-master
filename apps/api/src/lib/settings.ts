@@ -58,14 +58,24 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     amazonAffiliateTag: env.AMAZON_AFFILIATE_TAG,
     mercadoLivreAffiliateTag: env.MERCADOLIVRE_AFFILIATE_TAG,
     apifyToken: env.APIFY_TOKEN,
-    apifyAmazonActor: env.APIFY_AMAZON_ACTOR,
     apifyMercadoLivreActor: env.APIFY_MERCADOLIVRE_ACTOR,
     mercadoLivreScraper: env.MERCADOLIVRE_SCRAPER,
     mercadoLivreApifyStartUrls: env.MERCADOLIVRE_APIFY_START_URLS,
-    amazonKeywords: '',
-    amazonCountry: 'BR',
-    amazonCategoryUrls: '',
-    amazonMaxPerUrl: 3,
+    // Amazon PA-API (oficial). Provider switch: 'paapi' | 'disabled'
+    // Default 'disabled' — só liga quando você bater 10 vendas qualificadas
+    // em 180 dias e Amazon BR liberar PA-API pra você.
+    amazonProvider: 'disabled',
+    amazonPaapiAccessKey: env.AMAZON_PAAPI_ACCESS_KEY,
+    amazonPaapiSecretKey: env.AMAZON_PAAPI_SECRET_KEY,
+    amazonPaapiPartnerTag: env.AMAZON_PAAPI_PARTNER_TAG,
+    amazonPaapiHost: env.AMAZON_PAAPI_HOST,
+    amazonPaapiRegion: env.AMAZON_PAAPI_REGION,
+    amazonPaapiBrowseNodes: env.AMAZON_PAAPI_BROWSE_NODES,
+    amazonPaapiMinDiscount: 20,
+    // Shopee Open API (GraphQL). Adapter shopee.ts já implementado —
+    // basta preencher credenciais oficiais (https://affiliate.shopee.com.br).
+    shopeeAppId: env.SHOPEE_APP_ID,
+    shopeeAppSecret: env.SHOPEE_APP_SECRET,
   },
   antiban: {
     minIntervalSec: env.DISPATCH_MIN_INTERVAL,
@@ -201,6 +211,8 @@ const SECRET_FIELDS = new Set([
   'apifyToken',
   'openaiKey',
   'shopeeAppSecret',
+  'amazonPaapiAccessKey',
+  'amazonPaapiSecretKey',
 ]);
 
 export function maskSecrets<T extends Record<string, unknown>>(obj: T): T {

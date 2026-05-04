@@ -11,44 +11,21 @@ import {
   validateMercadoLivreCookie,
 } from '@/sources/mercadolivre_panel.js';
 import { runDueCampaigns } from '@/services/campaign-runner.js';
-import { getSettingsSection, setSettingsSection } from '@/lib/settings.js';
+import { getSettingsSection } from '@/lib/settings.js';
 
 type AutomationCfg = {
   fetchEnabled?: boolean;
   fetchIntervalMin?: number;
-  /** Interval específico do AMAZON em min. Default 1440 (1x/dia) pra não estourar
-   *  Apify free tier ($5/mês). 4 URLs × 3 produtos × $0.012 ≈ $0.14/run.
-   *  - 1x/dia → ~$4.30/mês ✅
-   *  - 2x/dia → ~$8.60/mês ❌ (estoura)
-   *  ML/Shopee continuam usando fetchIntervalMin (scraping não custa). */
-  amazonFetchIntervalMin?: number;
   campaignsEnabled?: boolean;
   cookieHealthEnabled?: boolean;
   cookieHealthHour?: number;
-  /** Persistência do último fetch Amazon (epoch ms). Sem isso, todo redeploy
-   *  zerava o lastAmazonFetchAt e disparava fetch imediato — $0.11 perdidos
-   *  em cada deploy. Lido no startup, escrito quando enfileira. */
-  lastAmazonFetchAtMs?: number;
 };
 
 let lastFetchAt = 0;
-let lastAmazonFetchAt = 0;
 let lastCookieCheckDate = '';
 let lastCouponSyncDate = '';
 
 export function startCron(): void {
-  // Restaura lastAmazonFetchAt do DB pra evitar refetch em redeploy.
-  // Falha silenciosa cai no default 0 (= dispara no próximo tick).
-  void getSettingsSection<AutomationCfg>('automation')
-    .then((cfg) => {
-      if (typeof cfg.lastAmazonFetchAtMs === 'number') {
-        lastAmazonFetchAt = cfg.lastAmazonFetchAtMs;
-        const minutesAgo = Math.round((Date.now() - lastAmazonFetchAt) / 60_000);
-        logger.info({ minutesAgo }, 'cron: restored lastAmazonFetchAt from DB');
-      }
-    })
-    .catch((err) => logger.warn({ err }, 'cron: failed to restore lastAmazonFetchAt'));
-
   // Tick alto frequência (1 min) decide internamente se cada subtask deve rodar
   // baseado em settings.automation. Permite mudar interval/on-off pelo dashboard
   // sem precisar reiniciar o backend.
@@ -61,42 +38,21 @@ export function startCron(): void {
       return;
     }
 
-    // === FETCH (intervalo configurável por source) ===
-    // Amazon tem interval próprio (default 24h) por causa do custo Apify.
-    // Demais sources (ML/Shopee/Promobit) usam fetchIntervalMin (default 30min).
+    // === FETCH (intervalo único pra todas as sources, default 30min) ===
+    // PA-API (Amazon) e Open API (Shopee) são grátis — sem necessidade de
+    // throttle especial. Quando provider='disabled', getAdapter() retorna
+    // null e o worker pula silenciosamente (logs.skipped: true).
     const fetchEnabled = cfg.fetchEnabled !== false;
     const fetchIntervalMin = cfg.fetchIntervalMin ?? 30;
-    const amazonFetchIntervalMin = cfg.amazonFetchIntervalMin ?? 1440;
-    if (fetchEnabled) {
+    if (fetchEnabled && Date.now() - lastFetchAt >= fetchIntervalMin * 60_000) {
+      lastFetchAt = Date.now();
       try {
         const sources = await prisma.source.findMany({ where: { enabled: true } });
-        const nowMs = Date.now();
-        const nonAmazonDue = nowMs - lastFetchAt >= fetchIntervalMin * 60_000;
-        const amazonDue = nowMs - lastAmazonFetchAt >= amazonFetchIntervalMin * 60_000;
-        if (nonAmazonDue) lastFetchAt = nowMs;
-        if (amazonDue) lastAmazonFetchAt = nowMs;
-        let enqueued = 0;
-        let amazonEnqueued = false;
         for (const s of sources) {
-          if (s.kind === 'AMAZON') {
-            if (!amazonDue) continue;
-            amazonEnqueued = true;
-          } else if (!nonAmazonDue) continue;
           await fetchQueue.add('fetch', { sourceKind: s.kind, limit: 50 });
-          enqueued++;
         }
-        if (enqueued > 0) {
-          logger.info(
-            { enqueued, fetchIntervalMin, amazonFetchIntervalMin },
-            'cron fetch enqueued',
-          );
-        }
-        // Persiste lastAmazonFetchAt SÓ quando dispara (1x/dia) pra sobreviver redeploy.
-        // setSettingsSection faz merge raso — não toca outros campos.
-        if (amazonEnqueued) {
-          void setSettingsSection('automation', { lastAmazonFetchAtMs: nowMs }).catch((err) =>
-            logger.warn({ err }, 'cron: failed to persist lastAmazonFetchAt'),
-          );
+        if (sources.length > 0) {
+          logger.info({ enqueued: sources.length, fetchIntervalMin }, 'cron fetch enqueued');
         }
       } catch (err) {
         logger.error({ err }, 'cron fetch failed');

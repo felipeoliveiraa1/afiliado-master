@@ -1,28 +1,40 @@
 import { createHash } from 'node:crypto';
 import { request } from 'undici';
-import { env } from '@/config/env.js';
 import { logger } from '@/lib/logger.js';
+import { getSettingsSection } from '@/lib/settings.js';
 import type { RawOffer, SourceAdapter } from './types.js';
 
 const ENDPOINT = 'https://open-api.affiliate.shopee.com.br/graphql';
 
-function sign(payload: string, ts: number): string {
-  const str = `${env.SHOPEE_APP_ID}${ts}${payload}${env.SHOPEE_APP_SECRET}`;
+type ShopeeCfg = { shopeeAppId?: string; shopeeAppSecret?: string };
+
+async function getCreds(): Promise<{ appId: string; appSecret: string }> {
+  const cfg = await getSettingsSection<ShopeeCfg>('marketplaces');
+  const appId = cfg.shopeeAppId ?? '';
+  const appSecret = cfg.shopeeAppSecret ?? '';
+  if (!appId || !appSecret) {
+    throw new Error(
+      'Shopee Open API não configurada — preencha shopeeAppId e shopeeAppSecret em /settings → Marketplaces. Cadastre-se em https://affiliate.shopee.com.br',
+    );
+  }
+  return { appId, appSecret };
+}
+
+function sign(appId: string, appSecret: string, payload: string, ts: number): string {
+  const str = `${appId}${ts}${payload}${appSecret}`;
   return createHash('sha256').update(str).digest('hex');
 }
 
 async function gql<T = unknown>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-  if (!env.SHOPEE_APP_ID || !env.SHOPEE_APP_SECRET) {
-    throw new Error('SHOPEE_APP_ID/SHOPEE_APP_SECRET não configurados — solicite em affiliate.shopee.com.br/open_api');
-  }
+  const { appId, appSecret } = await getCreds();
   const payload = JSON.stringify({ query, variables });
   const ts = Math.floor(Date.now() / 1000);
-  const signature = sign(payload, ts);
+  const signature = sign(appId, appSecret, payload, ts);
   const res = await request(ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `SHA256 Credential=${env.SHOPEE_APP_ID}, Timestamp=${ts}, Signature=${signature}`,
+      Authorization: `SHA256 Credential=${appId}, Timestamp=${ts}, Signature=${signature}`,
     },
     body: payload,
   });
