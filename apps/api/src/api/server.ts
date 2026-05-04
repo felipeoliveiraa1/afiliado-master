@@ -23,6 +23,7 @@ import {
 } from '@/lib/settings.js';
 import { scoreOffer } from '@/curator/score.js';
 import { formatOfferMessage } from '@/dispatcher/format.js';
+import { runCampaign } from '@/services/campaign-runner.js';
 
 type EvolutionGroupRaw = {
   id?: string;
@@ -392,47 +393,7 @@ export async function buildServer() {
     {
       schema: { params: z.object({ id: z.string() }) },
     },
-    async (req) => {
-      const campaign = await prisma.campaign.findUniqueOrThrow({
-        where: { id: req.params.id },
-        include: { channels: true },
-      });
-      const filters = campaign.filters as {
-        sources?: string[];
-        minDiscount?: number;
-        minScore?: number;
-        maxPrice?: number;
-      };
-      const offers = await prisma.offer.findMany({
-        where: {
-          score: { gte: filters.minScore ?? 0 },
-          discountPct: filters.minDiscount ? { gte: filters.minDiscount } : undefined,
-          price: filters.maxPrice ? { lte: filters.maxPrice } : undefined,
-        },
-        orderBy: { score: 'desc' },
-        take: 10,
-      });
-      const dispatches = [];
-      for (const offer of offers) {
-        for (const channel of campaign.channels) {
-          const d = await prisma.dispatch.upsert({
-            where: { campaignId_offerId_channelId: { campaignId: campaign.id, offerId: offer.id, channelId: channel.id } },
-            create: {
-              campaignId: campaign.id,
-              offerId: offer.id,
-              channelId: channel.id,
-              scheduledFor: new Date(),
-            },
-            update: {},
-          });
-          if (d.status === 'PENDING') {
-            await dispatchQueue.add('dispatch', { dispatchId: d.id });
-            dispatches.push(d.id);
-          }
-        }
-      }
-      return { queued: dispatches.length, dispatchIds: dispatches };
-    },
+    async (req) => runCampaign(req.params.id),
   );
 
   app.post(

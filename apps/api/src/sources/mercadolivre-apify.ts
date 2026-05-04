@@ -1,6 +1,12 @@
-import { env } from '@/config/env.js';
 import { runApifyActor } from './apify-client.js';
+import { getSettingsSection } from '@/lib/settings.js';
 import type { RawOffer, SourceAdapter } from './types.js';
+
+type MarketplacesCfg = {
+  apifyToken?: string;
+  apifyMercadoLivreActor?: string;
+  mercadoLivreApifyStartUrls?: string;
+};
 
 /**
  * Mercado Livre via Apify. Diferente da API pública (api.mercadolibre.com)
@@ -43,12 +49,10 @@ type Config = {
   maxItems?: number;
 };
 
-function resolveStartUrls(config: Config): string[] {
+function resolveStartUrls(config: Config, cfgUrls?: string): string[] {
   if (config.startUrls?.length) return config.startUrls;
-  if (env.MERCADOLIVRE_APIFY_START_URLS) {
-    return env.MERCADOLIVRE_APIFY_START_URLS.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+  if (cfgUrls) {
+    return cfgUrls.split(',').map((s) => s.trim()).filter(Boolean);
   }
   return ['https://www.mercadolivre.com.br/ofertas'];
 }
@@ -74,7 +78,14 @@ export function makeMercadoLivreApifySource(config: Config = {}): SourceAdapter 
   return {
     kind: 'MERCADOLIVRE',
     async fetch(opts) {
-      const startUrls = resolveStartUrls(config);
+      const cfg = await getSettingsSection<MarketplacesCfg>('marketplaces');
+      if (!cfg.apifyToken) {
+        throw new Error(
+          'apifyToken não configurado — Acesse /settings → Marketplaces e cole seu token Apify.',
+        );
+      }
+      const actor = cfg.apifyMercadoLivreActor || 'apify~mercadolibre-scraper';
+      const startUrls = resolveStartUrls(config, cfg.mercadoLivreApifyStartUrls);
       const maxItems = opts?.limit ?? config.maxItems ?? 50;
       const input = {
         startUrls: startUrls.map((url) => ({ url })),
@@ -82,7 +93,7 @@ export function makeMercadoLivreApifySource(config: Config = {}): SourceAdapter 
         endPage: 1,
         proxyConfiguration: { useApifyProxy: true },
       };
-      const items = await runApifyActor<ApifyItem>(env.APIFY_MERCADOLIVRE_ACTOR, input);
+      const items = await runApifyActor<ApifyItem>(actor, input, cfg.apifyToken);
       return items
         .filter((i) => (i.id || i.itemId) && (i.title || i.name) && i.url)
         .map<RawOffer>((i) => {

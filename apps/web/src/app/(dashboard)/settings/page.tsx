@@ -102,15 +102,13 @@ const SECTIONS: SectionMeta[] = [
   },
   {
     key: 'marketplaces',
-    title: 'Marketplaces',
-    description: 'Tags de afiliado e actor IDs do Apify.',
+    title: 'Amazon (Apify)',
+    description: 'Captação Amazon BR via Apify (sem PA-API enquanto não tem volume de vendas). ML usa cookie do painel — não precisa Apify.',
     icon: Tag,
     fields: [
-      { key: 'amazonAffiliateTag', label: 'Amazon affiliate tag', placeholder: 'seunome-20' },
-      { key: 'mercadoLivreAffiliateTag', label: 'Mercado Livre tag (opcional)' },
-      { key: 'apifyAmazonActor', label: 'Apify actor — Amazon', placeholder: 'junglee~amazon-bestsellers-scraper' },
-      { key: 'apifyMercadoLivreActor', label: 'Apify actor — ML', placeholder: 'apify~mercadolibre-scraper' },
-      { key: 'mercadoLivreScraper', label: 'Scraper ML', placeholder: 'public-api | apify' },
+      { key: 'amazonAffiliateTag', label: 'Amazon affiliate tag', placeholder: 'seunome-20', hint: 'Tag de afiliado Amazon (vai como ?tag= no link)' },
+      { key: 'apifyToken', label: 'Apify Token', secret: true, type: 'password', hint: 'apify.com → Account → Integrations → API token. Free tier $5/mês cobre dev.' },
+      { key: 'apifyAmazonActor', label: 'Apify actor — Amazon', placeholder: 'junglee~amazon-bestsellers-scraper', hint: 'Default: junglee~amazon-bestsellers-scraper. Pode trocar por epctex~amazon-product-scraper se quiser.' },
     ],
   },
   {

@@ -56,9 +56,11 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
   marketplaces: {
     amazonAffiliateTag: env.AMAZON_AFFILIATE_TAG,
     mercadoLivreAffiliateTag: env.MERCADOLIVRE_AFFILIATE_TAG,
+    apifyToken: env.APIFY_TOKEN,
     apifyAmazonActor: env.APIFY_AMAZON_ACTOR,
     apifyMercadoLivreActor: env.APIFY_MERCADOLIVRE_ACTOR,
     mercadoLivreScraper: env.MERCADOLIVRE_SCRAPER,
+    mercadoLivreApifyStartUrls: env.MERCADOLIVRE_APIFY_START_URLS,
   },
   antiban: {
     minIntervalSec: env.DISPATCH_MIN_INTERVAL,
@@ -182,6 +184,7 @@ const SECRET_FIELDS = new Set([
   'csrfToken',
   'apifyToken',
   'openaiKey',
+  'shopeeAppSecret',
 ]);
 
 export function maskSecrets<T extends Record<string, unknown>>(obj: T): T {

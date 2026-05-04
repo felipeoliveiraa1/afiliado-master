@@ -6,8 +6,10 @@ import { env } from '@/config/env.js';
 import { evolution } from '@/lib/evolution.js';
 import { validateShopeeCookie } from '@/sources/shopee_panel.js';
 import { validateMercadoLivreCookie } from '@/sources/mercadolivre_panel.js';
+import { runDueCampaigns } from '@/services/campaign-runner.js';
 
 export function startCron(): void {
+  // Captação automática a cada 30min: roda fetch pra todas as Sources habilitadas
   cron.schedule('*/30 * * * *', async () => {
     const sources = await prisma.source.findMany({ where: { enabled: true } });
     for (const s of sources) {
@@ -16,6 +18,13 @@ export function startCron(): void {
     logger.info({ count: sources.length }, 'cron fetch enqueued');
   });
 
+  // Disparo automático: a cada 5min checa quais campanhas vencidas (passou do
+  // intervalMinutes desde o último dispatch) e enfileira run-now.
+  cron.schedule('*/5 * * * *', () => {
+    runDueCampaigns().catch((err) => logger.error({ err }, 'runDueCampaigns failed'));
+  });
+
+  // Cookie health check diário 7h
   cron.schedule('0 7 * * *', () => {
     runCookieHealthCheck().catch((err) => logger.error({ err }, 'cookie health check failed'));
   });
