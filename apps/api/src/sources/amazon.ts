@@ -87,6 +87,46 @@ function withAffiliateTag(url: string, tag?: string): string {
   return u.toString();
 }
 
+/**
+ * Extrai cupom Amazon do payload do actor. Prioridade:
+ *   1) `coupon.code` (formato estruturado novo)
+ *   2) `coupon.text` ou `coupon` string ("Aplique 10% off")
+ *   3) `coupons[0].code` ou `.text`
+ *   4) `promoCode` (raro)
+ *   5) Heurística: procura "cupom XXX" / "use o código YYY" no `features[]`
+ *
+ * Retorna string limpa (≤40 chars, schema do banco) ou undefined.
+ */
+function extractCoupon(item: {
+  coupon?: string | { text?: string; code?: string; discount?: string };
+  coupons?: { text?: string; code?: string }[];
+  promoCode?: string;
+  features?: string[];
+}): string | undefined {
+  const tryClean = (s: unknown): string | undefined => {
+    if (typeof s !== 'string') return undefined;
+    const trimmed = s.trim();
+    if (!trimmed || trimmed.length > 80) return undefined;
+    return trimmed.slice(0, 40);
+  };
+  if (typeof item.coupon === 'string') return tryClean(item.coupon);
+  if (item.coupon && typeof item.coupon === 'object') {
+    return tryClean(item.coupon.code) ?? tryClean(item.coupon.text) ?? tryClean(item.coupon.discount);
+  }
+  if (Array.isArray(item.coupons) && item.coupons[0]) {
+    return tryClean(item.coupons[0].code) ?? tryClean(item.coupons[0].text);
+  }
+  if (item.promoCode) return tryClean(item.promoCode);
+  // Heurística leve nos features (lista de bullets do produto)
+  if (Array.isArray(item.features)) {
+    for (const f of item.features) {
+      const m = f.match(/(?:cupom|c[oó]digo|code)\s*[:\-]?\s*([A-Z0-9]{4,20})/i);
+      if (m) return m[1].toUpperCase().slice(0, 40);
+    }
+  }
+  return undefined;
+}
+
 export const amazonSource: SourceAdapter = {
   kind: 'AMAZON',
   async fetch(opts) {
@@ -147,6 +187,12 @@ export const amazonSource: SourceAdapter = {
       stars?: number;
       reviewsCount?: number;
       bestSellersRank?: { category?: string }[];
+      // Cupons: actor pode devolver em qualquer um destes formatos dependendo
+      // do produto. Tentamos todos até achar.
+      coupon?: string | { text?: string; code?: string; discount?: string };
+      coupons?: { text?: string; code?: string }[];
+      promoCode?: string;
+      features?: string[];
     };
     const items = await runApifyActor<Item>(actor, input, cfg.apifyToken);
     return items
@@ -174,6 +220,7 @@ export const amazonSource: SourceAdapter = {
           rating: i.stars,
           ratingCount: i.reviewsCount,
           category: i.bestSellersRank?.[0]?.category,
+          coupon: extractCoupon(i),
           raw: i as Record<string, unknown>,
         };
       })
