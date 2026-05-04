@@ -125,6 +125,7 @@ export async function buildServer() {
     'shopee_panel',
     'marketplaces',
     'antiban',
+    'automation',
     'tracking',
     'admin',
   ] as const;
