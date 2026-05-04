@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq';
 import { redisConnection } from '@/lib/redis.js';
+import { logger } from '@/lib/logger.js';
 import type { SourceKind } from '@prisma/client';
 
 export type FetchJob = { sourceKind: SourceKind; limit?: number };
@@ -18,3 +19,15 @@ export const mercadoLivreShortlinkQueue = new Queue<MercadoLivreShortlinkJob>(
   'mercadolivre-shortlink',
   { connection: redisConnection },
 );
+
+const attachQueueErrorLogging = (queue: Queue, queueName: string): void => {
+  queue.on('error', (err) => {
+    logger.error({ err, queueName }, 'bullmq queue error');
+  });
+};
+
+attachQueueErrorLogging(fetchQueue, 'fetch-offers');
+attachQueueErrorLogging(curateQueue, 'curate-offers');
+attachQueueErrorLogging(dispatchQueue, 'dispatch');
+attachQueueErrorLogging(shopeeShortlinkQueue, 'shopee-shortlink');
+attachQueueErrorLogging(mercadoLivreShortlinkQueue, 'mercadolivre-shortlink');

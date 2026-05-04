@@ -345,6 +345,9 @@ export function startWorkers() {
     mercadoLivreShortlinkWorker,
   ];
   for (const w of allWorkers) {
+    w.on('error', (err) => {
+      logger.error({ err, worker: w.name }, 'bullmq worker error');
+    });
     w.on('failed', (job, err) => logger.error({ jobId: job?.id, err }, `${w.name} failed`));
     w.on('completed', (job) => logger.info({ jobId: job.id, queue: w.name }, 'job completed'));
   }
