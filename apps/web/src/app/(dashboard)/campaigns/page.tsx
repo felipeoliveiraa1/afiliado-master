@@ -3,12 +3,22 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Megaphone, Play, RefreshCw } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { Spinner } from '@/components/ui/spinner';
 import { formatDate } from '@/lib/utils';
 import { MessagePreviewCard } from '@/components/message-preview-card';
 
@@ -22,6 +32,8 @@ type CampaignDTO = {
 };
 
 type ChannelDTO = { id: string; name: string };
+
+const SOURCES = ['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT'] as const;
 
 export default function CampaignsPage(): React.ReactElement {
   const queryClient = useQueryClient();
@@ -38,7 +50,6 @@ export default function CampaignsPage(): React.ReactElement {
   const campaigns = useQuery<CampaignDTO[]>({
     queryKey: ['campaigns'],
     queryFn: () => clientFetch<CampaignDTO[]>('/campaigns'),
-    enabled: false,
   });
 
   const channels = useQuery<ChannelDTO[]>({
@@ -65,6 +76,7 @@ export default function CampaignsPage(): React.ReactElement {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       campaigns.refetch();
+      setForm((f) => ({ ...f, name: '' }));
     },
   });
 
@@ -88,163 +100,216 @@ export default function CampaignsPage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold tracking-tight">Campanhas</h1>
-        <p className="text-muted-foreground">
-          Configure quais ofertas vão para quais canais, com filtros e intervalos.
-        </p>
-      </header>
+      <PageHeader
+        title="Campanhas"
+        description="Configure quais ofertas vão para quais canais, com filtros e intervalos."
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_minmax(0,360px)]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Nova campanha</CardTitle>
+            <CardDescription>Filtros são aplicados sobre as ofertas já captadas.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Nome">
+                <Input
+                  value={form.name}
+                  placeholder="Ex: Eletrônicos premium"
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </Field>
+              <Field label="Intervalo (min)">
+                <Input
+                  type="number"
+                  min={5}
+                  value={form.intervalMinutes}
+                  onChange={(e) => setForm((f) => ({ ...f, intervalMinutes: Number(e.target.value) }))}
+                />
+              </Field>
+              <Field label="Score mínimo (0–1)">
+                <Input
+                  type="number"
+                  step="0.05"
+                  min={0}
+                  max={1}
+                  value={form.minScore}
+                  onChange={(e) => setForm((f) => ({ ...f, minScore: Number(e.target.value) }))}
+                />
+              </Field>
+              <Field label="Desconto mínimo (%)">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={form.minDiscount}
+                  onChange={(e) => setForm((f) => ({ ...f, minDiscount: Number(e.target.value) }))}
+                />
+              </Field>
+              <Field label="Preço máximo (R$)" className="md:col-span-2">
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.maxPrice}
+                  onChange={(e) => setForm((f) => ({ ...f, maxPrice: Number(e.target.value) }))}
+                />
+              </Field>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Sources</Label>
+              <div className="flex flex-wrap gap-2">
+                {SOURCES.map((s) => {
+                  const active = form.sources.includes(s);
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => toggleSource(s)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                        active
+                          ? 'border-accent bg-accent text-accent-foreground'
+                          : 'border-border bg-background text-muted-foreground hover:border-accent/50 hover:text-foreground'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Canais</Label>
+              <div className="flex flex-wrap gap-2">
+                {(channels.data ?? []).map((c) => {
+                  const active = form.channelIds.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleChannel(c.id)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                        active
+                          ? 'border-accent bg-accent text-accent-foreground'
+                          : 'border-border bg-background text-muted-foreground hover:border-accent/50 hover:text-foreground'
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
+                {(channels.data ?? []).length === 0 ? (
+                  <span className="text-sm text-muted-foreground">
+                    Nenhum canal cadastrado.{' '}
+                    <Link href="/channels" className="text-accent hover:underline">
+                      Cadastrar
+                    </Link>
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t pt-4">
+              {createMutation.error ? (
+                <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  A campanha começa a rodar no próximo ciclo do scheduler.
+                </p>
+              )}
+              <Button
+                variant="accent"
+                onClick={() => createMutation.mutate()}
+                disabled={!form.name || form.channelIds.length === 0}
+                loading={createMutation.isPending}
+              >
+                Criar campanha
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <MessagePreviewCard title="Preview do template" />
+      </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Nova campanha</CardTitle>
-          <CardDescription>Filtros são aplicados sobre as ofertas captadas.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label>Nome</Label>
-              <Input
-                className="mt-1"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Intervalo (minutos)</Label>
-              <Input
-                className="mt-1"
-                type="number"
-                min={5}
-                value={form.intervalMinutes}
-                onChange={(e) => setForm((f) => ({ ...f, intervalMinutes: Number(e.target.value) }))}
-              />
-            </div>
-            <div>
-              <Label>Score mínimo (0-1)</Label>
-              <Input
-                className="mt-1"
-                type="number"
-                step="0.05"
-                min={0}
-                max={1}
-                value={form.minScore}
-                onChange={(e) => setForm((f) => ({ ...f, minScore: Number(e.target.value) }))}
-              />
-            </div>
-            <div>
-              <Label>Desconto mínimo (%)</Label>
-              <Input
-                className="mt-1"
-                type="number"
-                min={0}
-                max={100}
-                value={form.minDiscount}
-                onChange={(e) => setForm((f) => ({ ...f, minDiscount: Number(e.target.value) }))}
-              />
-            </div>
-            <div>
-              <Label>Preço máximo (R$)</Label>
-              <Input
-                className="mt-1"
-                type="number"
-                min={0}
-                value={form.maxPrice}
-                onChange={(e) => setForm((f) => ({ ...f, maxPrice: Number(e.target.value) }))}
-              />
-            </div>
-          </div>
-
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
           <div>
-            <Label>Sources</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT'].map((s) => (
-                <Button
-                  key={s}
-                  type="button"
-                  size="sm"
-                  variant={form.sources.includes(s) ? 'default' : 'outline'}
-                  onClick={() => toggleSource(s)}
-                >
-                  {s}
-                </Button>
-              ))}
-            </div>
+            <CardTitle>Campanhas existentes</CardTitle>
+            <CardDescription>Use “Run now” para forçar um ciclo imediato.</CardDescription>
           </div>
-
-          <div>
-            <Label>Canais</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(channels.data ?? []).map((c) => (
-                <Button
-                  key={c.id}
-                  type="button"
-                  size="sm"
-                  variant={form.channelIds.includes(c.id) ? 'default' : 'outline'}
-                  onClick={() => toggleChannel(c.id)}
-                >
-                  {c.name}
-                </Button>
-              ))}
-              {(channels.data ?? []).length === 0 ? (
-                <span className="text-sm text-muted-foreground">
-                  Nenhum canal — cadastre primeiro em /channels
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          <Button
-            onClick={() => createMutation.mutate()}
-            disabled={!form.name || form.channelIds.length === 0 || createMutation.isPending}
-          >
-            {createMutation.isPending ? 'Criando...' : 'Criar campanha'}
+          <Button variant="outline" size="sm" onClick={() => campaigns.refetch()}>
+            <RefreshCw className="size-3.5" /> Recarregar
           </Button>
-          {createMutation.error ? (
-            <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <MessagePreviewCard title="Preview do template (com a melhor oferta atual)" />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Campanhas existentes</CardTitle>
         </CardHeader>
         <CardContent>
-          <Button variant="outline" size="sm" onClick={() => campaigns.refetch()}>
-            Recarregar
-          </Button>
-          {campaigns.data && campaigns.data.length > 0 ? (
-            <div className="mt-4 space-y-3">
+          {campaigns.isLoading ? (
+            <div className="flex justify-center py-6">
+              <Spinner label="Carregando campanhas…" />
+            </div>
+          ) : campaigns.data && campaigns.data.length > 0 ? (
+            <div className="divide-y">
               {campaigns.data.map((c) => (
-                <div key={c.id} className="flex items-center justify-between border-b pb-2 last:border-0">
-                  <div>
-                    <Link href={`/campaigns/${c.id}`} className="font-medium hover:underline">
+                <div key={c.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <Link href={`/campaigns/${c.id}`} className="block font-medium hover:text-accent">
                       {c.name}
                     </Link>
-                    <div className="text-xs text-muted-foreground">
-                      {formatDate(c.createdAt)} · score≥{c.filters.minScore ?? 0} ·{' '}
-                      {c.schedule?.intervalMinutes}min
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      criada {formatDate(c.createdAt)} · score≥{c.filters.minScore ?? 0} ·{' '}
+                      {c.schedule?.intervalMinutes ?? '?'}min
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {c.enabled ? <Badge variant="success">ativa</Badge> : <Badge>pausada</Badge>}
-                    <Button size="sm" onClick={() => runNowMutation.mutate(c.id)}>
-                      Run now
+                    {c.enabled ? (
+                      <Badge variant="success" dot>
+                        ativa
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" dot>
+                        pausada
+                      </Badge>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="accent"
+                      onClick={() => runNowMutation.mutate(c.id)}
+                      loading={runNowMutation.isPending && runNowMutation.variables === c.id}
+                    >
+                      <Play className="size-3.5" /> Run now
                     </Button>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="mt-4 text-sm text-muted-foreground">
-              Clique em &quot;Recarregar&quot; para listar.
-            </p>
+            <EmptyState
+              icon={Megaphone}
+              title="Nenhuma campanha ainda"
+              description="Crie a primeira no formulário acima — ela vai entrar no ciclo de disparo automaticamente."
+            />
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}): React.ReactElement {
+  return (
+    <div className={`space-y-1.5 ${className ?? ''}`}>
+      <Label>{label}</Label>
+      {children}
     </div>
   );
 }

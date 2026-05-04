@@ -2,11 +2,22 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { CheckCircle2, ExternalLink, Filter, ImageOff, Search, Sparkles } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select } from '@/components/ui/select';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { SkeletonRows } from '@/components/ui/skeleton';
 import { ML_CATEGORIES } from '@/lib/ml-categories';
 import { formatBRL } from '@/lib/utils';
 import type { MlPanelProduct } from '@afiliado-master/types';
@@ -45,25 +56,27 @@ export default function MlSearchPage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold tracking-tight">Buscar Mercado Livre por categoria</h1>
-        <p className="text-muted-foreground">
-          Paridade com Divulga Links: o painel filtra apenas produtos elegíveis para afiliação e (opcional) os mais
-          vendidos. Os links já vêm convertidos.
-        </p>
-      </header>
+      <PageHeader
+        title="Buscar Mercado Livre por categoria"
+        description="Paridade com Divulga Links: o painel filtra apenas produtos elegíveis e (opcional) os mais vendidos. Auto-import gera shortlink afiliado para cada um."
+        badge={
+          <Badge variant="accent" dot>
+            <Sparkles className="size-3" /> via cookie do painel
+          </Badge>
+        }
+      />
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Filtros</CardTitle>
-          <CardDescription>Selecione categoria principal e (opcionalmente) uma subcategoria.</CardDescription>
+          <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Filter className="size-4" /> Filtros
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
-            <div>
+            <div className="space-y-1.5">
               <Label>Categoria</Label>
-              <select
-                className="mt-1 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              <Select
                 value={categoryId}
                 onChange={(e) => {
                   setCategoryId(e.target.value);
@@ -75,12 +88,11 @@ export default function MlSearchPage(): React.ReactElement {
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label>Subcategoria</Label>
-              <select
-                className="mt-1 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm disabled:opacity-50"
+              <Select
                 value={subCategoryId}
                 onChange={(e) => setSubCategoryId(e.target.value)}
                 disabled={subcategories.length === 0}
@@ -91,72 +103,93 @@ export default function MlSearchPage(): React.ReactElement {
                     {s.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
-            <div className="flex flex-col gap-2 md:pt-6">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={bestSellersOnly}
-                  onChange={(e) => setBestSellersOnly(e.target.checked)}
-                />
-                Apenas mais vendidos
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={autoImport}
-                  onChange={(e) => setAutoImport(e.target.checked)}
-                />
-                Importar automaticamente para Ofertas
-              </label>
+            <div className="flex flex-col justify-center gap-2">
+              <Toggle checked={bestSellersOnly} onChange={setBestSellersOnly} label="Apenas mais vendidos" />
+              <Toggle checked={autoImport} onChange={setAutoImport} label="Importar com link afiliado" />
             </div>
           </div>
-          <div className="mt-4">
-            <Button onClick={() => searchMutation.mutate()} disabled={searchMutation.isPending}>
-              {searchMutation.isPending ? 'Buscando...' : 'Buscar produtos'}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Button variant="accent" onClick={() => searchMutation.mutate()} loading={searchMutation.isPending}>
+              <Search className="size-4" /> Buscar produtos
             </Button>
+            {searchMutation.error ? (
+              <p className="text-sm text-destructive">{(searchMutation.error as Error).message}</p>
+            ) : null}
+            {searchMutation.data && 'imported' in searchMutation.data ? (
+              <Badge variant="success" dot>
+                <CheckCircle2 className="size-3" /> {searchMutation.data.imported} de{' '}
+                {searchMutation.data.found} importados
+              </Badge>
+            ) : null}
           </div>
-          {searchMutation.error ? (
-            <p className="mt-3 text-sm text-destructive">{(searchMutation.error as Error).message}</p>
-          ) : null}
-          {searchMutation.data && 'imported' in searchMutation.data ? (
-            <Badge variant="success" className="mt-3">
-              {searchMutation.data.imported} de {searchMutation.data.found} produtos importados
-            </Badge>
+          {autoImport ? (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Cada produto exige uma chamada ao painel ML — pode levar 30–90s pra 50 SKUs (throttle anti-detecção).
+            </p>
           ) : null}
         </CardContent>
       </Card>
 
-      {products.length > 0 ? (
+      {searchMutation.isPending ? (
+        <SkeletonRows count={6} />
+      ) : products.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Resultados ({products.length})</CardTitle>
+            <CardTitle>Resultados ({products.length})</CardTitle>
+            <CardDescription>
+              {autoImport
+                ? 'Produtos importados como Offer com link de afiliado.'
+                : 'Preview — marque "Importar com link afiliado" para gerar shortlinks.'}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {products.map((p) => (
-                <div key={p.externalId} className="flex items-center gap-3 border rounded-md p-3">
+                <div
+                  key={p.externalId}
+                  className="group flex items-start gap-3 rounded-lg border bg-card p-3 transition-shadow hover:shadow-pop animate-fade-in-up"
+                >
                   {p.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.imageUrl} alt="" className="size-16 rounded object-cover" />
-                  ) : null}
+                    <img
+                      src={p.imageUrl}
+                      alt=""
+                      className="size-16 shrink-0 rounded object-cover ring-1 ring-border"
+                    />
+                  ) : (
+                    <div className="grid size-16 shrink-0 place-items-center rounded bg-muted">
+                      <ImageOff className="size-5 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <a
                       href={p.affiliateUrl ?? p.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-medium hover:underline line-clamp-2"
+                      className="inline-flex items-start gap-1 font-medium text-sm leading-tight hover:text-accent line-clamp-2"
                     >
                       {p.title}
+                      <ExternalLink className="size-3 shrink-0 mt-0.5 opacity-60" />
                     </a>
-                    <div className="text-sm text-muted-foreground">
+                    <p className="mt-1 text-sm text-muted-foreground tabular-nums">
                       {formatBRL(p.price)}
-                      {p.discountPct ? <span className="ml-2 text-emerald-600">-{p.discountPct.toFixed(0)}%</span> : null}
-                    </div>
-                    <div className="mt-1 flex items-center gap-1 flex-wrap">
+                      {p.discountPct ? (
+                        <span className="ml-2 font-semibold text-success-soft-foreground">
+                          -{p.discountPct.toFixed(0)}%
+                        </span>
+                      ) : null}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
                       {p.isBestSeller ? <Badge variant="warning">mais vendido</Badge> : null}
-                      {p.affiliateUrl ? <Badge variant="success">afiliado</Badge> : <Badge variant="outline">sem link</Badge>}
+                      {p.affiliateUrl ? (
+                        <Badge variant="success" dot>
+                          afiliado
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline">sem link</Badge>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -164,7 +197,43 @@ export default function MlSearchPage(): React.ReactElement {
             </div>
           </CardContent>
         </Card>
+      ) : searchMutation.isSuccess ? (
+        <Card>
+          <EmptyState
+            icon={Search}
+            title="Nenhum produto encontrado"
+            description="Tente trocar a categoria/subcategoria ou desligar “apenas mais vendidos”."
+          />
+        </Card>
       ) : null}
     </div>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (b: boolean) => void;
+  label: string;
+}): React.ReactElement {
+  return (
+    <label className="inline-flex cursor-pointer items-center gap-2.5 text-sm">
+      <span
+        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+          checked ? 'bg-accent' : 'bg-muted'
+        }`}
+      >
+        <span
+          className={`inline-block size-4 transform rounded-full bg-background shadow-sm transition-transform ${
+            checked ? 'translate-x-[18px]' : 'translate-x-0.5'
+          }`}
+        />
+      </span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only" />
+      {label}
+    </label>
   );
 }

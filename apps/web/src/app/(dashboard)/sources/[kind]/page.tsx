@@ -1,13 +1,24 @@
 'use client';
 
 import { use, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Cookie, Download, ExternalLink, ImageOff, Inbox, Zap } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { SkeletonRows } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
 import { SourceBadge } from '@/components/source-badge';
 import { formatDate } from '@/lib/utils';
 
@@ -22,11 +33,12 @@ type RecentOffer = {
   imageUrl: string | null;
 };
 
-const COPY: Record<SourceKind, { title: string; subtitle: string; hasCookie: boolean }> = {
+const COPY: Record<SourceKind, { title: string; subtitle: string; hasCookie: boolean; tip?: string }> = {
   SHOPEE: {
     title: 'Shopee',
     subtitle: 'Open API quando aprovada, fallback via cookie do painel.',
     hasCookie: true,
+    tip: 'Endpoint GraphQL com assinatura SHA256. Em produção, prefira a Open API.',
   },
   AMAZON: {
     title: 'Amazon',
@@ -67,105 +79,142 @@ export default function SourcePage({ params }: { params: Promise<{ kind: string 
   });
 
   if (!copy) {
-    return <div>Source desconhecida: {kind}</div>;
+    return <p className="text-sm text-destructive">Source desconhecida: {kind}</p>;
   }
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <SourceBadge kind={kind} />
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight">{copy.title}</h1>
-          <p className="text-muted-foreground">{copy.subtitle}</p>
-        </div>
-      </header>
+      <PageHeader
+        title={copy.title}
+        description={copy.subtitle}
+        badge={<SourceBadge kind={kind} />}
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Captura manual</CardTitle>
-          <CardDescription>
-            Dispara um job de fetch agora. O cron já roda a cada 30min, isso é só pra forçar.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-end gap-3">
-          <div className="w-32">
-            <Label>Limite</Label>
-            <Input
-              type="number"
-              min="1"
-              max="200"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-          <Button onClick={() => fetchMutation.mutate()} disabled={fetchMutation.isPending}>
-            {fetchMutation.isPending ? 'Enfileirando...' : 'Capturar agora'}
-          </Button>
-          {fetchMutation.data ? (
-            <Badge variant="success">enfileirado</Badge>
-          ) : fetchMutation.error ? (
-            <Badge variant="destructive">{(fetchMutation.error as Error).message}</Badge>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      {copy.hasCookie ? (
+      <div className="grid gap-5 lg:grid-cols-[1fr_minmax(0,360px)]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Cookie do painel</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Download className="size-4 text-muted-foreground" />
+              Captura manual
+            </CardTitle>
             <CardDescription>
-              Necessário para conversão automática URL → link de afiliado quando a API oficial não está disponível.
+              Dispara um job de fetch agora. O cron já roda a cada 30min — isso é só pra forçar.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button asChild variant="outline">
-              <a href={`/sources/${kind === 'SHOPEE' ? 'shopee' : 'mercadolivre'}/cookie`}>
-                Configurar cookie {copy.title}
-              </a>
+          <CardContent className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1.5 w-32">
+              <Label>Limite</Label>
+              <Input
+                type="number"
+                min="1"
+                max="200"
+                value={limit}
+                onChange={(e) => setLimit(e.target.value)}
+              />
+            </div>
+            <Button
+              variant="accent"
+              onClick={() => fetchMutation.mutate()}
+              loading={fetchMutation.isPending}
+            >
+              <Zap className="size-4" /> Capturar agora
             </Button>
+            {fetchMutation.data ? (
+              <Badge variant="success" dot>
+                enfileirado
+              </Badge>
+            ) : fetchMutation.error ? (
+              <Badge variant="destructive" dot>
+                {(fetchMutation.error as Error).message}
+              </Badge>
+            ) : null}
           </CardContent>
         </Card>
-      ) : null}
+
+        {copy.hasCookie ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cookie className="size-4 text-muted-foreground" />
+                Cookie do painel
+              </CardTitle>
+              <CardDescription>
+                Necessário para conversão automática URL → afiliado quando a API oficial não está disponível.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline" className="w-full">
+                <Link href={`/sources/${kind === 'SHOPEE' ? 'shopee' : 'mercadolivre'}/cookie`}>
+                  Configurar cookie {copy.title}
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="bg-muted/30 border-dashed">
+            <CardContent className="px-6 py-6 text-sm text-muted-foreground">
+              {copy.tip ?? 'Source automatizada — não exige cookie.'}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Últimas ofertas captadas</CardTitle>
+          <CardTitle>Últimas ofertas captadas</CardTitle>
+          <CardDescription>10 mais recentes desse source.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {offers.isLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <div className="px-6 py-4">
+              <SkeletonRows count={4} />
+            </div>
           ) : (offers.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhuma ainda.</p>
+            <EmptyState
+              icon={Inbox}
+              title="Nenhuma oferta ainda"
+              description="Use “Capturar agora” acima ou aguarde o cron das próximas 30min."
+            />
           ) : (
-            <div className="grid gap-3">
+            <ul className="divide-y">
               {(offers.data ?? []).map((o) => (
-                <div key={o.id} className="flex items-center gap-3 border-b pb-2 last:border-0">
+                <li key={o.id} className="flex items-center gap-3 px-5 py-3 row-hover">
                   {o.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={o.imageUrl} alt="" className="size-12 rounded object-cover" />
-                  ) : null}
+                    <img
+                      src={o.imageUrl}
+                      alt=""
+                      className="size-12 shrink-0 rounded object-cover ring-1 ring-border"
+                    />
+                  ) : (
+                    <div className="grid size-12 shrink-0 place-items-center rounded bg-muted">
+                      <ImageOff className="size-4 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <a
                       href={o.affiliateUrl ?? o.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-medium hover:underline line-clamp-2"
+                      className="line-clamp-1 inline-flex items-center gap-1 font-medium text-sm hover:text-accent"
                     >
                       {o.title}
+                      <ExternalLink className="size-3 shrink-0 opacity-60" />
                     </a>
                     <p className="text-xs text-muted-foreground">{formatDate(o.fetchedAt)}</p>
                   </div>
                   {o.affiliateUrl ? (
-                    <Badge variant="success">afiliado</Badge>
+                    <Badge variant="success" dot>
+                      afiliado
+                    </Badge>
                   ) : (
-                    <Badge variant="warning">sem link</Badge>
+                    <Badge variant="warning" dot>
+                      sem link
+                    </Badge>
                   )}
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>

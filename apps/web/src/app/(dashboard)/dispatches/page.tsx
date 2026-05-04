@@ -2,10 +2,15 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ImageOff, Send } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { EmptyState } from '@/components/ui/empty-state';
+import { SkeletonRows } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
 import { formatDate } from '@/lib/utils';
 
 type Status = 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
@@ -32,6 +37,14 @@ const STATUS_BADGE: Record<Status, 'success' | 'destructive' | 'warning' | 'seco
   PENDING: 'secondary',
 };
 
+const STATUS_FILTERS: { key: Status | ''; label: string }[] = [
+  { key: '', label: 'Todos' },
+  { key: 'SENT', label: 'Enviados' },
+  { key: 'PENDING', label: 'Pendentes' },
+  { key: 'FAILED', label: 'Falhas' },
+  { key: 'SKIPPED', label: 'Skipped' },
+];
+
 export default function DispatchesPage(): React.ReactElement {
   const [status, setStatus] = useState<Status | ''>('');
 
@@ -53,35 +66,35 @@ export default function DispatchesPage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold tracking-tight">Disparos</h1>
-        <p className="text-muted-foreground">Histórico filtrado por campanha e status.</p>
-      </header>
+      <PageHeader title="Disparos" description="Histórico filtrado por campanha e status." />
 
       <Card>
-        <CardContent className="pt-6 flex flex-wrap items-center gap-3">
-          <select
-            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-            value={campaignId}
-            onChange={(e) => setCampaignId(e.target.value)}
-          >
-            <option value="">— escolha uma campanha —</option>
-            {(campaigns.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <div className="flex gap-2">
-            {(['', 'SENT', 'FAILED', 'SKIPPED', 'PENDING'] as const).map((s) => (
-              <Button
-                key={s || 'all'}
-                size="sm"
-                variant={status === s ? 'default' : 'outline'}
-                onClick={() => setStatus(s as Status | '')}
+        <CardContent className="px-5 py-4 flex flex-wrap items-end gap-4">
+          <div className="space-y-1.5 min-w-[240px] flex-1">
+            <Label>Campanha</Label>
+            <Select value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
+              <option value="">— escolha uma campanha —</option>
+              {(campaigns.data ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="inline-flex rounded-lg border bg-muted/30 p-1">
+            {STATUS_FILTERS.map((s) => (
+              <button
+                key={s.key || 'all'}
+                type="button"
+                onClick={() => setStatus(s.key)}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  status === s.key
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
-                {s || 'Todos'}
-              </Button>
+                {s.label}
+              </button>
             ))}
           </div>
         </CardContent>
@@ -89,35 +102,53 @@ export default function DispatchesPage(): React.ReactElement {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Histórico</CardTitle>
+          <CardTitle>Histórico</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {!campaignId ? (
-            <p className="text-sm text-muted-foreground">Escolha uma campanha acima.</p>
+            <EmptyState
+              icon={Send}
+              title="Escolha uma campanha"
+              description="Os disparos aparecem aqui — sentidos por status, com clique e erro inline."
+            />
           ) : dispatches.isLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <div className="px-6 py-4">
+              <SkeletonRows count={6} />
+            </div>
           ) : (dispatches.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sem disparos com esses filtros.</p>
+            <EmptyState title="Sem disparos com esses filtros" />
           ) : (
-            <div className="space-y-2">
+            <ul className="divide-y">
               {(dispatches.data ?? []).map((d) => (
-                <div key={d.id} className="flex items-center gap-3 border-b pb-2 last:border-0">
+                <li key={d.id} className="flex items-center gap-3 px-5 py-3 row-hover">
                   {d.offer?.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={d.offer.imageUrl} alt="" className="size-10 rounded object-cover" />
-                  ) : null}
+                    <img
+                      src={d.offer.imageUrl}
+                      alt=""
+                      className="size-10 shrink-0 rounded object-cover ring-1 ring-border"
+                    />
+                  ) : (
+                    <div className="grid size-10 shrink-0 place-items-center rounded bg-muted">
+                      <ImageOff className="size-4 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium line-clamp-1">{d.offer?.title ?? '—'}</div>
-                    <div className="text-xs text-muted-foreground">
+                    <p className="line-clamp-1 font-medium text-sm">{d.offer?.title ?? '—'}</p>
+                    <p className="text-xs text-muted-foreground">
                       {d.channel?.name} · {formatDate(d.sentAt ?? d.createdAt)}
                       {d.errorMessage ? ` · ${d.errorMessage}` : ''}
-                    </div>
+                    </p>
                   </div>
-                  <div className="text-xs text-muted-foreground">{d.clickCount} cliques</div>
-                  <Badge variant={STATUS_BADGE[d.status]}>{d.status}</Badge>
-                </div>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {d.clickCount} cliques
+                  </span>
+                  <Badge variant={STATUS_BADGE[d.status]} dot>
+                    {d.status.toLowerCase()}
+                  </Badge>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>

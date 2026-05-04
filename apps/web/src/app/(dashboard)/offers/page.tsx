@@ -2,12 +2,23 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Check, Copy, ExternalLink, Filter, ImageOff, Pencil, Search, X } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select } from '@/components/ui/select';
+import { SkeletonRows } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
 import { SourceBadge } from '@/components/source-badge';
 import { formatBRL, formatDate, formatPct } from '@/lib/utils';
 
@@ -58,57 +69,62 @@ export default function OffersPage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Ofertas</h1>
-          <p className="text-muted-foreground">
-            Tudo que entrou nas Sources. Edite o link de afiliado quando faltar.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="Ofertas"
+        description="Tudo que entrou nas Sources. Edite o link de afiliado quando faltar."
+      />
 
       <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">Filtros</CardTitle>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Filter className="size-4" /> Filtros
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-4">
-            <div>
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="space-y-1.5">
               <Label>Source</Label>
-              <select
-                className="mt-1 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              <Select
                 value={filters.source}
                 onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))}
               >
-                <option value="">Todos</option>
+                <option value="">Todas</option>
                 <option value="SHOPEE">Shopee</option>
                 <option value="AMAZON">Amazon</option>
                 <option value="MERCADOLIVRE">Mercado Livre</option>
                 <option value="PROMOBIT">Promobit</option>
-              </select>
+              </Select>
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label>Score mínimo</Label>
               <Input
-                className="mt-1"
                 type="number"
                 step="0.05"
                 min="0"
                 max="1"
                 value={filters.minScore}
                 onChange={(e) => setFilters((f) => ({ ...f, minScore: e.target.value }))}
+                placeholder="0.0 – 1.0"
               />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label>Limite</Label>
               <Input
-                className="mt-1"
                 type="number"
                 min="5"
                 max="100"
                 value={filters.take}
                 onChange={(e) => setFilters((f) => ({ ...f, take: e.target.value }))}
               />
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="ghost"
+                onClick={() => setFilters({ source: '', minScore: '', take: '30' })}
+                disabled={!filters.source && !filters.minScore && filters.take === '30'}
+              >
+                Limpar filtros
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -117,18 +133,26 @@ export default function OffersPage(): React.ReactElement {
       <Card>
         <CardContent className="p-0">
           {error ? (
-            <p className="p-6 text-sm text-destructive">{(error as Error).message}</p>
+            <div className="px-6 py-10 text-sm text-destructive">{(error as Error).message}</div>
           ) : isLoading ? (
-            <p className="p-6 text-sm text-muted-foreground">Carregando...</p>
+            <div className="px-6 py-6">
+              <SkeletonRows count={6} />
+            </div>
+          ) : (data ?? []).length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="Nenhuma oferta encontrada"
+              description="Ajuste os filtros ou rode uma captação manual em Sources."
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50">
+                <thead className="border-b bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">Produto</th>
                     <th className="px-4 py-3 text-left font-medium">Source</th>
                     <th className="px-4 py-3 text-right font-medium">Preço</th>
-                    <th className="px-4 py-3 text-right font-medium">Desc.</th>
+                    <th className="px-4 py-3 text-right font-medium">Desconto</th>
                     <th className="px-4 py-3 text-right font-medium">Score</th>
                     <th className="px-4 py-3 text-left font-medium">Afiliado</th>
                     <th className="px-4 py-3 text-left font-medium">Cupom / Parc.</th>
@@ -136,10 +160,11 @@ export default function OffersPage(): React.ReactElement {
                   </tr>
                 </thead>
                 <tbody>
-                  {(data ?? []).map((o) => (
+                  {(data ?? []).map((o, i) => (
                     <OfferEditableRow
                       key={o.id}
                       offer={o}
+                      odd={i % 2 === 1}
                       onSave={(patch) => updateMutation.mutate({ id: o.id, patch })}
                     />
                   ))}
@@ -155,9 +180,11 @@ export default function OffersPage(): React.ReactElement {
 
 function OfferEditableRow({
   offer,
+  odd,
   onSave,
 }: {
   offer: OfferRow;
+  odd: boolean;
   onSave: (patch: OfferPatch) => void;
 }): React.ReactElement {
   const [editingLink, setEditingLink] = useState(false);
@@ -167,6 +194,8 @@ function OfferEditableRow({
   const [installmentsValue, setInstallmentsValue] = useState(
     offer.installments ? String(offer.installments) : '',
   );
+  const [copied, setCopied] = useState(false);
+
   const savePromo = (): void => {
     const parsedInstallments = installmentsValue.trim() ? Number(installmentsValue) : null;
     onSave({
@@ -175,65 +204,101 @@ function OfferEditableRow({
     });
     setEditingPromo(false);
   };
+
+  const copyLink = (): void => {
+    if (!offer.affiliateUrl) return;
+    navigator.clipboard.writeText(offer.affiliateUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
-    <tr className="border-t">
-      <td className="px-4 py-3 max-w-[320px]">
-        <div className="flex items-center gap-2">
+    <tr className={`border-b last:border-b-0 row-hover ${odd ? 'bg-muted/15' : ''}`}>
+      <td className="px-4 py-3 max-w-[340px]">
+        <div className="flex items-center gap-3">
           {offer.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={offer.imageUrl} alt="" className="size-10 rounded object-cover" />
-          ) : null}
-          <a href={offer.url} target="_blank" rel="noreferrer" className="line-clamp-2 hover:underline">
+            <img
+              src={offer.imageUrl}
+              alt=""
+              className="size-12 shrink-0 rounded-md object-cover ring-1 ring-border"
+            />
+          ) : (
+            <div className="grid size-12 shrink-0 place-items-center rounded-md bg-muted ring-1 ring-border">
+              <ImageOff className="size-4 text-muted-foreground" />
+            </div>
+          )}
+          <a
+            href={offer.url}
+            target="_blank"
+            rel="noreferrer"
+            className="line-clamp-2 font-medium text-foreground hover:text-accent transition-colors"
+          >
             {offer.title}
           </a>
         </div>
       </td>
       <td className="px-4 py-3">
-        <SourceBadge kind={offer.source.kind} />
+        <SourceBadge kind={offer.source.kind} size="sm" />
       </td>
       <td className="px-4 py-3 text-right tabular-nums">
-        {formatBRL(Number(offer.price))}
+        <div className="font-semibold">{formatBRL(Number(offer.price))}</div>
         {offer.originalPrice ? (
-          <div className="text-xs text-muted-foreground line-through">{formatBRL(Number(offer.originalPrice))}</div>
+          <div className="text-xs text-muted-foreground line-through">
+            {formatBRL(Number(offer.originalPrice))}
+          </div>
         ) : null}
       </td>
-      <td className="px-4 py-3 text-right tabular-nums">
+      <td className="px-4 py-3 text-right">
         {offer.discountPct ? (
           <Badge variant="success">-{formatPct(offer.discountPct)}</Badge>
         ) : (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-muted-foreground/60">—</span>
         )}
       </td>
-      <td className="px-4 py-3 text-right tabular-nums">{offer.score?.toFixed(2) ?? '—'}</td>
+      <td className="px-4 py-3 text-right tabular-nums">
+        <ScorePill value={offer.score} />
+      </td>
       <td className="px-4 py-3 max-w-[280px]">
         {editingLink ? (
-          <div className="flex items-center gap-2">
-            <Input value={linkValue} onChange={(e) => setLinkValue(e.target.value)} className="h-8" />
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={linkValue}
+              onChange={(e) => setLinkValue(e.target.value)}
+              className="h-8 text-xs"
+              autoFocus
+            />
             <Button
-              size="sm"
+              size="icon-sm"
+              variant="accent"
+              aria-label="Salvar"
               onClick={() => {
                 onSave({ affiliateUrl: linkValue });
                 setEditingLink(false);
               }}
             >
-              Salvar
+              <Check className="size-3.5" />
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditingLink(false)}>
-              X
+            <Button size="icon-sm" variant="ghost" aria-label="Cancelar" onClick={() => setEditingLink(false)}>
+              <X className="size-3.5" />
             </Button>
           </div>
         ) : offer.affiliateUrl ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <a
               href={offer.affiliateUrl}
               target="_blank"
               rel="noreferrer"
-              className="text-xs underline truncate max-w-[220px]"
+              className="truncate max-w-[180px] text-xs text-accent hover:underline inline-flex items-center gap-1"
             >
-              {offer.affiliateUrl}
+              <ExternalLink className="size-3" />
+              <span className="truncate">{offer.affiliateUrl.replace(/^https?:\/\//, '')}</span>
             </a>
-            <Button size="sm" variant="ghost" onClick={() => setEditingLink(true)}>
-              Editar
+            <Button size="icon-sm" variant="ghost" aria-label="Copiar" onClick={copyLink}>
+              {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+            </Button>
+            <Button size="icon-sm" variant="ghost" aria-label="Editar" onClick={() => setEditingLink(true)}>
+              <Pencil className="size-3.5" />
             </Button>
           </div>
         ) : (
@@ -244,50 +309,76 @@ function OfferEditableRow({
       </td>
       <td className="px-4 py-3 max-w-[220px]">
         {editingPromo ? (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Input
-              placeholder="Cupom (ex.: CONFORTOMELI)"
+              placeholder="Cupom (CONFORTOMELI)"
               value={couponValue}
               onChange={(e) => setCouponValue(e.target.value)}
-              className="h-8"
+              className="h-8 text-xs"
             />
             <Input
-              placeholder="Parcelas (ex.: 10)"
+              placeholder="Parcelas (10)"
               type="number"
               min="1"
               max="24"
               value={installmentsValue}
               onChange={(e) => setInstallmentsValue(e.target.value)}
-              className="h-8"
+              className="h-8 text-xs"
             />
             <div className="flex gap-1">
-              <Button size="sm" onClick={savePromo}>
-                Salvar
+              <Button size="icon-sm" variant="accent" aria-label="Salvar" onClick={savePromo}>
+                <Check className="size-3.5" />
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditingPromo(false)}>
-                X
+              <Button size="icon-sm" variant="ghost" aria-label="Cancelar" onClick={() => setEditingPromo(false)}>
+                <X className="size-3.5" />
               </Button>
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            <div className="text-xs">
+          <div className="flex items-start gap-2">
+            <div className="space-y-0.5 text-xs">
               {offer.coupon ? (
-                <Badge variant="success">🎟️ {offer.coupon}</Badge>
+                <Badge variant="accent">🎟 {offer.coupon}</Badge>
               ) : (
-                <span className="text-muted-foreground">sem cupom</span>
+                <span className="text-muted-foreground/70">sem cupom</span>
               )}
-              <div className="text-muted-foreground">
+              <div className="text-muted-foreground/80">
                 {offer.installments ? `${offer.installments}x sem juros` : 'sem parcelamento'}
               </div>
             </div>
-            <Button size="sm" variant="ghost" onClick={() => setEditingPromo(true)}>
-              Editar
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Editar promoção"
+              onClick={() => setEditingPromo(true)}
+            >
+              <Pencil className="size-3.5" />
             </Button>
           </div>
         )}
       </td>
-      <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(offer.fetchedAt)}</td>
+      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+        {formatDate(offer.fetchedAt)}
+      </td>
     </tr>
+  );
+}
+
+function ScorePill({ value }: { value: number | null }): React.ReactElement {
+  if (value == null) return <span className="text-muted-foreground/60">—</span>;
+  const v = Math.max(0, Math.min(1, value));
+  const tone = v >= 0.7 ? 'success' : v >= 0.4 ? 'accent' : 'secondary';
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="relative inline-block h-1.5 w-12 overflow-hidden rounded-full bg-muted">
+        <span
+          className={`absolute inset-y-0 left-0 rounded-full ${
+            tone === 'success' ? 'bg-success' : tone === 'accent' ? 'bg-accent' : 'bg-muted-foreground/40'
+          }`}
+          style={{ width: `${v * 100}%` }}
+        />
+      </span>
+      <span className="font-mono text-xs tabular-nums">{v.toFixed(2)}</span>
+    </span>
   );
 }
