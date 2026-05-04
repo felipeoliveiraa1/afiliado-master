@@ -64,6 +64,7 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     mercadoLivreApifyStartUrls: env.MERCADOLIVRE_APIFY_START_URLS,
     amazonKeywords: '',
     amazonCountry: 'BR',
+    amazonCategoryUrls: '',
   },
   antiban: {
     minIntervalSec: env.DISPATCH_MIN_INTERVAL,

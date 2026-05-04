@@ -16,6 +16,7 @@ type MarketplacesCfg = {
   apifyAmazonActor?: string;
   amazonKeywords?: string; // CSV: "fone bluetooth, smartwatch, mochila"
   amazonCountry?: string; // default 'BR'
+  amazonCategoryUrls?: string; // CSV de URLs Amazon (sobrescreve keywords se setado)
 };
 
 const DEFAULT_KEYWORDS = [
@@ -28,6 +29,24 @@ const DEFAULT_KEYWORDS = [
   'cafeteira',
   'caixa de som bluetooth',
 ];
+
+const AMAZON_DOMAIN_BY_COUNTRY: Record<string, string> = {
+  BR: 'amazon.com.br',
+  US: 'amazon.com',
+  MX: 'amazon.com.mx',
+  CA: 'amazon.ca',
+  ES: 'amazon.es',
+  DE: 'amazon.de',
+  IT: 'amazon.it',
+  FR: 'amazon.fr',
+  UK: 'amazon.co.uk',
+  GB: 'amazon.co.uk',
+};
+
+function keywordToSearchUrl(keyword: string, country: string): string {
+  const domain = AMAZON_DOMAIN_BY_COUNTRY[country.toUpperCase()] ?? 'amazon.com.br';
+  return `https://www.${domain}/s?k=${encodeURIComponent(keyword.trim())}`;
+}
 
 async function getCfg(): Promise<MarketplacesCfg> {
   return getSettingsSection<MarketplacesCfg>('marketplaces');
@@ -50,20 +69,35 @@ export const amazonSource: SourceAdapter = {
       );
     }
     const limit = opts?.limit ?? 30;
-    const actor = cfg.apifyAmazonActor || 'junglee~Amazon-crawler';
+    const actor = cfg.apifyAmazonActor || 'junglee~free-amazon-product-scraper';
     const country = cfg.amazonCountry || 'BR';
-    // Keywords: CSV no /settings ou defaults de bestsellers
-    const keywords = cfg.amazonKeywords?.trim()
-      ? cfg.amazonKeywords.split(',').map((s) => s.trim()).filter(Boolean)
-      : DEFAULT_KEYWORDS;
-    // Schema do actor `junglee/Amazon-crawler`:
-    //   { country, keywords, maxItems, ... }
-    // (refs: exampleRunInput retornado pela API do Apify)
+
+    // Constrói URLs de busca/categoria. Prioridade:
+    //   1) amazonCategoryUrls (CSV de URLs Amazon completas — mais preciso)
+    //   2) amazonKeywords (CSV → vira search URL no domínio do país)
+    //   3) DEFAULT_KEYWORDS (top categorias BR)
+    let urls: string[] = [];
+    if (cfg.amazonCategoryUrls?.trim()) {
+      urls = cfg.amazonCategoryUrls.split(',').map((s) => s.trim()).filter(Boolean);
+    } else {
+      const keywords = cfg.amazonKeywords?.trim()
+        ? cfg.amazonKeywords.split(',').map((s) => s.trim()).filter(Boolean)
+        : DEFAULT_KEYWORDS;
+      urls = keywords.map((k) => keywordToSearchUrl(k, country));
+    }
+
+    // Limit total = soma de itens por URL. Cada URL puxa min(5, ceil(limit/N))
+    // pra distribuir custo Apify ($0.012/result) entre keywords.
+    const perUrl = Math.max(3, Math.ceil(limit / Math.max(1, urls.length)));
+
+    // Schema do actor `junglee/free-amazon-product-scraper`:
+    //   { categoryUrls: [{url}], maxItemsPerStartUrl, ... }
     const input = {
-      country,
-      keywords,
-      maxItems: limit,
-      liveView: false,
+      categoryUrls: urls.map((url) => ({ url })),
+      maxItemsPerStartUrl: perUrl,
+      maxSearchPagesPerStartUrl: 1,
+      scrapeProductDetails: true,
+      useCaptchaSolver: false,
     };
     type Item = {
       asin?: string;
