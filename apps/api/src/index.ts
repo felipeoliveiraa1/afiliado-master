@@ -6,10 +6,10 @@ import { startCron } from '@/cron/index.js';
 
 async function main() {
   const app = await buildServer();
+  await app.listen({ port: env.PORT, host: '0.0.0.0' });
+  logger.info({ port: env.PORT, env: env.NODE_ENV }, 'afiliado-master listening');
   startWorkers();
   startCron();
-  await app.listen({ port: env.PORT, host: '0.0.0.0' });
-  logger.info({ port: env.PORT, env: env.NODE_ENV }, 'afiliado-master up');
 }
 
 main().catch((err) => {
