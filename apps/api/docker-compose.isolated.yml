@@ -1,20 +1,17 @@
 # Stack isolada na VPS: não publica 5432/6379 no host; só a API em loopback.
 #
 # Uso (na raiz do repositório):
-#   export COMPOSE_PROJECT_NAME=afiliado-master
 #   docker compose -f apps/api/docker-compose.isolated.yml --env-file apps/api/.env up -d --build
 #
-# Migrações (uma vez, ou após pull):
-#   docker compose -p "${COMPOSE_PROJECT_NAME:-afiliado-master}" -f apps/api/docker-compose.isolated.yml --env-file apps/api/.env run --rm migrate
+# Migrações:
+#   docker compose -p "${COMPOSE_PROJECT_NAME:-afiliado-master}" --profile migrate \
+#     -f apps/api/docker-compose.isolated.yml --env-file apps/api/.env run --rm migrate
 #
-# O processo `api` já inclui workers + cron (ver src/index.ts). Não suba o
-# worker separado para evitar consumo duplicado das filas.
+# O processo `api` já inclui workers + cron (ver src/index.ts).
 #
-# No .env da API use hostnames dos serviços Docker:
-#   DATABASE_URL=postgresql://USER:PASS@postgres:5432/DB?schema=public
-#   REDIS_HOST=redis
+# No .env da API: DATABASE_URL com host postgres, REDIS_HOST=redis
 #
-# Proxy no host: http://127.0.0.1:3047 (porta fixa; veja service api ports)
+# Proxy no host: http://127.0.0.1:3047
 
 x-api-base: &api-base
   build:
@@ -64,8 +61,22 @@ services:
     networks:
       - internal
 
+  # Serviço `api` sem <<: merge: em alguns Docker Compose v5 o merge YAML omitia `ports`.
   api:
-    <<: *api-base
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    image: afiliado-master/api:isolated
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: ["node", "dist/src/index.js"]
     ports:
       - "127.0.0.1:3047:3000"
