@@ -107,6 +107,19 @@ function looksMasked(v: unknown): boolean {
 }
 
 /**
+ * Remove prefixo de env var caso usuário tenha colado a linha inteira do .env
+ * (ex: `MERCADOLIVRE_PANEL_COOKIE=_ga=...` vira `_ga=...`).
+ * Detecta padrão `^[A-Z][A-Z0-9_]*=` no início e remove.
+ */
+function stripEnvPrefix(v: unknown): unknown {
+  if (typeof v !== 'string') return v;
+  const trimmed = v.trim();
+  const match = trimmed.match(/^[A-Z][A-Z0-9_]*=/);
+  if (!match) return v;
+  return trimmed.slice(match[0].length);
+}
+
+/**
  * Sobrescreve uma seção (merge raso). Não toca env.
  * Filtra valores que parecem mascarados — proteção contra round-trip do GET (mask) → PATCH:
  * se o frontend ler `apiKey: "abcd…wxyz (218 chars)"` e salvar sem revelar, esse valor
@@ -123,7 +136,7 @@ export async function setSettingsSection(
       logger.warn({ section, field: k }, 'ignoring masked value in setSettingsSection');
       continue;
     }
-    cleanPartial[k] = v;
+    cleanPartial[k] = stripEnvPrefix(v);
   }
   const next = { ...current, ...cleanPartial };
   await prisma.setting.upsert({

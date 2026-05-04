@@ -78,7 +78,7 @@ const SECTIONS: SectionMeta[] = [
     icon: Cookie,
     fields: [
       { key: 'autoEnabled', label: 'Auto-gerar shortlinks', type: 'boolean' },
-      { key: 'cookie', label: 'Cookie completo', secret: true, type: 'textarea', hint: 'Cole tudo do header Cookie:' },
+      { key: 'cookie', label: 'Cookie completo', secret: true, type: 'textarea', hint: 'Cole o VALOR do header Cookie (começa em _ga=... ou _hjSession...). Sem prefixo MERCADOLIVRE_PANEL_COOKIE=.' },
       { key: 'defaultTag', label: 'Default tag', placeholder: 'ofpXXXXX (autodetectado se vazio)' },
       { key: 'dailyLimit', label: 'Limite diário', type: 'number' },
       { key: 'minIntervalSec', label: 'Intervalo mín. (s)', type: 'number' },

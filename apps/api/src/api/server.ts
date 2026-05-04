@@ -100,7 +100,12 @@ export async function buildServer() {
   app.setSerializerCompiler(serializerCompiler);
 
   await app.register(helmet);
-  await app.register(cors, { origin: parseAllowedOrigins(env.WEB_ORIGIN_URL), credentials: true });
+  await app.register(cors, {
+    origin: parseAllowedOrigins(env.WEB_ORIGIN_URL),
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
 
   app.get('/health', async () => ({ ok: true, ts: new Date().toISOString() }));
 
