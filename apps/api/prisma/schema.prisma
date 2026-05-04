@@ -55,6 +55,18 @@ model User {
   updatedAt    DateTime @updatedAt
 }
 
+/// Configurações do sistema editáveis pelo dashboard.
+/// Cada `key` mapeia uma seção (ex: "evolution", "shopee_panel", "antiban").
+/// Valores ficam em `value` JSON pra flexibilidade. Backend lê com cache + fallback pro env.
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
 model Offer {
   id             String     @id @default(cuid())
   source         Source     @relation(fields: [sourceId], references: [id])

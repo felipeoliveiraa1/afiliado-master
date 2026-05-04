@@ -11,6 +11,7 @@ import {
   LogOut,
   Megaphone,
   Send,
+  Settings,
   ShoppingBag,
   Tags,
   Users,
@@ -65,6 +66,12 @@ const SECTIONS: NavSection[] = [
       { href: '/channels', label: 'Canais (WhatsApp)', icon: Users },
       { href: '/campaigns', label: 'Campanhas', icon: Megaphone },
       { href: '/dispatches', label: 'Disparos', icon: Send },
+    ],
+  },
+  {
+    label: 'Sistema',
+    items: [
+      { href: '/settings', label: 'Configurações', icon: Settings },
     ],
   },
 ];

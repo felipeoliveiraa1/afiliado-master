@@ -13,6 +13,14 @@ import {
   searchMercadoLivreByCategory,
   validateMercadoLivreCookie,
 } from '@/sources/mercadolivre_panel.js';
+import {
+  getAllSettings,
+  getSettingsSection,
+  invalidateSetting,
+  maskSecrets,
+  setSettingsSection,
+  type SettingsSection,
+} from '@/lib/settings.js';
 import { scoreOffer } from '@/curator/score.js';
 import { formatOfferMessage } from '@/dispatcher/format.js';
 
@@ -95,6 +103,59 @@ export async function buildServer() {
   await app.register(cors, { origin: parseAllowedOrigins(env.WEB_ORIGIN_URL), credentials: true });
 
   app.get('/health', async () => ({ ok: true, ts: new Date().toISOString() }));
+
+  // ===== Settings (configuração editável pelo dashboard) =====
+  // GET /settings devolve todas as seções com secrets MASCARADOS (cookie/apiKey).
+  // GET /settings/:section?reveal=1 devolve secrets em claro (pra edição).
+  // PATCH /settings/:section faz merge raso e invalida cache.
+
+  const SECTIONS = [
+    'evolution',
+    'mercadolivre_panel',
+    'shopee_panel',
+    'marketplaces',
+    'antiban',
+    'tracking',
+    'admin',
+  ] as const;
+
+  app.get('/settings', async () => {
+    const all = await getAllSettings();
+    const masked: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(all)) {
+      masked[key] = maskSecrets(value as Record<string, unknown>);
+    }
+    return masked;
+  });
+
+  app.get(
+    '/settings/:section',
+    {
+      schema: {
+        params: z.object({ section: z.enum(SECTIONS) }),
+        querystring: z.object({ reveal: z.string().optional() }),
+      },
+    },
+    async (req) => {
+      const value = await getSettingsSection(req.params.section as SettingsSection);
+      return req.query.reveal ? value : maskSecrets(value);
+    },
+  );
+
+  app.patch(
+    '/settings/:section',
+    {
+      schema: {
+        params: z.object({ section: z.enum(SECTIONS) }),
+        body: z.record(z.string(), z.unknown()),
+      },
+    },
+    async (req) => {
+      const next = await setSettingsSection(req.params.section as SettingsSection, req.body);
+      invalidateSetting(req.params.section as SettingsSection);
+      return maskSecrets(next as Record<string, unknown>);
+    },
+  );
 
   app.get('/evolution/instances', async () => evolution.listInstances());
   app.get(
