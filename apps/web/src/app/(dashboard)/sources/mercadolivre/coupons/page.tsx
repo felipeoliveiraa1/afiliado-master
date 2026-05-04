@@ -38,6 +38,20 @@ type MlCoupon = {
 
 type SyncResp = { prefix: string; upserted: number; generated: number };
 
+/**
+ * Sugere sufixo padronizado a partir do título do cupom. Mantém o sistema
+ * consistente: RADARHOJE + valor numérico. Ex:
+ *   "R$ 30 OFF"  → RADARHOJE30
+ *   "25% OFF"    → RADARHOJE25
+ *   "R$ 1200 OFF"→ RADARHOJE1200
+ * Usuário pode editar livremente se quiser variar.
+ */
+function suggestCode(title: string): string {
+  const m = title.match(/(\d{1,4})/);
+  const value = m ? m[1] : '';
+  return `RADARHOJE${value}`;
+}
+
 const STATUS_BADGE: Record<MlCoupon['status'], { label: string; variant: 'default' | 'accent' | 'destructive' | 'secondary' }> = {
   AVAILABLE: { label: 'Disponível', variant: 'secondary' },
   ACTIVE: { label: 'Ativo', variant: 'accent' },
@@ -144,8 +158,9 @@ export default function MlCouponsPage(): React.ReactElement {
         isLoading={isLoading}
         emptyText='Sincronize com o ML pra ver cupons disponíveis (botão "Sincronizar" acima).'
         onGenerate={(id) => {
+          const target = available.find((c) => c.id === id);
           setGeneratingId(id);
-          setCode('');
+          setCode(target ? suggestCode(target.title) : '');
           setErrorMsg(null);
         }}
         generatingId={generatingId}
