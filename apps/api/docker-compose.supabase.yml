@@ -1,0 +1,67 @@
+# Stack na VPS com Postgres no Supabase (sem container postgres local).
+# Redis continua local no Docker (filas BullMQ).
+#
+# No apps/api/.env:
+#   DATABASE_URL=<URI do Supabase — ver .env.example seção Supabase>
+#   REDIS_HOST=redis
+#
+# Uso (raiz do monorepo):
+#   export COMPOSE_PROJECT_NAME=afiliado-master
+#   export AFILIADO_API_HOST_PORT=3047
+#   docker compose -f apps/api/docker-compose.supabase.yml --env-file apps/api/.env up -d --build
+#
+# Migrações:
+#   docker compose -p "${COMPOSE_PROJECT_NAME:-afiliado-master}" --profile migrate \
+#     -f apps/api/docker-compose.supabase.yml --env-file apps/api/.env run --rm migrate
+
+x-api-base: &api-base
+  build:
+    context: ../..
+    dockerfile: apps/api/Dockerfile
+  image: afiliado-master/api:supabase
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment:
+    NODE_ENV: production
+  depends_on:
+    redis:
+      condition: service_healthy
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  api:
+    <<: *api-base
+    command: ["node", "dist/src/index.js"]
+    ports:
+      - "127.0.0.1:${AFILIADO_API_HOST_PORT:-3047}:3000"
+    networks:
+      - internal
+
+  migrate:
+    <<: *api-base
+    restart: "no"
+    command: ["sh", "-c", "yarn --cwd ../.. workspace @afiliado-master/api prisma migrate deploy"]
+    profiles: ["migrate"]
+    networks:
+      - internal
+
+volumes:
+  redis_data:
+
+networks:
+  internal:
+    driver: bridge

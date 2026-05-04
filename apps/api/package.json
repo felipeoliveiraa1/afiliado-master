@@ -17,7 +17,9 @@
     "test:watch": "vitest",
     "docker:dev": "docker compose -p afiliado-master --env-file .env -f docker-compose.yml up -d",
     "docker:isolated": "docker compose -p afiliado-master --env-file .env -f docker-compose.isolated.yml up -d --build",
-    "docker:isolated:migrate": "docker compose -p afiliado-master --profile migrate --env-file .env -f docker-compose.isolated.yml run --rm migrate"
+    "docker:isolated:migrate": "docker compose -p afiliado-master --profile migrate --env-file .env -f docker-compose.isolated.yml run --rm migrate",
+    "docker:supabase": "docker compose -p afiliado-master --env-file .env -f docker-compose.supabase.yml up -d --build",
+    "docker:supabase:migrate": "docker compose -p afiliado-master --profile migrate --env-file .env -f docker-compose.supabase.yml run --rm migrate"
   },
   "dependencies": {
     "@afiliado-master/types": "0.0.1",
