@@ -11,7 +11,7 @@ import {
   validateMercadoLivreCookie,
 } from '@/sources/mercadolivre_panel.js';
 import { runDueCampaigns } from '@/services/campaign-runner.js';
-import { getSettingsSection } from '@/lib/settings.js';
+import { getSettingsSection, setSettingsSection } from '@/lib/settings.js';
 
 type AutomationCfg = {
   fetchEnabled?: boolean;
@@ -25,6 +25,10 @@ type AutomationCfg = {
   campaignsEnabled?: boolean;
   cookieHealthEnabled?: boolean;
   cookieHealthHour?: number;
+  /** Persistência do último fetch Amazon (epoch ms). Sem isso, todo redeploy
+   *  zerava o lastAmazonFetchAt e disparava fetch imediato — $0.11 perdidos
+   *  em cada deploy. Lido no startup, escrito quando enfileira. */
+  lastAmazonFetchAtMs?: number;
 };
 
 let lastFetchAt = 0;
@@ -33,6 +37,18 @@ let lastCookieCheckDate = '';
 let lastCouponSyncDate = '';
 
 export function startCron(): void {
+  // Restaura lastAmazonFetchAt do DB pra evitar refetch em redeploy.
+  // Falha silenciosa cai no default 0 (= dispara no próximo tick).
+  void getSettingsSection<AutomationCfg>('automation')
+    .then((cfg) => {
+      if (typeof cfg.lastAmazonFetchAtMs === 'number') {
+        lastAmazonFetchAt = cfg.lastAmazonFetchAtMs;
+        const minutesAgo = Math.round((Date.now() - lastAmazonFetchAt) / 60_000);
+        logger.info({ minutesAgo }, 'cron: restored lastAmazonFetchAt from DB');
+      }
+    })
+    .catch((err) => logger.warn({ err }, 'cron: failed to restore lastAmazonFetchAt'));
+
   // Tick alto frequência (1 min) decide internamente se cada subtask deve rodar
   // baseado em settings.automation. Permite mudar interval/on-off pelo dashboard
   // sem precisar reiniciar o backend.
@@ -60,9 +76,11 @@ export function startCron(): void {
         if (nonAmazonDue) lastFetchAt = nowMs;
         if (amazonDue) lastAmazonFetchAt = nowMs;
         let enqueued = 0;
+        let amazonEnqueued = false;
         for (const s of sources) {
           if (s.kind === 'AMAZON') {
             if (!amazonDue) continue;
+            amazonEnqueued = true;
           } else if (!nonAmazonDue) continue;
           await fetchQueue.add('fetch', { sourceKind: s.kind, limit: 50 });
           enqueued++;
@@ -71,6 +89,13 @@ export function startCron(): void {
           logger.info(
             { enqueued, fetchIntervalMin, amazonFetchIntervalMin },
             'cron fetch enqueued',
+          );
+        }
+        // Persiste lastAmazonFetchAt SÓ quando dispara (1x/dia) pra sobreviver redeploy.
+        // setSettingsSection faz merge raso — não toca outros campos.
+        if (amazonEnqueued) {
+          void setSettingsSection('automation', { lastAmazonFetchAtMs: nowMs }).catch((err) =>
+            logger.warn({ err }, 'cron: failed to persist lastAmazonFetchAt'),
           );
         }
       } catch (err) {
