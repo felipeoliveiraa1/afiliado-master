@@ -33,15 +33,30 @@ type NormalizedGroup = {
 
 /**
  * Aceita "*" (libera tudo, dev), uma URL única, ou lista separada por vírgula.
- * Em produção configure ex.:  WEB_ORIGIN_URL=https://app.exemplo.com,https://outro.vercel.app
+ * Suporta wildcard com `*` em qualquer parte (ex: `https://*.vercel.app` libera
+ * previews automáticos da Vercel) — converte cada entrada com `*` em RegExp e
+ * combina tudo em um array misto que o `@fastify/cors` aceita.
+ *
+ * Em produção configure ex.:
+ *   WEB_ORIGIN_URL=https://*.vercel.app,https://app.exemplo.com
  */
-function parseAllowedOrigins(raw: string): boolean | string[] | RegExp {
+function parseAllowedOrigins(raw: string): boolean | (string | RegExp)[] {
   const trimmed = raw.trim();
   if (!trimmed || trimmed === '*') return true;
-  return trimmed
+  const entries = trimmed
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  return entries.map<string | RegExp>((entry) => {
+    if (!entry.includes('*')) return entry;
+    // Split on `*`, escape cada pedaço, junta com `.*` — evita escapar o
+    // próprio `*` por engano.
+    const pattern = entry
+      .split('*')
+      .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+      .join('.*');
+    return new RegExp(`^${pattern}$`);
+  });
 }
 
 function normalizeGroups(raw: unknown): NormalizedGroup[] {
