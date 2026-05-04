@@ -460,7 +460,17 @@ function pickImageFromUnknown(v: unknown): string | undefined {
   return undefined;
 }
 
+// Debug flag — quando ativo, log JSON do primeiro polycard recebido
+let _polycardSampleLogged = false;
+
 function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProduct | null {
+  if (!_polycardSampleLogged) {
+    _polycardSampleLogged = true;
+    logger.warn(
+      { sample: JSON.stringify(card).slice(0, 6000) },
+      'POLYCARD_SAMPLE — estrutura do primeiro card pra debug de imageUrl',
+    );
+  }
   const metadata = card.metadata;
   if (!metadata || typeof metadata !== 'object') return null;
   const m = metadata as Record<string, unknown>;
