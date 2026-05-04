@@ -10,6 +10,13 @@
 # O processo `api` já inclui workers + cron (ver src/index.ts).
 #
 # No .env da API: DATABASE_URL com host postgres, REDIS_HOST=redis
+# PORT no .env pode ser qualquer valor para dev local; neste compose o serviço `api` força PORT=3000.
+#   Se o processo ouvir outra porta que não 3000, o publish "3047:3000" quebra (curl no host dá "connection refused").
+#
+# Debug rápido:
+#   docker logs afiliado-master-api-1 --tail 80
+#   docker exec afiliado-master-api-1 printenv PORT
+#   docker exec afiliado-master-api-1 curl -sS http://127.0.0.1:3000/health
 #
 # Proxy no host: http://127.0.0.1:3047 (ou qualquer IP da VPS na 3047 — feche 3047 no firewall se não for usar).
 
