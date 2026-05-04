@@ -12,6 +12,7 @@
     "prisma": "dotenv -e .env -- prisma",
     "prisma:gen": "prisma generate",
     "prisma:migrate": "dotenv -e .env -- prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "fmt": "prettier . --write",
     "test": "vitest run",
     "test:watch": "vitest",

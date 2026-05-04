@@ -68,7 +68,7 @@ services:
     <<: *api-base
     container_name: afiliado-migrate
     restart: "no"
-    command: ["sh", "-c", "yarn --cwd ../.. workspace @afiliado-master/api prisma migrate deploy"]
+    command: ["sh", "-c", "yarn --cwd ../.. workspace @afiliado-master/api run prisma:deploy"]
     profiles: ["migrate"]
 
 volumes:
