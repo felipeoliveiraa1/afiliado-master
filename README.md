@@ -157,7 +157,7 @@ Click tracking (`/r/:dispatchId`) deve apontar pro mesmo domínio configurado em
 ### Frontend (Vercel)
 
 1. **Vercel > New Project** → importa este repo.
-2. **Root Directory**: deixa vazio (a raiz do monorepo). O `vercel.json` no root já direciona pra `apps/web`.
+2. **Root Directory** (recomendado: `apps/web`): assim o Next.js, o `next.config.mjs` e a pasta `.next` ficam alinhados com o builder da Vercel. Nesse modo vale o `apps/web/vercel.json`. Ative **Include files outside the root directory in the Build Step** (ou equivalente) para o workspace Yarn enxergar `packages/*`. Deixe **Output Directory** vazio no painel. Framework Preset: **Next.js**. Se algo pular o build (log ~40 ms, sem `yarn`/`next build`), confira overrides de Build/Output no painel e desligue **Skip deployment** para esse app enquanto depura. Se a raiz do projeto na Vercel for a raiz do repositório (sem subdirectory), aí vale o `vercel.json` na raiz (`installCommand` / `buildCommand`; **não** use `outputDirectory` apontando para `.next`).
 3. **Environment Variables**:
 
    | Nome | Valor |
