@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   CheckCircle2,
+  Clock,
   Cookie,
   EyeOff,
   Eye,
@@ -39,6 +40,7 @@ type Section =
   | 'shopee_panel'
   | 'marketplaces'
   | 'antiban'
+  | 'automation'
   | 'tracking'
   | 'admin';
 
@@ -122,6 +124,19 @@ const SECTIONS: SectionMeta[] = [
       { key: 'dailyLimitPerInstance', label: 'Limite diário por instância', type: 'number' },
       { key: 'windowStartHour', label: 'Janela início (hora 0-23)', type: 'number' },
       { key: 'windowEndHour', label: 'Janela fim (hora 0-23)', type: 'number' },
+    ],
+  },
+  {
+    key: 'automation',
+    title: 'Automação (cron)',
+    description: 'Liga/desliga e ajusta os jobs automáticos. Mudanças tomam efeito no próximo tick (~1min).',
+    icon: Clock,
+    fields: [
+      { key: 'fetchEnabled', label: 'Captação automática', type: 'boolean', hint: 'Cron que busca novas ofertas das Sources habilitadas' },
+      { key: 'fetchIntervalMin', label: 'Intervalo de captação (min)', type: 'number', hint: 'A cada quantos min rodar fetch. Default 30. Mín 5.' },
+      { key: 'campaignsEnabled', label: 'Disparo automático de campanhas', type: 'boolean', hint: 'Cron checa cada minuto quais campanhas vencidas (intervalMinutes da campanha) e dispara' },
+      { key: 'cookieHealthEnabled', label: 'Health check diário dos cookies', type: 'boolean', hint: 'Valida cookie ML/Shopee 1x por dia, alerta no grupo admin se expirou' },
+      { key: 'cookieHealthHour', label: 'Hora do health check (0-23)', type: 'number' },
     ],
   },
   {

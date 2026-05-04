@@ -7,29 +7,70 @@ import { evolution } from '@/lib/evolution.js';
 import { validateShopeeCookie } from '@/sources/shopee_panel.js';
 import { validateMercadoLivreCookie } from '@/sources/mercadolivre_panel.js';
 import { runDueCampaigns } from '@/services/campaign-runner.js';
+import { getSettingsSection } from '@/lib/settings.js';
+
+type AutomationCfg = {
+  fetchEnabled?: boolean;
+  fetchIntervalMin?: number;
+  campaignsEnabled?: boolean;
+  cookieHealthEnabled?: boolean;
+  cookieHealthHour?: number;
+};
+
+let lastFetchAt = 0;
+let lastCookieCheckDate = '';
 
 export function startCron(): void {
-  // Captação automática a cada 30min: roda fetch pra todas as Sources habilitadas
-  cron.schedule('*/30 * * * *', async () => {
-    const sources = await prisma.source.findMany({ where: { enabled: true } });
-    for (const s of sources) {
-      await fetchQueue.add('fetch', { sourceKind: s.kind, limit: 50 });
+  // Tick alto frequência (1 min) decide internamente se cada subtask deve rodar
+  // baseado em settings.automation. Permite mudar interval/on-off pelo dashboard
+  // sem precisar reiniciar o backend.
+  cron.schedule('*/1 * * * *', async () => {
+    let cfg: AutomationCfg = {};
+    try {
+      cfg = await getSettingsSection<AutomationCfg>('automation');
+    } catch (err) {
+      logger.error({ err }, 'cron: failed to load automation settings — pulando tick');
+      return;
     }
-    logger.info({ count: sources.length }, 'cron fetch enqueued');
+
+    // === FETCH (intervalo configurável, default 30min) ===
+    const fetchEnabled = cfg.fetchEnabled !== false;
+    const fetchIntervalMin = cfg.fetchIntervalMin ?? 30;
+    if (fetchEnabled && Date.now() - lastFetchAt >= fetchIntervalMin * 60_000) {
+      lastFetchAt = Date.now();
+      try {
+        const sources = await prisma.source.findMany({ where: { enabled: true } });
+        for (const s of sources) {
+          await fetchQueue.add('fetch', { sourceKind: s.kind, limit: 50 });
+        }
+        logger.info({ count: sources.length, fetchIntervalMin }, 'cron fetch enqueued');
+      } catch (err) {
+        logger.error({ err }, 'cron fetch failed');
+      }
+    }
+
+    // === CAMPANHAS (cada tick — interval por campanha já controlado em runDueCampaigns) ===
+    const campaignsEnabled = cfg.campaignsEnabled !== false;
+    if (campaignsEnabled) {
+      runDueCampaigns().catch((err) => logger.error({ err }, 'runDueCampaigns failed'));
+    }
+
+    // === COOKIE HEALTH (1x por dia na hora configurada) ===
+    const cookieHealthEnabled = cfg.cookieHealthEnabled !== false;
+    const cookieHealthHour = cfg.cookieHealthHour ?? 7;
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    if (
+      cookieHealthEnabled &&
+      now.getHours() === cookieHealthHour &&
+      lastCookieCheckDate !== today
+    ) {
+      lastCookieCheckDate = today;
+      runCookieHealthCheck().catch((err) => logger.error({ err }, 'cookie health check failed'));
+    }
   });
 
-  // Disparo automático: a cada 5min checa quais campanhas vencidas (passou do
-  // intervalMinutes desde o último dispatch) e enfileira run-now.
-  cron.schedule('*/5 * * * *', () => {
-    runDueCampaigns().catch((err) => logger.error({ err }, 'runDueCampaigns failed'));
-  });
-
-  // Cookie health check diário 7h
-  cron.schedule('0 7 * * *', () => {
-    runCookieHealthCheck().catch((err) => logger.error({ err }, 'cookie health check failed'));
-  });
-
-  logger.info('cron started');
+  logger.info('cron started (1-min tick gating via settings.automation)');
 }
 
 async function runCookieHealthCheck(): Promise<void> {

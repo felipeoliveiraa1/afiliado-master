@@ -23,6 +23,7 @@ export type SettingsSection =
   | 'shopee_panel'
   | 'marketplaces'
   | 'antiban'
+  | 'automation'
   | 'tracking'
   | 'admin';
 
@@ -68,6 +69,13 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     dailyLimitPerInstance: env.DISPATCH_DAILY_LIMIT_PER_INSTANCE,
     windowStartHour: env.DISPATCH_WINDOW_START,
     windowEndHour: env.DISPATCH_WINDOW_END,
+  },
+  automation: {
+    fetchEnabled: true,
+    fetchIntervalMin: 30,
+    campaignsEnabled: true,
+    cookieHealthEnabled: true,
+    cookieHealthHour: 7,
   },
   tracking: {
     clickTrackingEnabled: env.CLICK_TRACKING_ENABLED,
@@ -163,6 +171,7 @@ export async function getAllSettings(): Promise<Record<SettingsSection, unknown>
     'shopee_panel',
     'marketplaces',
     'antiban',
+    'automation',
     'tracking',
     'admin',
   ];
