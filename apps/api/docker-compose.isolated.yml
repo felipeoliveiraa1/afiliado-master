@@ -72,6 +72,8 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      # Sempre 3000 dentro do container (publish do compose: 127.0.0.1:3047->3000).
+      PORT: "3000"
     depends_on:
       postgres:
         condition: service_healthy
