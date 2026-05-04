@@ -37,8 +37,44 @@ type EvolutionGroup = {
 };
 
 type EvolutionInstance = {
-  instance: { instanceName?: string };
+  // Evolution v1 wrapped em `instance.*`; v2 retorna na raiz.
+  // Ler ambos pra ser compat.
+  id?: string;
+  name?: string;
+  profileName?: string | null;
+  profilePicUrl?: string | null;
+  number?: string | null;
+  connectionStatus?: 'open' | 'close' | 'connecting' | string;
+  instance?: {
+    instanceName?: string;
+    profileName?: string | null;
+    profilePictureUrl?: string | null;
+    state?: string;
+  };
 };
+
+type NormalizedInstance = {
+  name: string;
+  profileName: string | null;
+  profilePicUrl: string | null;
+  number: string | null;
+  status: 'open' | 'close' | 'connecting' | 'unknown';
+};
+
+function normalizeInstance(raw: EvolutionInstance): NormalizedInstance | null {
+  const name = raw.name ?? raw.instance?.instanceName;
+  if (!name) return null;
+  return {
+    name,
+    profileName: raw.profileName ?? raw.instance?.profileName ?? null,
+    profilePicUrl: raw.profilePicUrl ?? raw.instance?.profilePictureUrl ?? null,
+    number: raw.number ?? null,
+    status:
+      (raw.connectionStatus as NormalizedInstance['status']) ??
+      (raw.instance?.state as NormalizedInstance['status']) ??
+      'unknown',
+  };
+}
 
 export default function ChannelsPage(): React.ReactElement {
   const queryClient = useQueryClient();
@@ -94,8 +130,13 @@ export default function ChannelsPage(): React.ReactElement {
   });
 
   const instanceOptions = (instances.data ?? [])
-    .map((i) => i.instance?.instanceName)
-    .filter((name): name is string => Boolean(name));
+    .map(normalizeInstance)
+    .filter((i): i is NormalizedInstance => i !== null)
+    .sort((a, b) => {
+      // conectados primeiro
+      const order: Record<string, number> = { open: 0, connecting: 1, close: 2, unknown: 3 };
+      return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+    });
 
   return (
     <div className="space-y-6">
@@ -115,17 +156,28 @@ export default function ChannelsPage(): React.ReactElement {
               <Label>Instância (chip)</Label>
               <Select value={instanceFilter} onChange={(e) => setInstanceFilter(e.target.value)}>
                 <option value="">— default —</option>
-                {instanceOptions.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
+                {instanceOptions.map((i) => {
+                  const dot = i.status === 'open' ? '🟢' : i.status === 'connecting' ? '🟡' : '🔴';
+                  const label = i.profileName ? `${i.name} · ${i.profileName}` : i.name;
+                  return (
+                    <option key={i.name} value={i.name}>
+                      {dot} {label}
+                    </option>
+                  );
+                })}
               </Select>
-              {instances.error ? (
+              {instances.isLoading ? (
+                <p className="text-xs text-muted-foreground">Carregando instâncias…</p>
+              ) : instances.error ? (
                 <p className="text-xs text-destructive">
                   Sem acesso à Evolution: {(instances.error as Error).message}
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {instanceOptions.length} {instanceOptions.length === 1 ? 'instância' : 'instâncias'} ·{' '}
+                  {instanceOptions.filter((i) => i.status === 'open').length} conectada(s)
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
