@@ -1069,9 +1069,20 @@ export async function listGeneratedCoupons(): Promise<GeneratedCoupon[]> {
     method: 'GET',
     headers: buildBrowserHeaders({ cookie, referer: COUPONS_PAGE_URL }),
   });
-  if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
+  // IMPORTANTE: aqui NÃO disparamos handleAuthFailure (que poria o cooldown
+  // global e bloquearia TODAS as outras chamadas ML). Esse é endpoint
+  // secundário — se falhar 401/403, só logamos e retornamos vazio. O fluxo
+  // primário (listAvailableCoupons + generateMlCouponCode) continua funcional.
+  if (res.status === 401 || res.status === 403) {
+    logger.warn(
+      { status: res.status },
+      'ml /aliases auth fail — retornando vazio (sem cooldown global)',
+    );
+    return [];
+  }
   if (!res.ok) {
-    throw new MercadoLivrePanelError(`HTTP ${res.status} em coupons/aliases`, 'unknown');
+    logger.warn({ status: res.status }, 'ml /aliases erro — retornando vazio');
+    return [];
   }
   const json = (await res.json()) as { coupons?: GeneratedCoupon[] };
   return Array.isArray(json.coupons) ? json.coupons : [];
