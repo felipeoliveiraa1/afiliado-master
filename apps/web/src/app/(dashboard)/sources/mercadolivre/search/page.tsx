@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { CheckCircle2, ExternalLink, Filter, ImageOff, Search, Sparkles } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
@@ -133,7 +133,11 @@ export default function MlSearchPage(): React.ReactElement {
       </Card>
 
       {searchMutation.isPending ? (
-        <SkeletonRows count={6} />
+        <Card>
+          <CardContent className="px-6 py-10">
+            <SearchProgress />
+          </CardContent>
+        </Card>
       ) : products.length > 0 ? (
         <Card>
           <CardHeader>
@@ -206,6 +210,60 @@ export default function MlSearchPage(): React.ReactElement {
           />
         </Card>
       ) : null}
+    </div>
+  );
+}
+
+function SearchProgress(): React.ReactElement {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const estTotal = 75; // 30-90s típico
+  const pct = Math.min(95, Math.round((seconds / estTotal) * 100));
+  const phase =
+    seconds < 5
+      ? 'Buscando produtos no painel ML…'
+      : seconds < 15
+        ? 'Filtrando produtos elegíveis para afiliação…'
+        : seconds < 60
+          ? 'Gerando shortlinks meli.la (com throttle anti-detecção)…'
+          : 'Quase lá — finalizando shortlinks…';
+  return (
+    <div className="space-y-5 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 place-items-center rounded-full bg-accent-soft text-accent">
+            <Sparkles className="size-5 animate-pulse" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">{phase}</p>
+            <p className="text-xs text-muted-foreground">
+              decorrido: {seconds}s · ETA ~{estTotal}s · throttle 0.8-2.4s/produto
+            </p>
+          </div>
+        </div>
+        <span className="text-xl font-semibold tabular-nums text-muted-foreground">{pct}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-accent transition-all duration-1000 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex items-start gap-3 rounded-lg border bg-card/50 p-3">
+            <div className="size-16 shrink-0 rounded bg-muted animate-pulse" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="h-3 w-full bg-muted rounded animate-pulse" />
+              <div className="h-3 w-2/3 bg-muted rounded animate-pulse" />
+              <div className="h-4 w-1/3 bg-muted rounded animate-pulse" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -537,9 +537,9 @@ function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProd
 }
 
 /**
- * Fallback: para SKUs sem imagem extraída do polycard, hidrata via API
- * pública do ML (sem auth, sem rate limit problemático). Aceita até 20
- * IDs por chamada via `/items?ids=ID1,ID2,...&attributes=id,thumbnail,pictures`.
+ * Hidrata imageUrl em 2 camadas:
+ *   1) API pública do ML (`/items?ids=...`) — rápido, batch de 20
+ *   2) og:image do HTML do produto (fallback pra IDs não-padrão do hub)
  */
 export async function hydrateImagesFromPublicApi(
   products: MercadoLivrePanelProduct[],
@@ -547,13 +547,17 @@ export async function hydrateImagesFromPublicApi(
   const missing = products.filter((p) => !p.imageUrl);
   if (missing.length === 0) return products;
   const byId = new Map<string, string>();
-  // ML aceita até 20 IDs por request
+
+  // Camada 1: ML public API (até 20 IDs por request)
   for (let i = 0; i < missing.length; i += 20) {
     const batch = missing.slice(i, i + 20).map((p) => p.externalId);
     try {
       const url = `https://api.mercadolibre.com/items?ids=${batch.join(',')}&attributes=id,thumbnail,secure_thumbnail,pictures`;
       const res = await fetch(url, { headers: { Accept: 'application/json' } });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        logger.warn({ status: res.status, batchSize: batch.length }, 'public-api hydrate http fail');
+        continue;
+      }
       const arr = (await res.json()) as Array<{
         code?: number;
         body?: {
@@ -577,6 +581,37 @@ export async function hydrateImagesFromPublicApi(
       logger.warn({ err }, 'hydrateImagesFromPublicApi failed batch');
     }
   }
+
+  // Camada 2: og:image do HTML do produto (concurrency 4, 5s timeout)
+  const stillMissing = missing.filter((p) => !byId.has(p.externalId) && p.url);
+  if (stillMissing.length > 0) {
+    logger.info({ count: stillMissing.length }, 'falling back to og:image scraping');
+    const queue = [...stillMissing];
+    const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const p = queue.shift();
+        if (!p) break;
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 5000);
+          const res = await fetch(p.url, {
+            headers: { 'User-Agent': DEFAULT_USER_AGENT, Accept: 'text/html' },
+            redirect: 'follow',
+            signal: ctrl.signal,
+          });
+          clearTimeout(t);
+          if (!res.ok) continue;
+          const html = await res.text();
+          const m = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
+          if (m?.[1]) byId.set(p.externalId, m[1]);
+        } catch {
+          // skip on error/timeout
+        }
+      }
+    });
+    await Promise.all(workers);
+  }
+
   return products.map((p) => (p.imageUrl ? p : { ...p, imageUrl: byId.get(p.externalId) }));
 }
 

@@ -45,7 +45,8 @@ type OfferPatch = {
 };
 
 export default function OffersPage(): React.ReactElement {
-  const [filters, setFilters] = useState({ source: '', minScore: '', take: '30' });
+  const [filters, setFilters] = useState({ source: '', minScore: '', take: '100' });
+  const [view, setView] = useState<'table' | 'grid'>('grid');
   const queryClient = useQueryClient();
 
   const params = new URLSearchParams();
@@ -72,6 +73,28 @@ export default function OffersPage(): React.ReactElement {
       <PageHeader
         title="Ofertas"
         description="Tudo que entrou nas Sources. Edite o link de afiliado quando faltar."
+        actions={
+          <div className="inline-flex rounded-lg border bg-muted/30 p-1">
+            <button
+              type="button"
+              onClick={() => setView('grid')}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === 'grid' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Grade
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('table')}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Tabela
+            </button>
+          </div>
+        }
       />
 
       <Card>
@@ -130,21 +153,50 @@ export default function OffersPage(): React.ReactElement {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-0">
-          {error ? (
-            <div className="px-6 py-10 text-sm text-destructive">{(error as Error).message}</div>
-          ) : isLoading ? (
-            <div className="px-6 py-6">
+      {error ? (
+        <Card>
+          <CardContent className="px-6 py-10 text-sm text-destructive">{(error as Error).message}</CardContent>
+        </Card>
+      ) : isLoading ? (
+        view === 'grid' ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <SkeletonOfferCard key={i} />
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="px-6 py-6">
               <SkeletonRows count={6} />
-            </div>
-          ) : (data ?? []).length === 0 ? (
-            <EmptyState
-              icon={Search}
-              title="Nenhuma oferta encontrada"
-              description="Ajuste os filtros ou rode uma captação manual em Sources."
-            />
-          ) : (
+            </CardContent>
+          </Card>
+        )
+      ) : (data ?? []).length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Search}
+            title="Nenhuma oferta encontrada"
+            description="Ajuste os filtros ou rode uma captação manual em Sources."
+          />
+        </Card>
+      ) : view === 'grid' ? (
+        <>
+          <div className="text-xs text-muted-foreground">
+            Mostrando {(data ?? []).length} oferta{(data ?? []).length !== 1 ? 's' : ''} (ordenadas por score)
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {(data ?? []).map((o) => (
+              <OfferGridCard
+                key={o.id}
+                offer={o}
+                onSave={(patch) => updateMutation.mutate({ id: o.id, patch })}
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
@@ -171,9 +223,9 @@ export default function OffersPage(): React.ReactElement {
                 </tbody>
               </table>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -361,6 +413,131 @@ function OfferEditableRow({
         {formatDate(offer.fetchedAt)}
       </td>
     </tr>
+  );
+}
+
+function SkeletonOfferCard(): React.ReactElement {
+  return (
+    <div className="rounded-xl border bg-card p-3 space-y-3">
+      <div className="aspect-square w-full rounded-md bg-muted animate-pulse" />
+      <div className="h-4 w-full bg-muted rounded animate-pulse" />
+      <div className="h-4 w-2/3 bg-muted rounded animate-pulse" />
+      <div className="flex items-center gap-2">
+        <div className="h-6 w-16 bg-muted rounded animate-pulse" />
+        <div className="h-6 w-12 bg-muted rounded animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
+function OfferGridCard({
+  offer,
+  onSave,
+}: {
+  offer: OfferRow;
+  onSave: (patch: OfferPatch) => void;
+}): React.ReactElement {
+  const [editingLink, setEditingLink] = useState(false);
+  const [linkValue, setLinkValue] = useState(offer.affiliateUrl ?? '');
+  const [copied, setCopied] = useState(false);
+  const copyLink = (): void => {
+    if (!offer.affiliateUrl) return;
+    navigator.clipboard.writeText(offer.affiliateUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="group flex flex-col rounded-xl border bg-card overflow-hidden transition-shadow hover:shadow-pop animate-fade-in-up">
+      <a href={offer.url} target="_blank" rel="noreferrer" className="relative block aspect-square overflow-hidden bg-muted">
+        {offer.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={offer.imageUrl}
+            alt={offer.title}
+            className="size-full object-cover transition-transform group-hover:scale-105"
+            loading="lazy"
+          />
+        ) : (
+          <div className="grid size-full place-items-center">
+            <ImageOff className="size-8 text-muted-foreground" />
+          </div>
+        )}
+        {offer.discountPct ? (
+          <span className="absolute top-2 left-2 rounded-md bg-success px-2 py-0.5 text-xs font-bold text-success-foreground">
+            -{formatPct(offer.discountPct)}
+          </span>
+        ) : null}
+        <span className="absolute top-2 right-2">
+          <SourceBadge kind={offer.source.kind} size="sm" />
+        </span>
+      </a>
+      <div className="flex flex-1 flex-col gap-2 p-3">
+        <a
+          href={offer.url}
+          target="_blank"
+          rel="noreferrer"
+          className="line-clamp-2 text-sm font-medium leading-tight hover:text-accent"
+          title={offer.title}
+        >
+          {offer.title}
+        </a>
+        <div className="flex items-baseline gap-2">
+          <span className="font-semibold tabular-nums">{formatBRL(Number(offer.price))}</span>
+          {offer.originalPrice ? (
+            <span className="text-xs text-muted-foreground line-through tabular-nums">
+              {formatBRL(Number(offer.originalPrice))}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2 mt-auto">
+          <ScorePill value={offer.score} />
+          {offer.coupon ? <Badge variant="accent">🎟 {offer.coupon}</Badge> : null}
+        </div>
+        {editingLink ? (
+          <div className="flex items-center gap-1.5">
+            <Input value={linkValue} onChange={(e) => setLinkValue(e.target.value)} className="h-8 text-xs" autoFocus />
+            <Button
+              size="icon-sm"
+              variant="accent"
+              aria-label="Salvar"
+              onClick={() => {
+                onSave({ affiliateUrl: linkValue });
+                setEditingLink(false);
+              }}
+            >
+              <Check className="size-3.5" />
+            </Button>
+            <Button size="icon-sm" variant="ghost" aria-label="Cancelar" onClick={() => setEditingLink(false)}>
+              <X className="size-3.5" />
+            </Button>
+          </div>
+        ) : offer.affiliateUrl ? (
+          <div className="flex items-center justify-between gap-2 border-t pt-2">
+            <a
+              href={offer.affiliateUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="truncate text-xs text-accent hover:underline inline-flex items-center gap-1 min-w-0"
+            >
+              <ExternalLink className="size-3 shrink-0" />
+              <span className="truncate">{offer.affiliateUrl.replace(/^https?:\/\//, '')}</span>
+            </a>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button size="icon-sm" variant="ghost" aria-label="Copiar" onClick={copyLink}>
+                {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+              </Button>
+              <Button size="icon-sm" variant="ghost" aria-label="Editar" onClick={() => setEditingLink(true)}>
+                <Pencil className="size-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" className="w-full" onClick={() => setEditingLink(true)}>
+            Adicionar link de afiliado
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
