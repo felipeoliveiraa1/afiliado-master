@@ -521,6 +521,7 @@ export async function buildServer() {
           },
           update: {
             title: p.title,
+            imageUrl: p.imageUrl,
             price: p.price,
             originalPrice: p.originalPrice,
             discountPct: p.discountPct,
