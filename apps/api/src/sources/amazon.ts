@@ -141,6 +141,7 @@ export const amazonSource: SourceAdapter = {
       title?: string;
       price?: { value?: number };
       listPrice?: { value?: number };
+      priceRange?: { minPrice?: number; maxPrice?: number };
       thumbnailImage?: string;
       url?: string;
       stars?: number;
@@ -151,7 +152,15 @@ export const amazonSource: SourceAdapter = {
     return items
       .filter((i) => i.asin && i.title && i.url && i.price?.value)
       .map<RawOffer>((i) => {
-        const price = Number(i.price!.value);
+        // PROTEÇÃO contra preço degenerado do actor:
+        // - Se `price.value` <= 5 (impossível na Amazon, frete mínimo é maior),
+        //   tenta usar priceRange.minPrice como verdade. Se ainda assim ficar baixo,
+        //   o filtro abaixo descarta a oferta.
+        // - Caso típico: smartphone com cupom/variante sumida vira R$ 1.94 raw.
+        let price = Number(i.price!.value);
+        if (price <= 5 && i.priceRange?.minPrice && i.priceRange.minPrice > 5) {
+          price = Number(i.priceRange.minPrice);
+        }
         const orig = i.listPrice?.value ? Number(i.listPrice.value) : undefined;
         return {
           externalId: i.asin!,
@@ -167,6 +176,10 @@ export const amazonSource: SourceAdapter = {
           category: i.bestSellersRank?.[0]?.category,
           raw: i as Record<string, unknown>,
         };
-      });
+      })
+      // Filtro de sanidade pós-correção: ainda assim qualquer preço <=5 é
+      // bug do actor — melhor perder a oferta do que mandar pro grupo
+      // "Galaxy A56 por R$1,94" e parecer golpe.
+      .filter((o) => o.price > 5);
   },
 };
