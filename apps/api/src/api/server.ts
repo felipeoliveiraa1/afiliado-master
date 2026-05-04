@@ -4,7 +4,6 @@ import helmet from '@fastify/helmet';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { env } from '@/config/env.js';
-import { logger } from '@/lib/logger.js';
 import { prisma } from '@/lib/db.js';
 import { evolution } from '@/lib/evolution.js';
 import { fetchQueue, dispatchQueue } from '@/queue/queues.js';
@@ -61,7 +60,18 @@ function normalizeGroups(raw: unknown): NormalizedGroup[] {
 }
 
 export async function buildServer() {
-  const app = Fastify({ loggerInstance: logger }).withTypeProvider<ZodTypeProvider>();
+  const app = Fastify({
+    logger:
+      env.NODE_ENV === 'development'
+        ? {
+            level: env.LOG_LEVEL,
+            transport: {
+              target: 'pino-pretty',
+              options: { colorize: true, translateTime: 'SYS:HH:MM:ss', ignore: 'pid,hostname' },
+            },
+          }
+        : { level: env.LOG_LEVEL },
+  }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 

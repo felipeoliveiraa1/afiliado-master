@@ -8,6 +8,12 @@ process.on('unhandledRejection', (reason: unknown) => {
   logger.error({ reason }, 'unhandledRejection');
 });
 
+process.on('uncaughtException', (err: Error) => {
+  console.error('uncaughtException', err);
+  logger.error({ err }, 'uncaughtException');
+  process.exit(1);
+});
+
 async function main() {
   logger.info(
     { port: env.PORT, redisHost: env.REDIS_HOST, nodeEnv: env.NODE_ENV },
