@@ -55,14 +55,14 @@ services:
   api:
     <<: *api-base
     container_name: afiliado-api
-    command: ["node", "dist/src/index.js"]
+    command: ["node", "dist/index.js"]
     ports:
       - "127.0.0.1:3000:3000"
 
   worker:
     <<: *api-base
     container_name: afiliado-worker
-    command: ["node", "dist/src/worker.js"]
+    command: ["node", "dist/worker.js"]
 
   migrate:
     <<: *api-base

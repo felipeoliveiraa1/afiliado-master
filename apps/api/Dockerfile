@@ -44,4 +44,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
 USER app
 WORKDIR /app/apps/api
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "dist/src/index.js"]
+CMD ["node", "dist/index.js"]

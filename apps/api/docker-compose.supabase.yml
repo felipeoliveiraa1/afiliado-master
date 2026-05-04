@@ -45,7 +45,7 @@ services:
 
   api:
     <<: *api-base
-    command: ["node", "dist/src/index.js"]
+    command: ["node", "dist/index.js"]
     ports:
       - "127.0.0.1:${AFILIADO_API_HOST_PORT:-3047}:3000"
     networks:
