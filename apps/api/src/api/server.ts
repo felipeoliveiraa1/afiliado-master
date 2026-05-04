@@ -297,6 +297,7 @@ export async function buildServer() {
             score: scoreOffer({
               discountPct: discountPct ?? null,
               rating: null,
+              ratingCount: null,
               salesCount: null,
               commissionPct: o.commissionPct ?? null,
             }),
@@ -475,6 +476,7 @@ export async function buildServer() {
             score: scoreOffer({
               discountPct: p.discountPct ?? null,
               rating: null,
+              ratingCount: null,
               salesCount: p.isBestSeller ? 1000 : null,
               commissionPct: null,
             }),

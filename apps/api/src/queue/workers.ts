@@ -67,6 +67,7 @@ export function startWorkers() {
             score: scoreOffer({
               discountPct: r.discountPct ?? null,
               rating: r.rating ?? null,
+              ratingCount: r.ratingCount ?? null,
               salesCount: r.salesCount ?? null,
               commissionPct: r.commissionPct ?? null,
             }),
@@ -80,6 +81,7 @@ export function startWorkers() {
             score: scoreOffer({
               discountPct: r.discountPct ?? null,
               rating: r.rating ?? null,
+              ratingCount: r.ratingCount ?? null,
               salesCount: r.salesCount ?? null,
               commissionPct: r.commissionPct ?? null,
             }),
