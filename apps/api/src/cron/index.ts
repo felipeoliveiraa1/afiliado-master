@@ -16,12 +16,19 @@ import { getSettingsSection } from '@/lib/settings.js';
 type AutomationCfg = {
   fetchEnabled?: boolean;
   fetchIntervalMin?: number;
+  /** Interval específico do AMAZON em min. Default 1440 (1x/dia) pra não estourar
+   *  Apify free tier ($5/mês). 4 URLs × 3 produtos × $0.012 ≈ $0.14/run.
+   *  - 1x/dia → ~$4.30/mês ✅
+   *  - 2x/dia → ~$8.60/mês ❌ (estoura)
+   *  ML/Shopee continuam usando fetchIntervalMin (scraping não custa). */
+  amazonFetchIntervalMin?: number;
   campaignsEnabled?: boolean;
   cookieHealthEnabled?: boolean;
   cookieHealthHour?: number;
 };
 
 let lastFetchAt = 0;
+let lastAmazonFetchAt = 0;
 let lastCookieCheckDate = '';
 let lastCouponSyncDate = '';
 
@@ -38,17 +45,34 @@ export function startCron(): void {
       return;
     }
 
-    // === FETCH (intervalo configurável, default 30min) ===
+    // === FETCH (intervalo configurável por source) ===
+    // Amazon tem interval próprio (default 24h) por causa do custo Apify.
+    // Demais sources (ML/Shopee/Promobit) usam fetchIntervalMin (default 30min).
     const fetchEnabled = cfg.fetchEnabled !== false;
     const fetchIntervalMin = cfg.fetchIntervalMin ?? 30;
-    if (fetchEnabled && Date.now() - lastFetchAt >= fetchIntervalMin * 60_000) {
-      lastFetchAt = Date.now();
+    const amazonFetchIntervalMin = cfg.amazonFetchIntervalMin ?? 1440;
+    if (fetchEnabled) {
       try {
         const sources = await prisma.source.findMany({ where: { enabled: true } });
+        const nowMs = Date.now();
+        const nonAmazonDue = nowMs - lastFetchAt >= fetchIntervalMin * 60_000;
+        const amazonDue = nowMs - lastAmazonFetchAt >= amazonFetchIntervalMin * 60_000;
+        if (nonAmazonDue) lastFetchAt = nowMs;
+        if (amazonDue) lastAmazonFetchAt = nowMs;
+        let enqueued = 0;
         for (const s of sources) {
+          if (s.kind === 'AMAZON') {
+            if (!amazonDue) continue;
+          } else if (!nonAmazonDue) continue;
           await fetchQueue.add('fetch', { sourceKind: s.kind, limit: 50 });
+          enqueued++;
         }
-        logger.info({ count: sources.length, fetchIntervalMin }, 'cron fetch enqueued');
+        if (enqueued > 0) {
+          logger.info(
+            { enqueued, fetchIntervalMin, amazonFetchIntervalMin },
+            'cron fetch enqueued',
+          );
+        }
       } catch (err) {
         logger.error({ err }, 'cron fetch failed');
       }

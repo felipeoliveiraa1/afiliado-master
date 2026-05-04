@@ -137,7 +137,8 @@ const SECTIONS: SectionMeta[] = [
     icon: Clock,
     fields: [
       { key: 'fetchEnabled', label: 'Captação automática', type: 'boolean', hint: 'Cron que busca novas ofertas das Sources habilitadas' },
-      { key: 'fetchIntervalMin', label: 'Intervalo de captação (min)', type: 'number', hint: 'A cada quantos min rodar fetch. Default 30. Mín 5.' },
+      { key: 'fetchIntervalMin', label: 'Intervalo de captação ML/Shopee (min)', type: 'number', hint: 'A cada quantos min rodar fetch nas sources gratuitas. Default 30. Mín 5.' },
+      { key: 'amazonFetchIntervalMin', label: 'Intervalo Amazon (min) ⚠️ custo Apify', type: 'number', hint: 'Amazon usa Apify ($0.11/run). 1440=1x/dia ($3.30/mês ✅), 720=2x/dia ($8.60/mês ❌). NÃO baixe abaixo de 1440 sem upgrade do plano Apify.' },
       { key: 'campaignsEnabled', label: 'Disparo automático de campanhas', type: 'boolean', hint: 'Cron checa cada minuto quais campanhas vencidas (intervalMinutes da campanha) e dispara' },
       { key: 'cookieHealthEnabled', label: 'Health check diário dos cookies', type: 'boolean', hint: 'Valida cookie ML/Shopee 1x por dia, alerta no grupo admin se expirou' },
       { key: 'cookieHealthHour', label: 'Hora do health check (0-23)', type: 'number' },

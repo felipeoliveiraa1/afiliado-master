@@ -77,6 +77,9 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
   automation: {
     fetchEnabled: true,
     fetchIntervalMin: 30,
+    // Amazon tem cron próprio porque cada fetch custa $0.11 via Apify.
+    // Default 1440 (1x/dia) = ~$3.30/mês, dentro do free tier de $5.
+    amazonFetchIntervalMin: 1440,
     campaignsEnabled: true,
     cookieHealthEnabled: true,
     cookieHealthHour: 7,

@@ -461,9 +461,25 @@ export async function buildServer() {
         update: {},
         create: { kind: 'MERCADOLIVRE' },
       });
+      // Pré-carrega cupons ativos pra match rápido O(1) por seller name.
+      // Match é case-insensitive (vendor name pode vir capitalizado diferente
+      // entre /afiliados/coupons e o polycard).
+      const activeCoupons = await prisma.mlCoupon.findMany({
+        where: { enabled: true, status: 'ACTIVE', alias: { not: null } },
+      });
+      const couponBySeller = new Map(
+        activeCoupons.map((c) => [c.seller.toLowerCase().trim(), c]),
+      );
       const offerIds: string[] = [];
+      let couponsApplied = 0;
       for (const p of products) {
         if (!p.affiliateUrl) continue;
+        // Aplica cupom se vendedor da oferta tem cupom ativo associado.
+        // Se não bater, deixa coupon=null e a oferta vai sem desconto extra.
+        const matchedCoupon = p.seller
+          ? couponBySeller.get(p.seller.toLowerCase().trim())
+          : undefined;
+        if (matchedCoupon) couponsApplied++;
         const offer = await prisma.offer.upsert({
           where: { sourceId_externalId: { sourceId: source.id, externalId: p.externalId } },
           create: {
@@ -477,6 +493,7 @@ export async function buildServer() {
             category: p.category,
             url: p.url,
             affiliateUrl: p.affiliateUrl,
+            coupon: matchedCoupon?.alias ?? null,
             score: scoreOffer({
               discountPct: p.discountPct ?? null,
               rating: null,
@@ -484,7 +501,7 @@ export async function buildServer() {
               salesCount: p.isBestSeller ? 1000 : null,
               commissionPct: null,
             }),
-            raw: { panelSearch: true, isBestSeller: p.isBestSeller } as object,
+            raw: { panelSearch: true, isBestSeller: p.isBestSeller, seller: p.seller } as object,
           },
           update: {
             title: p.title,
@@ -493,11 +510,16 @@ export async function buildServer() {
             originalPrice: p.originalPrice,
             discountPct: p.discountPct,
             affiliateUrl: p.affiliateUrl,
+            coupon: matchedCoupon?.alias ?? undefined,
             fetchedAt: new Date(),
           },
         });
         offerIds.push(offer.id);
       }
+      app.log.info(
+        { found: products.length, imported: offerIds.length, couponsApplied, activeCoupons: activeCoupons.length },
+        'ml search-by-category upsert done',
+      );
       // Retorna products também pra UI mostrar preview (lista + badges)
       return { found: products.length, imported: offerIds.length, offerIds, products };
     },

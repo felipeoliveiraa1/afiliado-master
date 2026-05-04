@@ -93,6 +93,11 @@ export type MercadoLivrePanelProduct = {
   category?: string;
   isBestSeller?: boolean;
   participatesInProgram: boolean;
+  /**
+   * Nome do vendedor (usado pra match com MlCoupon.seller). Vem do polycard
+   * quando disponível — quando não vem, cupom não é aplicado nessa oferta.
+   */
+  seller?: string;
 };
 
 export type SearchByCategoryArgs = {
@@ -508,6 +513,14 @@ function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProd
   let originalPrice: number | undefined;
   let discountPct: number | undefined;
   let isBestSeller = false;
+  // Best-effort capture do nome do vendedor. Polycard às vezes traz como
+  // metadata.seller_name, às vezes como component type=brand/attribution/seller.
+  let seller: string | undefined =
+    (typeof m.seller_name === 'string' ? m.seller_name : undefined) ??
+    (typeof m.seller === 'string' ? m.seller : undefined) ??
+    (typeof (m.seller as Record<string, unknown> | undefined)?.name === 'string'
+      ? ((m.seller as Record<string, unknown>).name as string)
+      : undefined);
   let imageUrl: string | undefined =
     extractImageFromPolycardPictures(card) ??
     pickImageFromUnknown(m.thumbnail) ??
@@ -538,6 +551,11 @@ function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProd
         const text = highlight?.text;
         if (typeof text === 'string' && text.toUpperCase().includes('VENDID')) isBestSeller = true;
       }
+      if (!seller && (ctype === 'brand' || ctype === 'attribution' || ctype === 'seller')) {
+        const obj = (comp[ctype as string] ?? comp) as Record<string, unknown>;
+        const name = obj?.text ?? obj?.name ?? obj?.label;
+        if (typeof name === 'string' && name.trim()) seller = name.trim();
+      }
       if (!imageUrl && (ctype === 'pictures' || ctype === 'gallery' || ctype === 'image')) {
         imageUrl =
           pickImageFromUnknown(comp.pictures) ??
@@ -560,6 +578,7 @@ function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProd
     category: undefined,
     isBestSeller,
     participatesInProgram,
+    seller,
   };
 }
 
