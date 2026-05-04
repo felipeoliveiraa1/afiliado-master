@@ -2,5 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "yarn install --frozen-lockfile",
-  "buildCommand": "yarn workspace @afiliado-master/web build"
+  "buildCommand": "yarn workspace @afiliado-master/web build",
+  "ignoreCommand": "exit 1"
 }
