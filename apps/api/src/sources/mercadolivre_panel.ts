@@ -1,6 +1,19 @@
 import { fetch } from 'undici';
-import { env } from '@/config/env.js';
 import { logger } from '@/lib/logger.js';
+import { getSettingsSection } from '@/lib/settings.js';
+
+type MlPanelConfig = {
+  autoEnabled?: boolean;
+  cookie?: string;
+  defaultTag?: string;
+  dailyLimit?: number;
+  minIntervalSec?: number;
+  maxIntervalSec?: number;
+};
+
+async function getCfg(): Promise<MlPanelConfig> {
+  return getSettingsSection<MlPanelConfig>('mercadolivre_panel');
+}
 
 /**
  * Mercado Livre affiliate panel adapter.
@@ -113,12 +126,17 @@ type CsrfCacheEntry = {
 let csrfCache: CsrfCacheEntry | null = null;
 let cooldownUntil = 0;
 
-function ensureEnabled(): void {
-  if (!env.MERCADOLIVRE_PANEL_AUTO_ENABLED) {
-    throw new MercadoLivrePanelError('MERCADOLIVRE_PANEL_AUTO_ENABLED=false', 'config');
+/**
+ * Lê configuração ativa (DB → fallback env), valida e retorna o cookie pra
+ * usar nos headers. Lança MercadoLivrePanelError quando incompleto/em cooldown.
+ */
+async function ensureEnabled(): Promise<MlPanelConfig> {
+  const cfg = await getCfg();
+  if (!cfg.autoEnabled) {
+    throw new MercadoLivrePanelError('autoEnabled=false (configure em /settings)', 'config');
   }
-  if (!env.MERCADOLIVRE_PANEL_COOKIE) {
-    throw new MercadoLivrePanelError('MERCADOLIVRE_PANEL_COOKIE não configurado', 'config');
+  if (!cfg.cookie || cfg.cookie.trim().length < 50) {
+    throw new MercadoLivrePanelError('cookie vazio ou muito curto (configure em /settings)', 'config');
   }
   if (Date.now() < cooldownUntil) {
     throw new MercadoLivrePanelError(
@@ -126,6 +144,7 @@ function ensureEnabled(): void {
       'auth',
     );
   }
+  return cfg;
 }
 
 type HeaderOpts = {
@@ -133,9 +152,10 @@ type HeaderOpts = {
   csrfToken?: string;
   referer?: string;
   withJsonBody?: boolean;
+  cookie: string;
 };
 
-function buildBrowserHeaders(opts: HeaderOpts = {}): Record<string, string> {
+function buildBrowserHeaders(opts: HeaderOpts): Record<string, string> {
   const isHtml = opts.acceptHtml === true;
   const headers: Record<string, string> = {
     Accept: isHtml
@@ -151,7 +171,7 @@ function buildBrowserHeaders(opts: HeaderOpts = {}): Record<string, string> {
     'sec-fetch-dest': isHtml ? 'document' : 'empty',
     'sec-fetch-mode': isHtml ? 'navigate' : 'cors',
     'sec-fetch-site': isHtml ? 'none' : 'same-origin',
-    Cookie: env.MERCADOLIVRE_PANEL_COOKIE,
+    Cookie: opts.cookie,
   };
   if (opts.withJsonBody) {
     headers['Content-Type'] = 'application/json';
@@ -190,13 +210,16 @@ export function parseCsrfTokenFromHtml(html: string): { csrfToken: string; tag: 
   return { csrfToken: csrfMatch[1], tag: tagMatch?.[1] ?? null };
 }
 
-async function getCsrfTokenAndTag(force = false): Promise<{ csrfToken: string; tag: string | null }> {
+async function getCsrfTokenAndTag(
+  cookie: string,
+  force = false,
+): Promise<{ csrfToken: string; tag: string | null }> {
   if (!force && csrfCache && Date.now() - csrfCache.fetchedAt < CSRF_TTL_MS) {
     return { csrfToken: csrfCache.token, tag: csrfCache.tag };
   }
   const res = await fetch(HUB_URL, {
     method: 'GET',
-    headers: buildBrowserHeaders({ acceptHtml: true }),
+    headers: buildBrowserHeaders({ acceptHtml: true, cookie }),
     redirect: 'follow',
   });
   if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
@@ -255,14 +278,16 @@ export async function generateMercadoLivreShortlink(
   productUrl: string,
   opts: { tag?: string; subId?: string } = {},
 ): Promise<string> {
-  ensureEnabled();
-  const { csrfToken, tag: discoveredTag } = await getCsrfTokenAndTag();
-  const tag = opts.tag || env.MERCADOLIVRE_PANEL_DEFAULT_TAG || discoveredTag || 'ofp5162';
+  const cfg = await ensureEnabled();
+  const cookie = cfg.cookie!;
+  const { csrfToken, tag: discoveredTag } = await getCsrfTokenAndTag(cookie);
+  const tag = opts.tag || cfg.defaultTag || discoveredTag || 'ofp5162';
   const body = JSON.stringify({ url: productUrl, tag });
   const headers = buildBrowserHeaders({
     csrfToken,
     referer: productUrl,
     withJsonBody: true,
+    cookie,
   });
   const res = await fetch(CREATE_LINK_URL, {
     method: 'POST',
@@ -291,12 +316,13 @@ export async function generateMercadoLivreLinkDetailed(
   productUrl: string,
   opts: { tag?: string } = {},
 ): Promise<CreateLinkResponse> {
-  ensureEnabled();
-  const { csrfToken, tag: discoveredTag } = await getCsrfTokenAndTag();
-  const tag = opts.tag || env.MERCADOLIVRE_PANEL_DEFAULT_TAG || discoveredTag || 'ofp5162';
+  const cfg = await ensureEnabled();
+  const cookie = cfg.cookie!;
+  const { csrfToken, tag: discoveredTag } = await getCsrfTokenAndTag(cookie);
+  const tag = opts.tag || cfg.defaultTag || discoveredTag || 'ofp5162';
   const res = await fetch(CREATE_LINK_URL, {
     method: 'POST',
-    headers: buildBrowserHeaders({ csrfToken, referer: productUrl, withJsonBody: true }),
+    headers: buildBrowserHeaders({ csrfToken, referer: productUrl, withJsonBody: true, cookie }),
     body: JSON.stringify({ url: productUrl, tag }),
   });
   if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
@@ -318,10 +344,10 @@ export type MercadoLivreTag = {
  * campaign can use a different tag for per-channel revenue attribution.
  */
 export async function getMercadoLivreTags(): Promise<MercadoLivreTag[]> {
-  ensureEnabled();
+  const cfg = await ensureEnabled();
   const res = await fetch(TAGS_URL, {
     method: 'GET',
-    headers: buildBrowserHeaders(),
+    headers: buildBrowserHeaders({ cookie: cfg.cookie! }),
   });
   if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
   if (!res.ok) {
@@ -342,9 +368,9 @@ export type MercadoLivreCommission = {
  * Returns the commission % and extra-commission flag for a single MLB item.
  */
 export async function getMercadoLivreCommission(itemId: string): Promise<MercadoLivreCommission> {
-  ensureEnabled();
+  const cfg = await ensureEnabled();
   const url = `${COMMISSIONS_URL}?itemId=${encodeURIComponent(itemId)}`;
-  const res = await fetch(url, { method: 'GET', headers: buildBrowserHeaders() });
+  const res = await fetch(url, { method: 'GET', headers: buildBrowserHeaders({ cookie: cfg.cookie! }) });
   if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
   if (!res.ok) {
     throw new MercadoLivrePanelError(`HTTP ${res.status} no /commissions`, 'unknown');
@@ -369,11 +395,12 @@ export async function getMercadoLivreCommission(itemId: string): Promise<Mercado
  */
 export async function validateMercadoLivreCookie(): Promise<MercadoLivreCookieHealth> {
   const checkedAt = new Date().toISOString();
-  if (!env.MERCADOLIVRE_PANEL_COOKIE) {
-    return { valid: false, checkedAt, errorMessage: 'cookie vazio' };
+  const cfg = await getCfg();
+  if (!cfg.cookie || cfg.cookie.trim().length < 50) {
+    return { valid: false, checkedAt, errorMessage: 'cookie vazio (configure em /settings)' };
   }
   try {
-    const { tag } = await getCsrfTokenAndTag(true);
+    const { tag } = await getCsrfTokenAndTag(cfg.cookie, true);
     return { valid: true, tag: tag ?? undefined, checkedAt };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
@@ -505,21 +532,22 @@ export function parseProductsFromHubSearchJson(json: unknown): MercadoLivrePanel
 export async function searchMercadoLivreByCategory(
   args: SearchByCategoryArgs,
 ): Promise<MercadoLivrePanelProduct[]> {
-  ensureEnabled();
-  const { csrfToken } = await getCsrfTokenAndTag();
+  const cfg = await ensureEnabled();
+  const cookie = cfg.cookie!;
+  const { csrfToken } = await getCsrfTokenAndTag(cookie);
   const limit = args.limit ?? 50;
   const body = buildHubSearchPostBody(args);
   try {
     const res = await fetch(HUB_SEARCH_URL, {
       method: 'POST',
-      headers: buildBrowserHeaders({ csrfToken, withJsonBody: true }),
+      headers: buildBrowserHeaders({ csrfToken, withJsonBody: true, cookie }),
       body: JSON.stringify(body),
     });
     if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
     if (res.status === 429) handleRateLimit();
     if (!res.ok) {
       logger.warn({ status: res.status }, 'hub/search non-OK — SSR fallback');
-      return (await searchFromHubHtml(limit)).slice(0, limit);
+      return (await searchFromHubHtml(cookie, limit)).slice(0, limit);
     }
     const json = (await res.json()) as Record<string, unknown>;
     const products = parseProductsFromHubSearchJson(json);
@@ -528,12 +556,12 @@ export async function searchMercadoLivreByCategory(
         { filters: body.filters },
         'hub/search returned 0 polycards — SSR fallback (category filter may need adjustment)',
       );
-      return (await searchFromHubHtml(limit)).slice(0, limit);
+      return (await searchFromHubHtml(cookie, limit)).slice(0, limit);
     }
     return products.slice(0, limit);
   } catch (err) {
     logger.warn({ err }, 'hub/search failed — SSR fallback');
-    return (await searchFromHubHtml(limit)).slice(0, limit);
+    return (await searchFromHubHtml(cookie, limit)).slice(0, limit);
   }
 }
 
@@ -542,10 +570,10 @@ export async function searchMercadoLivreByCategory(
  * SSR HTML of /afiliados/hub. Returns the default "Produtos selecionados para
  * você" list (no category filter — best-effort).
  */
-async function searchFromHubHtml(limit: number): Promise<MercadoLivrePanelProduct[]> {
+async function searchFromHubHtml(cookie: string, limit: number): Promise<MercadoLivrePanelProduct[]> {
   const res = await fetch(HUB_URL, {
     method: 'GET',
-    headers: buildBrowserHeaders({ acceptHtml: true }),
+    headers: buildBrowserHeaders({ acceptHtml: true, cookie }),
     redirect: 'follow',
   });
   if (!res.ok) return [];
