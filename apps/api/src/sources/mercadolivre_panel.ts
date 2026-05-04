@@ -442,6 +442,24 @@ export function buildHubSearchPostBody(args: SearchByCategoryArgs): HubSearchPos
   };
 }
 
+function pickImageFromUnknown(v: unknown): string | undefined {
+  if (typeof v === 'string' && /^https?:\/\//.test(v)) return v;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    for (const k of ['secure_url', 'url', 'src', 'thumbnail', 'value']) {
+      const found = pickImageFromUnknown(o[k]);
+      if (found) return found;
+    }
+    if (Array.isArray(o)) {
+      for (const item of o) {
+        const found = pickImageFromUnknown(item);
+        if (found) return found;
+      }
+    }
+  }
+  return undefined;
+}
+
 function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProduct | null {
   const metadata = card.metadata;
   if (!metadata || typeof metadata !== 'object') return null;
@@ -464,6 +482,11 @@ function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProd
   let originalPrice: number | undefined;
   let discountPct: number | undefined;
   let isBestSeller = false;
+  let imageUrl: string | undefined =
+    pickImageFromUnknown(m.thumbnail) ??
+    pickImageFromUnknown(m.image) ??
+    pickImageFromUnknown(m.picture_url) ??
+    pickImageFromUnknown(m.pictures);
   const components = card.components;
   if (Array.isArray(components)) {
     for (const raw of components) {
@@ -488,13 +511,20 @@ function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProd
         const text = highlight?.text;
         if (typeof text === 'string' && text.toUpperCase().includes('VENDID')) isBestSeller = true;
       }
+      if (!imageUrl && (ctype === 'pictures' || ctype === 'gallery' || ctype === 'image')) {
+        imageUrl =
+          pickImageFromUnknown(comp.pictures) ??
+          pickImageFromUnknown(comp.gallery) ??
+          pickImageFromUnknown(comp.image) ??
+          pickImageFromUnknown(comp);
+      }
     }
   }
   const participatesInProgram = m.type === 'product' || Boolean(externalId);
   return {
     externalId,
     title,
-    imageUrl: undefined,
+    imageUrl,
     price,
     originalPrice,
     discountPct,
@@ -504,6 +534,50 @@ function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProd
     isBestSeller,
     participatesInProgram,
   };
+}
+
+/**
+ * Fallback: para SKUs sem imagem extraída do polycard, hidrata via API
+ * pública do ML (sem auth, sem rate limit problemático). Aceita até 20
+ * IDs por chamada via `/items?ids=ID1,ID2,...&attributes=id,thumbnail,pictures`.
+ */
+export async function hydrateImagesFromPublicApi(
+  products: MercadoLivrePanelProduct[],
+): Promise<MercadoLivrePanelProduct[]> {
+  const missing = products.filter((p) => !p.imageUrl);
+  if (missing.length === 0) return products;
+  const byId = new Map<string, string>();
+  // ML aceita até 20 IDs por request
+  for (let i = 0; i < missing.length; i += 20) {
+    const batch = missing.slice(i, i + 20).map((p) => p.externalId);
+    try {
+      const url = `https://api.mercadolibre.com/items?ids=${batch.join(',')}&attributes=id,thumbnail,secure_thumbnail,pictures`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) continue;
+      const arr = (await res.json()) as Array<{
+        code?: number;
+        body?: {
+          id?: string;
+          thumbnail?: string;
+          secure_thumbnail?: string;
+          pictures?: { url?: string; secure_url?: string }[];
+        };
+      }>;
+      for (const entry of arr) {
+        if (entry.code !== 200 || !entry.body?.id) continue;
+        const b = entry.body;
+        const img =
+          b.pictures?.[0]?.secure_url ||
+          b.pictures?.[0]?.url ||
+          b.secure_thumbnail ||
+          b.thumbnail;
+        if (img && b.id) byId.set(b.id, img);
+      }
+    } catch (err) {
+      logger.warn({ err }, 'hydrateImagesFromPublicApi failed batch');
+    }
+  }
+  return products.map((p) => (p.imageUrl ? p : { ...p, imageUrl: byId.get(p.externalId) }));
 }
 
 /**
@@ -556,9 +630,10 @@ export async function searchMercadoLivreByCategory(
         { filters: body.filters },
         'hub/search returned 0 polycards — SSR fallback (category filter may need adjustment)',
       );
-      return (await searchFromHubHtml(cookie, limit)).slice(0, limit);
+      const fallback = (await searchFromHubHtml(cookie, limit)).slice(0, limit);
+      return await hydrateImagesFromPublicApi(fallback);
     }
-    return products.slice(0, limit);
+    return await hydrateImagesFromPublicApi(products.slice(0, limit));
   } catch (err) {
     logger.warn({ err }, 'hub/search failed — SSR fallback');
     return (await searchFromHubHtml(cookie, limit)).slice(0, limit);
