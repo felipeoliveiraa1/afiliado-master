@@ -112,8 +112,8 @@ const SECTIONS: SectionMeta[] = [
       { key: 'apifyToken', label: 'Apify Token', secret: true, type: 'password', hint: 'apify.com → Account → Integrations → API token. Free tier $5/mês cobre dev.' },
       { key: 'apifyAmazonActor', label: 'Apify actor — Amazon', placeholder: 'junglee~free-amazon-product-scraper', hint: 'Default: junglee~free-amazon-product-scraper ($12/1000 produtos = $0,012 cada). Cole IDs no formato user~actor.' },
       { key: 'amazonCountry', label: 'País Amazon', placeholder: 'BR', hint: 'Código ISO de 2 letras. BR pra Brasil, US pra Estados Unidos.' },
-      { key: 'amazonKeywords', label: 'Keywords Amazon (CSV)', type: 'textarea', placeholder: 'fone bluetooth, smartwatch, echo dot, mochila, air fryer, cafeteira', hint: 'Lista de termos separados por vírgula. Cada termo vira uma busca no Amazon. Vazio = usa defaults (top categorias BR).' },
-      { key: 'amazonCategoryUrls', label: 'Amazon URLs diretas (avançado)', type: 'textarea', placeholder: 'https://www.amazon.com.br/s?k=fone+bluetooth, https://www.amazon.com.br/s?bbn=16225016011', hint: 'Opcional: cole URLs Amazon completas (categorias ou buscas). Se preenchido, ignora as keywords acima.' },
+      { key: 'amazonKeywords', label: 'Keywords Amazon (CSV)', type: 'textarea', placeholder: 'fone bluetooth, smartwatch, echo dot, mochila', hint: 'Lista de termos separados por vírgula. Cada termo vira busca ordenada por popularidade. Vazio = usa Deals/Goldbox (promoções centrais).' },
+      { key: 'amazonCategoryUrls', label: 'Amazon URLs diretas (RECOMENDADO p/ promoções)', type: 'textarea', placeholder: 'https://www.amazon.com.br/deals, https://www.amazon.com.br/gp/goldbox, https://www.amazon.com.br/gp/bestsellers/electronics', hint: 'URLs Amazon completas. Sobrescreve keywords. URLs úteis: /deals (todas ofertas), /gp/goldbox (relâmpago), /gp/bestsellers/<cat>.' },
     ],
   },
   {

@@ -30,6 +30,16 @@ const DEFAULT_KEYWORDS = [
   'caixa de som bluetooth',
 ];
 
+/**
+ * Defaults focados em PROMOÇÕES quando o usuário não preencher
+ * `amazonCategoryUrls` nem `amazonKeywords`. Cobre ofertas do dia +
+ * goldbox + deals page (todos centrados em desconto).
+ */
+const DEFAULT_DEAL_URLS_BR = [
+  'https://www.amazon.com.br/deals',
+  'https://www.amazon.com.br/gp/goldbox',
+];
+
 const AMAZON_DOMAIN_BY_COUNTRY: Record<string, string> = {
   BR: 'amazon.com.br',
   US: 'amazon.com',
@@ -45,7 +55,9 @@ const AMAZON_DOMAIN_BY_COUNTRY: Record<string, string> = {
 
 function keywordToSearchUrl(keyword: string, country: string): string {
   const domain = AMAZON_DOMAIN_BY_COUNTRY[country.toUpperCase()] ?? 'amazon.com.br';
-  return `https://www.${domain}/s?k=${encodeURIComponent(keyword.trim())}`;
+  // s=exact-aware-popularity-rank ordena por popularidade (proxy de vendas)
+  // — melhora qualidade vs ordenação por relevância default
+  return `https://www.${domain}/s?k=${encodeURIComponent(keyword.trim())}&s=exact-aware-popularity-rank`;
 }
 
 async function getCfg(): Promise<MarketplacesCfg> {
@@ -73,17 +85,22 @@ export const amazonSource: SourceAdapter = {
     const country = cfg.amazonCountry || 'BR';
 
     // Constrói URLs de busca/categoria. Prioridade:
-    //   1) amazonCategoryUrls (CSV de URLs Amazon completas — mais preciso)
-    //   2) amazonKeywords (CSV → vira search URL no domínio do país)
-    //   3) DEFAULT_KEYWORDS (top categorias BR)
+    //   1) amazonCategoryUrls (CSV de URLs completas — mais preciso, suporta
+    //      /deals, /gp/goldbox, /gp/bestsellers/<cat>, /s?k=...&rh=pct-off, etc.)
+    //   2) amazonKeywords (CSV → vira search URL com sort por popularidade)
+    //   3) DEFAULT_DEAL_URLS_BR (Amazon Deals + Goldbox — foco em promoções)
     let urls: string[] = [];
     if (cfg.amazonCategoryUrls?.trim()) {
       urls = cfg.amazonCategoryUrls.split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (cfg.amazonKeywords?.trim()) {
+      urls = cfg.amazonKeywords
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((k) => keywordToSearchUrl(k, country));
     } else {
-      const keywords = cfg.amazonKeywords?.trim()
-        ? cfg.amazonKeywords.split(',').map((s) => s.trim()).filter(Boolean)
-        : DEFAULT_KEYWORDS;
-      urls = keywords.map((k) => keywordToSearchUrl(k, country));
+      // Default: foco em promoções (não keywords genéricas)
+      urls = country.toUpperCase() === 'BR' ? DEFAULT_DEAL_URLS_BR : DEFAULT_KEYWORDS.map((k) => keywordToSearchUrl(k, country));
     }
 
     // Limit total = soma de itens por URL. Cada URL puxa min(5, ceil(limit/N))
