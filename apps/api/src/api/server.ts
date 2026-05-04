@@ -61,7 +61,7 @@ function normalizeGroups(raw: unknown): NormalizedGroup[] {
 }
 
 export async function buildServer() {
-  const app = Fastify({ logger }).withTypeProvider<ZodTypeProvider>();
+  const app = Fastify({ loggerInstance: logger }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
