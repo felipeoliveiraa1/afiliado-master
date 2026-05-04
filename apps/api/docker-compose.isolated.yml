@@ -1,0 +1,90 @@
+# Stack isolada na VPS: não publica 5432/6379 no host; só a API em loopback.
+#
+# Uso (na raiz do repositório):
+#   export COMPOSE_PROJECT_NAME=afiliado-master
+#   export AFILIADO_API_HOST_PORT=3047
+#   docker compose -f apps/api/docker-compose.isolated.yml --env-file apps/api/.env up -d --build
+#
+# Migrações (uma vez, ou após pull):
+#   docker compose -p "${COMPOSE_PROJECT_NAME:-afiliado-master}" -f apps/api/docker-compose.isolated.yml --env-file apps/api/.env run --rm migrate
+#
+# O processo `api` já inclui workers + cron (ver src/index.ts). Não suba o
+# worker separado para evitar consumo duplicado das filas.
+#
+# No .env da API use hostnames dos serviços Docker:
+#   DATABASE_URL=postgresql://USER:PASS@postgres:5432/DB?schema=public
+#   REDIS_HOST=redis
+#
+# Proxy reverso no host: aponte seu subdomínio para http://127.0.0.1:${AFILIADO_API_HOST_PORT}
+
+x-api-base: &api-base
+  build:
+    context: ../..
+    dockerfile: apps/api/Dockerfile
+  image: afiliado-master/api:isolated
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment:
+    NODE_ENV: production
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  api:
+    <<: *api-base
+    command: ["node", "dist/src/index.js"]
+    ports:
+      - "127.0.0.1:${AFILIADO_API_HOST_PORT:-3047}:3000"
+    networks:
+      - internal
+
+  migrate:
+    <<: *api-base
+    restart: "no"
+    command: ["sh", "-c", "yarn --cwd ../.. workspace @afiliado-master/api prisma migrate deploy"]
+    profiles: ["migrate"]
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  internal:
+    driver: bridge

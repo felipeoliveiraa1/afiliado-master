@@ -1,0 +1,159 @@
+(Transcrito por TurboScribe. Atualize para Ilimitado para remover esta mensagem.)
+
+Se você é afiliado do mercado livre e não sabe como criar postagens de maneira automática, vem comigo para esse vídeo que eu vou ensinar a vocês como converter ali seu link de afiliado de forma automática, criar suas postagens de forma automática para enviar lá nos seus grupos do WhatsApp. Bora comigo para o vídeo. Olá, eu sou o Marlon, CEO do projeto Divulga Links e quero mostrar novidades que implementamos recentemente aqui para vocês nessa virada de ano.
+
+Colocamos novas funcionalidades aqui relacionadas ao envio, a criação de postagens e envio automático de produtos especificamente para quem é afiliado do mercado livre. Então se você já é nosso cliente usuário e é o da plataforma Divulga Links, já tinha ali uma certa facilidade em relação a links do mercado livre, mas agora totalmente transformado, muito mais fácil, muito mais simples de criar suas postagens de produtos do mercado livre. A conversão acontece automaticamente a partir de agora.
+
+Antes a gente tinha removido essa opção por problemas de incompatibilidade com o mercado livre. A gente conseguiu contornar esse problema de compatibilidade. Agora os links são convertidos automaticamente.
+
+Então depois de feita a configuração aqui no sistema, você pode enviar o link de qualquer pessoa, até de outro afiliado, que o sistema vai converter para o seu link de afiliado. Pode mandar o link direto do site do mercado livre, o link de compartilhar. Em todos os casos, agora o sistema vai converter para o seu link de afiliado automaticamente.
+
+Basta seguir esse passo a passo que eu vou mostrar para vocês aqui agora para fazer a configuração do sistema e você já vai estar com ele habilitado tanto para adicionar produtos via link, um produto único, quanto por uma busca de categorias. Eu vou mostrar tudo aqui dentro do sistema para vocês. Primeira coisa, vamos lá para a tela do nosso querido Divulga Links, que eu vou mostrar para vocês onde deve ser feita as configurações para ativar esses recursos de conversão automática dos links de afiliados.
+
+Mas antes quero mostrar para quem não conhece ainda o Divulga Links e caiu nesse vídeo de paraquedas. Divulga Links faz principalmente isso aqui. Vou mostrar na tela para vocês postagens automáticas dos seus links, produtos de afiliados e seus links de afiliados no WhatsApp.
+
+Hoje tem sido a principal funcionalidade que o pessoal tem mais buscado aqui é o disparo automático de links de afiliado em grupos de WhatsApp, canais de WhatsApp que nós implementamos recentemente e comunidades do WhatsApp. E além disso, é lógico que a gente tem a automação do Instagram, tem o envio automático também para o Telegram, além de muitas outras funcionalidades e muitas outras lojas e marketplaces que o sistema está integrado. Então agora bora comigo para o vídeo para a gente fazer essa configuração especificamente falando de mercado livre.
+
+Então aqui na tela inicial do Divulga Links, a nossa dashboard, para fazer a configuração de afiliados do mercado livre, a gente vai seguir o seguinte passo. Primeiro para você que não conhece ainda, está conhecendo o Divulga Links agora, eu vou deixar primeiro o link fixado aqui nos comentários ou então você pode pesquisar por Comece aqui nos links do canal onde você vai ter o vídeo de introdução de toda a configuração do sistema. Já vou partir direto aqui para esse vídeo não ficar muito longo, vou partir direto para a configuração de afiliados aqui do mercado livre.
+
+Tem muita gente que já usa o sistema e está pedindo porque não conseguiu fazer essa configuração, pediu muito esse vídeo, então esse vídeo vai ser específico na configuração do mercado livre. Se você é novo aqui no canal, é novo e não conhecia a ferramenta Divulga Links, você pode pegar aqui, por exemplo, acessar o sistema e ver esse passo a passo aqui tanto dentro do sistema quanto os outros vídeos aqui do canal para você aprender a configurar corretamente a ferramenta. Então bora lá para a configuração de afiliados do mercado livre.
+
+Primeira coisa que você vai fazer a partir da dashboard vai clicar no menu lateral aqui Config Afiliados, onde você vai ter aqui a configuração dos programas de afiliados que o sistema é integrado e vai rolar até aqui o card Afiliados Mercado Livre. Um ponto importante aqui pessoal, esse vídeo eu vou fazer essa configuração pelo computador, pelo celular eu vou fazer um vídeo separado que a gente tem detalhes específicos para fazer pelo celular. Por enquanto você precisa de ter acesso a um computador para poder conseguir chegar nessa configuração aqui, nessa informação que a gente precisa.
+
+Então antes de mais nada a gente tem aqui as informações de como conseguir os dados aqui embaixo. Então vamos seguir aqui para fazer a configuração de afiliados do mercado livre a gente vai precisar de um link de afiliado seu, o seu link de afiliado de algum produto lá dentro do mercado livre. Eu vou mostrar para vocês aqui agora e a gente precisa do cookie do mercado livre.
+
+Então você precisa estar alugado. Vamos aqui para as informações como obter suas credenciais. Um link de afiliado.
+
+Então a gente vai acessar o painel de afiliados do mercado livre, vai no menu perfil ou compartilhar ou copiar qualquer link de afiliado e cole no campo acima. No caso é qualquer link de afiliado seu. Nesse caso, nessa configuração não pode ser link de outra pessoa.
+
+Tem que ser um link de afiliado da sua conta. Então já estou alugado aqui na minha conta do mercado livre. Como eu pego o meu link de afiliado? Eu vou clicar aqui em qualquer produto.
+
+Se o produto participar do programa de afiliados, vocês vão ver aqui na parte superior vai aparecer aquela barrinha preta com o botãozinho de compartilhar. Esse produto aqui está dando 5% de ganho. Quando eu clicar em compartilhar, ele vai gerar aqui o meu link de afiliado.
+
+Link do produto, esse link curtinho aqui. Vou copiar esse link aqui e vou colar aqui no primeiro campo. Link de afiliado do mercado livre.
+
+Lembrando, você tem que estar alugado com a sua conta do mercado livre lá. Aqui no mercado livre. Eu estou alugado aqui com a minha conta.
+
+Posso conferir aqui, está aqui meu nome. Então é a minha conta que está alugada aqui. Então quando eu clicar em compartilhar aqui, esse aqui vai ser o meu link de afiliado.
+
+Beleza? Entendido isso, colo o meu link de afiliado aqui no primeiro campo. Segundo campo é cookie do mercado livre. Como eu pego essa informação? É aqui que o pessoal agarra, aqui que todo mundo tem dúvida.
+
+Vou explicar para vocês da maneira muito simples. Vou voltar aqui na página do produto. No meu teclado, eu vou procurar pela tecla F12 e vou clicar aqui na tecla F12.
+
+Ele vai abrir uma outra janela aí para vocês. Vai abrir essa janela aqui. Vou diminui-la um pouco aqui.
+
+Essa janelinha. Essa é a janela de jeans desenvolvedor. Normalmente, ela abre para vocês aqui ou na aba elementos ou na aba console.
+
+Vocês vão clicar aqui na aba rede. Clicando aqui na aba rede, nessa tela mesmo, vocês podem clicar aqui no botão F5 do seu teclado. Beleza, vai carregar um monte de informação aqui e tal.
+
+Vocês esperem até parar de carregar as coisas aqui. Rola até o início desse monte de código aqui e vai selecionar a primeira linha. A primeira linha é o link principal lá daquela página de produto.
+
+É o link principal dessa página aqui. Então, selecionei aqui a primeira linha. Ele vai expandir esse card lateral aqui.
+
+Posso até clicar aqui nessa parte de baixo, nesse x aqui. Estou na frente. Deixa eu ocultar-me aqui.
+
+Saí da frente. Está vendo esse x aqui? Pode até clicar aqui para melhorar a visualização. Beleza.
+
+Então, nesse card lateral aqui, a gente vai ter a opção cabeçalhos. Cabeçalhos aqui em cima. O primeiro campo vai ser geral.
+
+O segundo vai ser cabeçalhos de resposta. E o terceiro vai ser cabeçalhos de solicitação. É isso aqui que a gente está procurando.
+
+No cabeçalhos de solicitação, você vai um pouquinho mais para baixo e vai ver aqui. Cookies. Só que eu não quero o que está aqui na palavra cookie.
+
+Eu quero toda essa informação aqui do campo do lado. Para selecionar tudo, basta clicar duas vezes aqui. Ele seleciona tudo.
+
+Duas ou três vezes. Duas vezes ele seleciona um pedaço. Se eu clicar três vezes rápido, ele seleciona tudo.
+
+Feito isso, botão direito, copiar. Então, eu já tenho aqui a informação dos cookies do Mercado Livre. Vou voltar lá no Divulga Links.
+
+Vou colar essa informação aqui. Ctrl V no teclado. Vou clicar em salvar.
+
+O sistema vai processar. Vai validar essa informação. Olha, valida.
+
+Validação completa. As setas credenciais funcionando perfeitamente. Pronto.
+
+Deu uma mensagem verde aqui. Quer dizer que suas credenciais estão OK. Ele já vai pegar aqui a tag configurada.
+
+Vocês confirmem se aparece aí o nome de vocês. Normalmente é o nome da conta do Mercado Livre de vocês. Confere aí se pegou o nome certinho.
+
+Beleza. A partir daqui, a gente já consegue adicionar um produto aqui de forma automática. Como a gente adiciona o produto? Vou voltar aqui para a tela.
+
+Beleza. A gente adiciona o produto aqui. Canais bar grupos.
+
+Já tem um grupo configurado aqui. O Instagram Clima Perfeito BR. E vou clicar aqui em editar.
+
+Vou para a aba Mercado Livre. E aqui eu posso adicionar um link de produto. Qualquer link.
+
+Tem até observação aqui. Os exemplos de links aqui. Link de afiliado.
+
+Link direto produto. Ou link de outro afiliado. Então, vou testar aqui para vocês verem.
+
+Com dois links. Com esse link dessa página, que é o link principal aqui. Vou pegar aqui direto no navegador.
+
+E vou salvar. Deu a mensagem verde. O produto foi adicionado com sucesso.
+
+Eu já posso visualizar ele aqui embaixo. Como que eu confiro se está certo? Se realmente gerou o meu link de afiliado aqui? Basta eu clicar no produto. Vocês vão ver que ele foi para a minha loja.
+
+Apareceu aqui em cima o Marlon Foca. Naquela página de indicação. E se alguém comprar esse link, eu vou ser comissionado.
+
+Simples assim. Posso adicionar outro link aqui? Posso. Inclusive, vou pegar esse aqui.
+
+Vou acessar aqui, na verdade. Eu vou pegar aqui um outro produto recomendado aqui do lado. Vou pegar esse produto aqui.
+
+É um celular diferente. Também tem aqui em cima a barrinha de compartilhar. Eu vou compartilhar.
+
+Vou pegar aqui o meu link de afiliado. Vou adicionar ele aqui. E vou salvar.
+
+Vai carregar as informações do produto. Produto adicionado com sucesso. Eu vim aqui e agora eu tenho dois produtos.
+
+Será que é o meu link de afiliado mesmo? Só eu clicar em cima dele. Vou conferir que, de novo, foi para a minha página de indicação aqui. Então, link convertido com sucesso.
+
+Poderia ter sido um link de outra pessoa? Poderia. Posso pegar um link de afiliado de outra pessoa e colocar aqui que o sistema vai fazer o mesmo processo. Ele vai converter para o meu link de afiliado e eu vou ser direcionado aqui para a minha página de afiliado do Mercado Livre.
+
+Novidade. Qual foi a novidade que nós implementamos aqui nessa página? Na coluna do meio aqui, você tem agora a busca por categoria. Então, você pode selecionar uma categoria principal.
+
+Vamos supor, a gente está aqui trabalhando com o Clima Perfeito BR. A coisa de ar-condicionado e tal. Então, vamos pegar aqui alguma coisa de eletrodomésticos, subcategoria ar e ventilação.
+
+Eu poderia pegar somente eletrodomésticos? Poderia também. Poderia pegar somente eletrodomésticos. Vou pegar aqui os principais produtos que vêm na pesquisa da categoria de eletrodomésticos.
+
+Por exemplo, vou clicar aqui, eletrodomésticos. Ele vai carregar os principais produtos aqui, se eu pegar só a categoria eletrodomésticos. Se eu pegar uma subcategoria, por exemplo, ar e ventilação, ele vai pegar só os principais dentro dessa categoria ar e ventilação.
+
+Então, vamos pegar aqui, colocando uma subcategoria. Buscar produtos. Vamos ver quais os produtos que ele vai trazer aqui para a gente.
+
+Essa parte pode demorar mais um pouquinho, porque vai depender do tamanho da lista que o Mercado Livre oferecer para mim na hora de fazer essa busca. Beleza, ele ofereceu 51 produtos, mas apenas 38 foram adicionados. Isso porque a gente já verificou que nem todos os produtos que aparecem nessa lista participam do programa de afiliados.
+
+Então, o sistema só vai adicionar aqueles que ele conseguiu gerar link de afiliados, que são os produtos que fazem parte do programa de afiliados. Então, aqui ele trouxe para mim só aqueles que estão na categoria ar e ventilação. Ventiladores, ar-condicionado portátil, mais ventilador e tal.
+
+E eu posso conferir, será que esses links são meus? Vou acessar um produto aqui. Vou pegar aqui esse primeiro. E, novamente, a gente pode ver que ele veio aqui para a minha loja, para a minha página de indicação.
+
+Então, link convertido com sucesso de todos aqueles produtos ali, dessa categoria ar e ventilação. Já vai trazer todos os produtos mais vendidos aqui do Mercado Livre. Todos com desconto, uns 43% de desconto, 46%, 48%, são somente as promoções.
+
+E a gente tem um outro recurso aqui. Na verdade, antes de passar para o próximo recurso, vou pegar aqui, por exemplo... Vou pegar o próprio Electrodomésticos mesmo, mas sem passar uma subcategoria. Só para vocês verem quais são os outros aparelhos de Electrodomésticos que vão carregar aqui nessa lista.
+
+Alguns vão ser atualizados, porque os ventiladores, alguns já estão também como mais vendidos ali na categoria principal de Electrodomésticos. Mas vocês vão ver que vão vir outros produtos também de outras subcategorias aqui, quando você coloca só a categoria principal. Então, a gente trouxe aqui o Figo Bar, purificador de ar, evaporador, cooktop.
+
+Então, a gente tem outros produtos aí dentro da categoria Electrodomésticos que são produtos mais vendidos aí ou estão em promoção. Então, agora a gente tem um recurso aqui. Eu vou selecionar, por exemplo, alguns produtos diferentes.
+
+Ferramentas, um que eu gostei aqui, coisas bem bacanas. Ferramentas, subcategoria Ferramentas Elétricas, por exemplo. Vou marcar a opção aqui, buscar mais vendidos.
+
+Vou clicar em buscar produtos. Vocês vão ver que ele vai trazer aqueles produtos que estão com a tag de mais vendidos no Mercado Livre. Então, são os produtos principais da categoria, aqueles que estão vendendo mais.
+
+Então, isso aqui é interessante demais para vocês acessarem, por exemplo, as ofertas do dia. Tem muitos produtos que estão ali nos mais vendidos, que são ofertas do dia. E depois a gente vai implementar aqui também a opção justamente de pegar as ofertas do dia por subcategoria.
+
+Então, aí você vai ter essa opção no futuro. A gente tem aqui os produtos. Se eu vir aqui um desses produtos, vocês vão observar que ele está com a tag de mais vendidos.
+
+Por exemplo, vamos ver qual a posição desse aqui. Esse aqui está o quarto mais vendido em lavaduras de jato elétrico. Se a gente vir em Ferramentas Elétricas, a gente vai observar.
+
+Essas aqui, por exemplo, essa parafusadeira aqui, ela provavelmente está na nossa lista. Se não me engano é essa aqui. Tem várias parafusadeiras aqui, a gente tem que pesquisar aqui pelo nome, para ficar mais fácil da gente localizar aqui.
+
+Vamos ver se essa entrou na nossa lista aqui. A gente consegue pesquisar os produtos aqui dentro. Esse produto, então, ele não faz parte do programa de afiliados.
+
+O primeiro colocado não faz, mas a gente pode ver aqui que as outras ferramentas que estão com a tag de produtos mais vendidos aqui apareceram para a gente. Pois esse aqui é o segundo colocado em marteleiros. Então, pessoal, a gente adicionou essa funcionalidade aí para facilitar e acrescentar mais produtos na sua listagem de Mercado Livre.
+
+Justamente para você ter mais opções de busca, principalmente na questão dos mais vendidos, na questão das ofertas, para facilitar bastante a busca para vocês, vocês têm produtos atualizados e que realmente são produtos bons para venda que estão em primeiro lugar no Mercado Livre. Beleza? Então é isso, pessoal. Se vocês tiverem alguma dúvida, deixem aqui nos comentários ou mandem um e-mail para a gente no suporte, arroba-divulga-links.com.br e a gente responde lá para vocês com o maior prazer.
+
+E se tiver dúvida ou se tiver alguma sugestão a mais em relação a essas funcionalidades aqui do Mercado Livre, vou pedir para vocês mandarem também para a gente por e-mail, dar aquele feedback aí. Se tiver algum problema, alguma coisa, manda para a gente lá para a gente corrigir o mais breve possível. Então é isso. 
+
+Muito obrigado. Até o próximo vídeo. E fui!
+
+(Transcrito por TurboScribe. Atualize para Ilimitado para remover esta mensagem.)

@@ -1,0 +1,16 @@
+node_modules
+dist
+**/dist
+apps/web/.next
+**/.next
+*.har
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+prisma/*.db*
+coverage
+.tsbuildinfo
+tsconfig.tsbuildinfo
+**/*.tsbuildinfo

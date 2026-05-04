@@ -1,0 +1,76 @@
+name: afiliado-master-prod
+
+# Stack de produção pra rodar na VPS.
+# Use: docker compose -f apps/api/docker-compose.prod.yml --env-file apps/api/.env up -d
+#
+# Em frente a este compose ponha um reverse-proxy (Caddy/Nginx/Traefik) terminando
+# TLS no domínio escolhido (ex.: api.seu-dominio.com.br -> http://localhost:3000).
+
+x-api-base: &api-base
+  build:
+    context: ../..
+    dockerfile: apps/api/Dockerfile
+  image: afiliado-master/api:latest
+  restart: unless-stopped
+  env_file:
+    - ../../apps/api/.env
+  environment:
+    NODE_ENV: production
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: afiliado-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: afiliado-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *api-base
+    container_name: afiliado-api
+    command: ["node", "dist/src/index.js"]
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  worker:
+    <<: *api-base
+    container_name: afiliado-worker
+    command: ["node", "dist/src/worker.js"]
+
+  migrate:
+    <<: *api-base
+    container_name: afiliado-migrate
+    restart: "no"
+    command: ["sh", "-c", "yarn --cwd ../.. workspace @afiliado-master/api prisma migrate deploy"]
+    profiles: ["migrate"]
+
+volumes:
+  pgdata:
+  redisdata:

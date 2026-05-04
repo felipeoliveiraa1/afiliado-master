@@ -1,0 +1,24 @@
+{
+  "name": "afiliado-master",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "yarn workspace @afiliado-master/api dev",
+    "dev:worker": "yarn workspace @afiliado-master/api dev:worker",
+    "dev:web": "yarn workspace @afiliado-master/web dev",
+    "build": "yarn workspace @afiliado-master/api build && yarn workspace @afiliado-master/web build",
+    "test": "yarn workspace @afiliado-master/api test",
+    "fmt": "prettier . --write",
+    "prisma:gen": "yarn workspace @afiliado-master/api prisma:gen",
+    "prisma:migrate": "yarn workspace @afiliado-master/api prisma:migrate",
+    "docker:dev": "yarn workspace @afiliado-master/api docker:dev"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}

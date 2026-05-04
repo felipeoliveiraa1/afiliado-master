@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.git
+.next
+**/.next
+**/dist
+**/.turbo
+**/.cache
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+.DS_Store

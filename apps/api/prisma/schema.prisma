@@ -1,0 +1,157 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceKind {
+  SHOPEE
+  AMAZON
+  MERCADOLIVRE
+  PROMOBIT
+}
+
+enum ChannelKind {
+  WHATSAPP_GROUP
+  TELEGRAM_CHANNEL
+}
+
+enum DispatchStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+}
+
+model Source {
+  id                String     @id @default(cuid())
+  kind              SourceKind @unique
+  enabled           Boolean    @default(true)
+  config            Json       @default("{}")
+  cookieHealth      Json?
+  cookieValidatedAt DateTime?
+  lastFetchAt       DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  offers            Offer[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Offer {
+  id             String     @id @default(cuid())
+  source         Source     @relation(fields: [sourceId], references: [id])
+  sourceId       String
+  externalId     String
+  title          String
+  description    String?
+  imageUrl       String?
+  price          Decimal    @db.Decimal(12, 2)
+  originalPrice  Decimal?   @db.Decimal(12, 2)
+  discountPct    Float?
+  category       String?
+  url            String
+  affiliateUrl   String?
+  commissionPct  Float?
+  coupon         String?
+  installments   Int?
+  rating          Float?
+  ratingCount     Int?
+  salesCount      Int?
+  score          Float?
+  fetchedAt      DateTime   @default(now())
+  expiresAt      DateTime?
+  raw            Json       @default("{}")
+  variants       Variant[]
+  dispatches     Dispatch[]
+
+  @@unique([sourceId, externalId])
+  @@index([fetchedAt])
+  @@index([discountPct])
+  @@index([score])
+}
+
+model Variant {
+  id        String   @id @default(cuid())
+  offer     Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  offerId   String
+  channelKind ChannelKind
+  caption   String
+  hashtags  String[]
+  urgency   String?
+  promptHash String
+  createdAt DateTime @default(now())
+
+  @@index([offerId, channelKind])
+  @@index([promptHash])
+}
+
+model Channel {
+  id           String      @id @default(cuid())
+  kind         ChannelKind
+  name         String
+  // For WhatsApp: Evolution instance name + group JID
+  evolutionInstance String?
+  whatsappGroupId  String?
+  // For Telegram: bot token + chat id (futuro)
+  telegramBotToken String?
+  telegramChatId   String?
+  enabled      Boolean     @default(true)
+  dailySent    Int         @default(0)
+  lastResetAt  DateTime    @default(now())
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  campaigns    Campaign[]  @relation("CampaignChannels")
+  dispatches   Dispatch[]
+}
+
+model Campaign {
+  id          String     @id @default(cuid())
+  name        String
+  enabled     Boolean    @default(true)
+  // Filtros (Json para flexibilidade): { categories?, minDiscount?, minScore?, sources?, maxPrice? }
+  filters     Json       @default("{}")
+  // Schedule: cron expression OR { intervalMinutes: number }
+  schedule    Json       @default("{}")
+  channels    Channel[]  @relation("CampaignChannels")
+  dispatches  Dispatch[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Dispatch {
+  id          String         @id @default(cuid())
+  campaign    Campaign       @relation(fields: [campaignId], references: [id])
+  campaignId  String
+  offer       Offer          @relation(fields: [offerId], references: [id])
+  offerId     String
+  channel     Channel        @relation(fields: [channelId], references: [id])
+  channelId   String
+  status      DispatchStatus @default(PENDING)
+  scheduledFor DateTime
+  sentAt      DateTime?
+  externalMsgId String?
+  errorMessage String?
+  clickCount  Int            @default(0)
+  createdAt   DateTime       @default(now())
+
+  @@unique([campaignId, offerId, channelId])
+  @@index([status, scheduledFor])
+}
