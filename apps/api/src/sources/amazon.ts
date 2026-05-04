@@ -32,14 +32,21 @@ const DEFAULT_KEYWORDS = [
 ];
 
 /**
- * Defaults focados em LIGHTNING DEALS (ofertas do dia oficiais Amazon)
- * quando o usuário não preencher amazonCategoryUrls nem amazonKeywords.
+ * Defaults: mistura Lightning Deals (Goldbox) + Bestsellers de categorias
+ * que costumam funcionar bem em grupos de afiliado BR.
  *
- * /gp/goldbox = página oficial das Lightning Deals (mais qualidade que /deals
- * que tende a misturar produtos genéricos).
+ * Goldbox: ofertas relâmpago verificadas pela Amazon (quando tem)
+ * Bestsellers: top vendas por categoria — rating alto + muitos reviews
+ *   garantem score bom mesmo sem listPrice.
+ *
+ * Custo a 3 produtos/URL × 4 URLs = 12 produtos × $0,012 = $0,144/fetch.
+ * Cron diário (1x/dia) × 30 = ~$4,30/mês.
  */
 const DEFAULT_DEAL_URLS_BR = [
   'https://www.amazon.com.br/gp/goldbox',
+  'https://www.amazon.com.br/gp/bestsellers/electronics',
+  'https://www.amazon.com.br/gp/bestsellers/home',
+  'https://www.amazon.com.br/gp/bestsellers/kitchen',
 ];
 
 const AMAZON_DOMAIN_BY_COUNTRY: Record<string, string> = {
