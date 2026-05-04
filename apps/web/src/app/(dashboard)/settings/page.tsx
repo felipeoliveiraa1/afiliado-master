@@ -110,7 +110,9 @@ const SECTIONS: SectionMeta[] = [
     fields: [
       { key: 'amazonAffiliateTag', label: 'Amazon affiliate tag', placeholder: 'seunome-20', hint: 'Tag de afiliado Amazon (vai como ?tag= no link)' },
       { key: 'apifyToken', label: 'Apify Token', secret: true, type: 'password', hint: 'apify.com → Account → Integrations → API token. Free tier $5/mês cobre dev.' },
-      { key: 'apifyAmazonActor', label: 'Apify actor — Amazon', placeholder: 'junglee~amazon-bestsellers-scraper', hint: 'Default: junglee~amazon-bestsellers-scraper. Pode trocar por epctex~amazon-product-scraper se quiser.' },
+      { key: 'apifyAmazonActor', label: 'Apify actor — Amazon', placeholder: 'junglee~Amazon-crawler', hint: 'Default: junglee~Amazon-crawler ($60/mês com 14 dias trial). Cole IDs no formato user~actor.' },
+      { key: 'amazonCountry', label: 'País Amazon', placeholder: 'BR', hint: 'Código ISO de 2 letras. BR pra Brasil, US pra Estados Unidos.' },
+      { key: 'amazonKeywords', label: 'Keywords Amazon (CSV)', type: 'textarea', placeholder: 'fone bluetooth, smartwatch, echo dot, mochila, air fryer, cafeteira', hint: 'Lista de termos separados por vírgula. Vazio = usa defaults (top categorias).' },
     ],
   },
   {

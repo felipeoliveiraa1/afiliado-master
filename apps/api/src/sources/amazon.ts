@@ -14,7 +14,20 @@ type MarketplacesCfg = {
   amazonAffiliateTag?: string;
   apifyToken?: string;
   apifyAmazonActor?: string;
+  amazonKeywords?: string; // CSV: "fone bluetooth, smartwatch, mochila"
+  amazonCountry?: string; // default 'BR'
 };
+
+const DEFAULT_KEYWORDS = [
+  'fone bluetooth',
+  'smartwatch',
+  'echo dot',
+  'mochila',
+  'kindle',
+  'air fryer',
+  'cafeteira',
+  'caixa de som bluetooth',
+];
 
 async function getCfg(): Promise<MarketplacesCfg> {
   return getSettingsSection<MarketplacesCfg>('marketplaces');
@@ -37,12 +50,20 @@ export const amazonSource: SourceAdapter = {
       );
     }
     const limit = opts?.limit ?? 30;
-    const actor = cfg.apifyAmazonActor || 'junglee~amazon-bestsellers-scraper';
-    // Esquema de input depende do actor escolhido — abaixo é o do junglee/amazon-bestsellers
+    const actor = cfg.apifyAmazonActor || 'junglee~Amazon-crawler';
+    const country = cfg.amazonCountry || 'BR';
+    // Keywords: CSV no /settings ou defaults de bestsellers
+    const keywords = cfg.amazonKeywords?.trim()
+      ? cfg.amazonKeywords.split(',').map((s) => s.trim()).filter(Boolean)
+      : DEFAULT_KEYWORDS;
+    // Schema do actor `junglee/Amazon-crawler`:
+    //   { country, keywords, maxItems, ... }
+    // (refs: exampleRunInput retornado pela API do Apify)
     const input = {
-      domainCode: 'com.br',
-      categoryUrls: ['https://www.amazon.com.br/gp/bestsellers/'],
-      maxItemsPerStartUrl: limit,
+      country,
+      keywords,
+      maxItems: limit,
+      liveView: false,
     };
     type Item = {
       asin?: string;
