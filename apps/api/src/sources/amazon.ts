@@ -32,21 +32,28 @@ const DEFAULT_KEYWORDS = [
 ];
 
 /**
- * Defaults: mistura Lightning Deals (Goldbox) + Bestsellers de categorias
- * que costumam funcionar bem em grupos de afiliado BR.
+ * Defaults: search por categoria ordenado por popularidade (proxy de
+ * vendas / bestsellers).
  *
- * Goldbox: ofertas relâmpago verificadas pela Amazon (quando tem)
- * Bestsellers: top vendas por categoria — rating alto + muitos reviews
- *   garantem score bom mesmo sem listPrice.
+ * IMPORTANTE: o actor `junglee/free-amazon-product-scraper` NÃO aceita
+ * URLs `/gp/goldbox` nem `/gp/bestsellers/<cat>` (rejeita com "No start
+ * URLs have valid format"). Apenas:
+ *   - /dp/<ASIN>           (produto único)
+ *   - /s?i=<category>      (search por categoria)
+ *   - /s?k=<keyword>       (search por keyword)
+ *   - /b?node=<id>         (node search)
+ *
+ * Usamos `/s?i=<cat>&s=exact-aware-popularity-rank` que ordena por
+ * popularidade — efeito similar a bestsellers, sem usar URL bloqueada.
  *
  * Custo a 3 produtos/URL × 4 URLs = 12 produtos × $0,012 = $0,144/fetch.
  * Cron diário (1x/dia) × 30 = ~$4,30/mês.
  */
 const DEFAULT_DEAL_URLS_BR = [
-  'https://www.amazon.com.br/gp/goldbox',
-  'https://www.amazon.com.br/gp/bestsellers/electronics',
-  'https://www.amazon.com.br/gp/bestsellers/home',
-  'https://www.amazon.com.br/gp/bestsellers/kitchen',
+  'https://www.amazon.com.br/s?i=electronics&s=exact-aware-popularity-rank',
+  'https://www.amazon.com.br/s?i=home&s=exact-aware-popularity-rank',
+  'https://www.amazon.com.br/s?i=kitchen&s=exact-aware-popularity-rank',
+  'https://www.amazon.com.br/s?i=health-personal-care&s=exact-aware-popularity-rank',
 ];
 
 const AMAZON_DOMAIN_BY_COUNTRY: Record<string, string> = {
