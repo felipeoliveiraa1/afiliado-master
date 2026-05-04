@@ -173,7 +173,7 @@ export async function buildServer() {
     {
       schema: {
         params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT']) }),
-        body: z.object({ limit: z.number().int().min(1).max(200).optional() }).optional(),
+        body: z.object({ limit: z.number().int().min(1).max(200).optional() }).nullish(),
       },
     },
     async (req) => {
@@ -650,7 +650,7 @@ export async function buildServer() {
         params: z.object({ id: z.string() }),
         body: z
           .object({ offerId: z.string().optional() })
-          .optional(),
+          .nullish(),
       },
     },
     async (req, reply) => {
