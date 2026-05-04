@@ -2,7 +2,6 @@
 #
 # Uso (na raiz do repositório):
 #   export COMPOSE_PROJECT_NAME=afiliado-master
-#   export AFILIADO_API_HOST_PORT=3047
 #   docker compose -f apps/api/docker-compose.isolated.yml --env-file apps/api/.env up -d --build
 #
 # Migrações (uma vez, ou após pull):
@@ -15,7 +14,7 @@
 #   DATABASE_URL=postgresql://USER:PASS@postgres:5432/DB?schema=public
 #   REDIS_HOST=redis
 #
-# Proxy reverso no host: aponte seu subdomínio para http://127.0.0.1:${AFILIADO_API_HOST_PORT}
+# Proxy no host: http://127.0.0.1:3047 (porta fixa; veja service api ports)
 
 x-api-base: &api-base
   build:
@@ -69,7 +68,7 @@ services:
     <<: *api-base
     command: ["node", "dist/src/index.js"]
     ports:
-      - "127.0.0.1:${AFILIADO_API_HOST_PORT:-3047}:3000"
+      - "127.0.0.1:3047:3000"
     networks:
       - internal
 
