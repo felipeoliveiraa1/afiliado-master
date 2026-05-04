@@ -100,15 +100,32 @@ export async function getSettingsSection<T extends Record<string, unknown>>(
   }
 }
 
+/** Detecta se um valor parece ser o resultado da função `maskSecrets` (formato `abcd…wxyz (NN chars)`).
+ *  Usado pra impedir o frontend de regravar a forma mascarada por engano. */
+function looksMasked(v: unknown): boolean {
+  return typeof v === 'string' && v.includes('…') && /\(\d+ chars\)\s*$/.test(v);
+}
+
 /**
  * Sobrescreve uma seção (merge raso). Não toca env.
+ * Filtra valores que parecem mascarados — proteção contra round-trip do GET (mask) → PATCH:
+ * se o frontend ler `apiKey: "abcd…wxyz (218 chars)"` e salvar sem revelar, esse valor
+ * NÃO chega na DB. Mantém o atual.
  */
 export async function setSettingsSection(
   section: SettingsSection,
   partial: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const current = await getSettingsSection(section);
-  const next = { ...current, ...partial };
+  const cleanPartial: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(partial)) {
+    if (looksMasked(v)) {
+      logger.warn({ section, field: k }, 'ignoring masked value in setSettingsSection');
+      continue;
+    }
+    cleanPartial[k] = v;
+  }
+  const next = { ...current, ...cleanPartial };
   await prisma.setting.upsert({
     where: { key: section },
     create: { key: section, value: next as object },

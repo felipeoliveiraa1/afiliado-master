@@ -211,11 +211,21 @@ function SectionCard({
   }, [draft, query.data]);
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      clientFetch(`/settings/${meta.key}`, {
+    mutationFn: () => {
+      // Defesa: nunca envia valores mascarados de volta (`abcd…wxyz (218 chars)`).
+      // Sem isso, salvar sem clicar "Mostrar secrets" reescreve apiKey/cookie
+      // com a string mascarada.
+      const isMasked = (v: unknown): boolean =>
+        typeof v === 'string' && v.includes('…') && /\(\d+ chars\)\s*$/.test(v);
+      const cleanBody: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(draft)) {
+        if (!isMasked(v)) cleanBody[k] = v;
+      }
+      return clientFetch(`/settings/${meta.key}`, {
         method: 'PATCH',
-        body: draft,
-      }),
+        body: cleanBody,
+      });
+    },
     onSuccess: () => {
       setSavedAt(Date.now());
       setTimeout(() => setSavedAt(null), 3000);
