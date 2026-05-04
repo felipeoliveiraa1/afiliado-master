@@ -460,17 +460,33 @@ function pickImageFromUnknown(v: unknown): string | undefined {
   return undefined;
 }
 
-// Debug flag — quando ativo, log JSON do primeiro polycard recebido
-let _polycardSampleLogged = false;
+/**
+ * Constrói URL da imagem ML a partir do picture id (ex: "998397-MLB91914447328_092025").
+ * Padrão CDN ML: https://http2.mlstatic.com/D_NQ_NP_2X_<id>-O.webp
+ * Confirmado funcionando em produção 2026-05.
+ */
+function buildMlImageUrl(pictureId: string): string {
+  return `https://http2.mlstatic.com/D_NQ_NP_2X_${pictureId}-O.webp`;
+}
+
+function extractImageFromPolycardPictures(card: Record<string, unknown>): string | undefined {
+  const picsObj = card.pictures as Record<string, unknown> | undefined;
+  if (!picsObj || typeof picsObj !== 'object') return undefined;
+  const list = picsObj.pictures;
+  if (!Array.isArray(list) || list.length === 0) return undefined;
+  const first = list[0] as Record<string, unknown> | undefined;
+  if (!first) return undefined;
+  // Caso 1: já é uma URL completa em algum campo
+  const direct = pickImageFromUnknown(first);
+  if (direct) return direct;
+  // Caso 2: tem só o `id` — precisa construir URL via padrão CDN
+  if (typeof first.id === 'string' && first.id) {
+    return buildMlImageUrl(first.id);
+  }
+  return undefined;
+}
 
 function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProduct | null {
-  if (!_polycardSampleLogged) {
-    _polycardSampleLogged = true;
-    logger.warn(
-      { sample: JSON.stringify(card).slice(0, 6000) },
-      'POLYCARD_SAMPLE — estrutura do primeiro card pra debug de imageUrl',
-    );
-  }
   const metadata = card.metadata;
   if (!metadata || typeof metadata !== 'object') return null;
   const m = metadata as Record<string, unknown>;
@@ -493,6 +509,7 @@ function normalizePolycard(card: Record<string, unknown>): MercadoLivrePanelProd
   let discountPct: number | undefined;
   let isBestSeller = false;
   let imageUrl: string | undefined =
+    extractImageFromPolycardPictures(card) ??
     pickImageFromUnknown(m.thumbnail) ??
     pickImageFromUnknown(m.image) ??
     pickImageFromUnknown(m.picture_url) ??
