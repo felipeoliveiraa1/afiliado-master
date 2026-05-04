@@ -16,8 +16,8 @@ export const env = cleanEnv(process.env, {
   EVOLUTION_API_KEY: str(),
   EVOLUTION_DEFAULT_INSTANCE: str(),
 
-  ANTHROPIC_API_KEY: str(),
-  ANTHROPIC_MODEL: str({ default: 'claude-haiku-4-5-20251001' }),
+  OPENAI_API_KEY: str(),
+  OPENAI_MODEL: str({ default: 'gpt-4o-mini' }),
 
   SHOPEE_APP_ID: str({ default: '' }),
   SHOPEE_APP_SECRET: str({ default: '' }),

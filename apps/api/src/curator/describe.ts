@@ -1,10 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { createHash } from 'node:crypto';
 import { env } from '@/config/env.js';
 import { prisma } from '@/lib/db.js';
 import { logger } from '@/lib/logger.js';
 
-const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
 const SYSTEM = `Você é um copywriter de afiliado brasileiro. Recebe um produto e devolve uma "hook line": chamada curta (3-6 palavras, ≤60 chars) para abrir um anúncio em grupo de WhatsApp. Regras: TODA EM CAIXA ALTA, 1 emoji no começo OU no fim (nunca os dois), sem ponto final, sem o nome do produto. Foque em benefício/desejo (ex.: "LINDO E ACONCHEGANTE PARA A FAMÍLIA😍", "PREÇO QUE NÃO VAI SE REPETIR🔥", "OPORTUNIDADE IMPERDÍVEL⚡"). Marque urgency=high se desconto≥40%, med se 20-39%, low caso contrário. Devolva APENAS um JSON válido: {"caption": "...", "hashtags": ["..."], "urgency": "low|med|high"}.`;
 
@@ -33,17 +33,16 @@ export async function describeOffer(offerId: string, input: Input, channelKind: 
   }
 
   const userMsg = JSON.stringify(input);
-  const resp = await client.messages.create({
-    model: env.ANTHROPIC_MODEL,
+  const resp = await client.chat.completions.create({
+    model: env.OPENAI_MODEL,
     max_tokens: 300,
-    system: SYSTEM,
-    messages: [{ role: 'user', content: userMsg }],
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: userMsg },
+    ],
   });
-
-  const text = resp.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('');
+  const text = resp.choices[0]?.message?.content ?? '';
 
   let parsed: Output;
   try {

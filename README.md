@@ -5,7 +5,7 @@ Captador multi-marketplace + curador IA + dispatcher WhatsApp + dashboard Next.j
 ## Stack
 
 - Monorepo com `yarn workspaces` (`apps/api`, `apps/web`, `packages/types`)
-- Backend: Node 20 + TypeScript (ESM) + Fastify 5 + Prisma 6 + Postgres + BullMQ + Redis + Anthropic
+- Backend: Node 20 + TypeScript (ESM) + Fastify 5 + Prisma 6 + Postgres + BullMQ + Redis + OpenAI
 - Frontend: Next 15 (App Router) + Tailwind + shadcn-style UI + NextAuth credentials + TanStack Query
 - Integrações: Evolution API (WhatsApp), Apify (Amazon BR scraping)
 
@@ -26,7 +26,7 @@ yarn install
 
 # Backend
 cp apps/api/.env.example apps/api/.env
-# preencher EVOLUTION_API_URL, EVOLUTION_API_KEY, ANTHROPIC_API_KEY,
+# preencher EVOLUTION_API_URL, EVOLUTION_API_KEY, OPENAI_API_KEY,
 # SHOPEE_APP_ID/SECRET (quando aprovado), AMAZON_AFFILIATE_TAG, APIFY_TOKEN,
 # MERCADOLIVRE_PANEL_* (depois de descobrir endpoints via HAR)
 
@@ -102,7 +102,7 @@ Telas:
 ## Workers (BullMQ)
 
 - `fetch-offers` — captação por SourceKind, salva no banco e enfileira curadoria + auto-shortlink
-- `curate-offers` — Anthropic Haiku gera caption por canal
+- `curate-offers` — OpenAI gera caption por canal
 - `dispatch` — envia para WhatsApp respeitando janela horária + daily limit
 - `shopee-shortlink` / `mercadolivre-shortlink` — converte URL → afiliado via cookie do painel
 
@@ -133,7 +133,7 @@ cp apps/api/.env.example apps/api/.env
 #   DATABASE_URL=postgresql://afiliado:<senha>@postgres:5432/afiliado_master?schema=public
 #   REDIS_HOST=redis
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
-#   EVOLUTION_API_*, ANTHROPIC_*, APIFY_TOKEN, AMAZON_AFFILIATE_TAG, ...
+#   EVOLUTION_API_*, OPENAI_*, APIFY_TOKEN, AMAZON_AFFILIATE_TAG, ...
 #   PUBLIC_BASE_URL=https://api.seu-dominio.com.br
 #   WEB_ORIGIN_URL=https://seu-app.vercel.app,https://dashboard.seu-dominio.com.br
 

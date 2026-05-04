@@ -53,7 +53,7 @@ async function loadPanel(envOverrides: Record<string, string> = {}): Promise<Pan
   process.env.EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY ?? 'test';
   process.env.EVOLUTION_DEFAULT_INSTANCE =
     process.env.EVOLUTION_DEFAULT_INSTANCE ?? 'default';
-  process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? 'sk-test';
+  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? 'sk-test';
   process.env.MERCADOLIVRE_PANEL_AUTO_ENABLED = 'true';
   process.env.MERCADOLIVRE_PANEL_COOKIE = '_d2id=abc; orguseridp=42; ssid=mock';
   process.env.MERCADOLIVRE_PANEL_DEFAULT_TAG = '';
