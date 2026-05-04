@@ -17,10 +17,19 @@ type FetchOpts = {
 };
 
 async function request<T>(base: string, path: string, opts: FetchOpts = {}): Promise<T> {
+  // Fastify reclama com FST_ERR_CTP_EMPTY_JSON_BODY se mandarmos
+  // Content-Type: application/json sem body de verdade. Só define o header
+  // quando tem body pra serializar.
+  const headers: Record<string, string> = {};
+  let body: string | undefined;
+  if (opts.body != null) {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify(opts.body);
+  }
   const res = await fetch(`${base}${path}`, {
     method: opts.method ?? 'GET',
-    headers: { 'Content-Type': 'application/json' },
-    body: opts.body == null ? undefined : JSON.stringify(opts.body),
+    headers,
+    body,
     cache: opts.cache,
     next: opts.next,
   });
