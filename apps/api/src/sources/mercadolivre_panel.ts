@@ -1026,7 +1026,11 @@ export async function generateMlCouponCode(args: {
 }): Promise<{ alias: string; couponId: number }> {
   const cfg = await ensureEnabled();
   const cookie = cfg.cookie!;
-  const { csrfToken } = await getCsrfTokenAndTag(cookie);
+  // Force refresh do CSRF token — token cacheado pode ter expirado durante
+  // sessões longas e causar 400 "Service validation failed".
+  const { csrfToken } = await getCsrfTokenAndTag(cookie, true);
+  const body = JSON.stringify({ couponId: args.couponId, code: args.code });
+  logger.info({ body, codeLen: args.code.length, csrfLen: csrfToken.length }, 'ml create-code request');
   const res = await fetch(CREATE_CODE_URL, {
     method: 'POST',
     headers: buildBrowserHeaders({
@@ -1035,7 +1039,7 @@ export async function generateMlCouponCode(args: {
       withJsonBody: true,
       referer: COUPONS_PAGE_URL,
     }),
-    body: JSON.stringify({ couponId: args.couponId, code: args.code }),
+    body,
   });
   if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
   if (res.status === 429) handleRateLimit();
