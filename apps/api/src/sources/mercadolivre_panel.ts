@@ -66,7 +66,7 @@ const DEFAULT_USER_AGENT =
 export class MercadoLivrePanelError extends Error {
   constructor(
     message: string,
-    public readonly kind: 'config' | 'auth' | 'rate' | 'unknown',
+    public readonly kind: 'config' | 'auth' | 'rate' | 'parse' | 'conflict' | 'unknown',
   ) {
     super(message);
     this.name = 'MercadoLivrePanelError';
@@ -884,4 +884,176 @@ export async function searchAndAffiliateByCategory(
 export function __resetPanelStateForTests(): void {
   csrfCache = null;
   cooldownUntil = 0;
+}
+
+// =============================================================================
+// CUPONS DO PROGRAMA DE AFILIADOS ML
+// =============================================================================
+// Endpoints (descobertos via HAR — janela /afiliados/coupons):
+//
+//   GET  https://www.mercadolivre.com.br/afiliados/coupons
+//        → HTML com `availableCouponsData = { prefix, coupons[] }` embedado
+//
+//   POST https://www.mercadolivre.com.br/affiliate-program/api/affiliates/create-code
+//        body: { couponId: number, code: string }     // code = sufixo escolhido pelo afiliado
+//        →    { alias: "#PRECORADARADARHOJE", coupon_id: "13064827" }
+//
+//   GET  https://www.mercadolivre.com.br/affiliate-program/api/affiliates/coupons/aliases
+//        → { coupons: [{ id, alias, title, status, remaining_budget, expiration_date, ... }] }
+//
+// O `alias` retornado pelo create-code é o "código de cupom" que o afiliado
+// divulga — quando o comprador usa, o desconto sai do `remaining_budget`.
+// Quando o orçamento zera, o cupom ainda existe mas não vale mais.
+
+const COUPONS_PAGE_URL = 'https://www.mercadolivre.com.br/afiliados/coupons';
+const CREATE_CODE_URL =
+  'https://www.mercadolivre.com.br/affiliate-program/api/affiliates/create-code';
+const COUPON_ALIASES_URL =
+  'https://www.mercadolivre.com.br/affiliate-program/api/affiliates/coupons/aliases';
+
+export type AvailableCoupon = {
+  id: number;
+  title: string;        // "R$ 30 OFF" | "25% OFF"
+  category: string;     // "PRODUCT_DISCOUNT"
+  remaining_budget: number;
+  expiration_date: string; // ISO sem timezone
+  container_name: string;
+  in_use: boolean;      // true = já tem alias gerado; false = disponível
+  seller: string;       // "Darklab"
+};
+
+export type AvailableCouponsResponse = {
+  prefix: string;
+  coupons: AvailableCoupon[];
+};
+
+export type GeneratedCoupon = {
+  id: number;
+  alias: string;
+  title: string;
+  status: string;
+  category: string;
+  expiration_date: string;
+  remaining_budget: number;
+  container_name: string;
+};
+
+/**
+ * Lê HTML de /afiliados/coupons e extrai o JSON `availableCouponsData`.
+ * Esse JSON tem o prefixo único do afiliado + lista de cupons disponíveis
+ * (com orçamento restante, validade e nome do vendedor).
+ */
+export async function listAvailableCoupons(): Promise<AvailableCouponsResponse> {
+  const cfg = await ensureEnabled();
+  const cookie = cfg.cookie!;
+  const res = await fetch(COUPONS_PAGE_URL, {
+    method: 'GET',
+    headers: buildBrowserHeaders({ acceptHtml: true, cookie, referer: HUB_URL }),
+    redirect: 'follow',
+  });
+  if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
+  if (!res.ok) {
+    throw new MercadoLivrePanelError(`HTTP ${res.status} ao buscar /afiliados/coupons`, 'unknown');
+  }
+  const html = await res.text();
+  // Procura `"availableCouponsData":{...}` — formato JSON cru no HTML.
+  // Não usamos `window.__PRELOADED_STATE__` porque o ML serializa direto na string.
+  const marker = '"availableCouponsData":';
+  const idx = html.indexOf(marker);
+  if (idx < 0) {
+    throw new MercadoLivrePanelError(
+      'availableCouponsData não encontrado no HTML — cookie expirou ou ML mudou layout',
+      'parse',
+    );
+  }
+  const start = idx + marker.length;
+  const sliced = sliceJsonObject(html.slice(start));
+  if (!sliced) {
+    throw new MercadoLivrePanelError('availableCouponsData JSON malformado', 'parse');
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sliced);
+  } catch (err) {
+    throw new MercadoLivrePanelError(
+      `availableCouponsData JSON parse falhou: ${(err as Error).message}`,
+      'parse',
+    );
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    typeof (parsed as { prefix?: unknown }).prefix !== 'string' ||
+    !Array.isArray((parsed as { coupons?: unknown }).coupons)
+  ) {
+    throw new MercadoLivrePanelError('availableCouponsData formato inesperado', 'parse');
+  }
+  return parsed as AvailableCouponsResponse;
+}
+
+/**
+ * Gera um código de cupom personalizado pro afiliado. O `code` é o sufixo
+ * que ele escolhe (ex "RADARHOJE"); o `alias` retornado é o código completo
+ * que vai pro comprador (ex "#PRECORADARADARHOJE" — prefixo do afiliado +
+ * sufixo).
+ *
+ * Erros típicos:
+ *   - 409: código já existe (sufixo conflita com outro alias do afiliado)
+ *   - 422: código inválido (caracteres especiais, comprimento)
+ */
+export async function generateMlCouponCode(args: {
+  couponId: number;
+  code: string;
+}): Promise<{ alias: string; couponId: number }> {
+  const cfg = await ensureEnabled();
+  const cookie = cfg.cookie!;
+  const { csrfToken } = await getCsrfTokenAndTag(cookie);
+  const res = await fetch(CREATE_CODE_URL, {
+    method: 'POST',
+    headers: buildBrowserHeaders({
+      cookie,
+      csrfToken,
+      withJsonBody: true,
+      referer: COUPONS_PAGE_URL,
+    }),
+    body: JSON.stringify({ couponId: args.couponId, code: args.code }),
+  });
+  if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
+  if (res.status === 429) handleRateLimit();
+  const text = await res.text();
+  if (!res.ok) {
+    throw new MercadoLivrePanelError(
+      `HTTP ${res.status} em create-code: ${text.slice(0, 200)}`,
+      res.status === 409 ? 'conflict' : 'unknown',
+    );
+  }
+  let parsed: { alias?: string; coupon_id?: string };
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new MercadoLivrePanelError(`create-code resposta não-JSON: ${text.slice(0, 200)}`, 'parse');
+  }
+  if (!parsed.alias) {
+    throw new MercadoLivrePanelError('create-code sem alias na resposta', 'parse');
+  }
+  return { alias: parsed.alias, couponId: Number(parsed.coupon_id ?? args.couponId) };
+}
+
+/**
+ * Lista cupons já gerados pelo afiliado (com status, orçamento restante,
+ * validade). Útil pro cron de sync atualizar `remainingBudget` no banco.
+ */
+export async function listGeneratedCoupons(): Promise<GeneratedCoupon[]> {
+  const cfg = await ensureEnabled();
+  const cookie = cfg.cookie!;
+  const res = await fetch(COUPON_ALIASES_URL, {
+    method: 'GET',
+    headers: buildBrowserHeaders({ cookie, referer: COUPONS_PAGE_URL }),
+  });
+  if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
+  if (!res.ok) {
+    throw new MercadoLivrePanelError(`HTTP ${res.status} em coupons/aliases`, 'unknown');
+  }
+  const json = (await res.json()) as { coupons?: GeneratedCoupon[] };
+  return Array.isArray(json.coupons) ? json.coupons : [];
 }

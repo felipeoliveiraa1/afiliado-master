@@ -9,6 +9,10 @@ import { evolution } from '@/lib/evolution.js';
 import { fetchQueue, dispatchQueue } from '@/queue/queues.js';
 import { validateShopeeCookie } from '@/sources/shopee_panel.js';
 import {
+  generateMlCouponCode,
+  listAvailableCoupons,
+  listGeneratedCoupons,
+  MercadoLivrePanelError,
   searchAndAffiliateByCategory,
   searchMercadoLivreByCategory,
   validateMercadoLivreCookie,
@@ -496,6 +500,131 @@ export async function buildServer() {
       }
       // Retorna products também pra UI mostrar preview (lista + badges)
       return { found: products.length, imported: offerIds.length, offerIds, products };
+    },
+  );
+
+  // ===========================================================================
+  // CUPONS DO PROGRAMA DE AFILIADOS ML
+  // ===========================================================================
+  // Fluxo:
+  //   1) GET  /sources/MERCADOLIVRE/coupons/sync     → scrape ML + upsert no DB
+  //   2) GET  /sources/MERCADOLIVRE/coupons          → lista do nosso DB
+  //   3) POST /sources/MERCADOLIVRE/coupons/:id/generate { code }
+  //                                                  → gera alias no ML + salva
+  //   4) PATCH /sources/MERCADOLIVRE/coupons/:id { enabled }
+  //                                                  → toggle local
+  //
+  // Cron diário (cron/index.ts) chama (1) pra refrescar remainingBudget e
+  // marcar EXPIRED quando data passa ou orçamento zera.
+
+  app.get('/sources/MERCADOLIVRE/coupons', async () => {
+    return prisma.mlCoupon.findMany({
+      orderBy: [{ status: 'asc' }, { remainingBudget: 'desc' }],
+    });
+  });
+
+  app.post('/sources/MERCADOLIVRE/coupons/sync', async (_req, reply) => {
+    try {
+      const [available, generated] = await Promise.all([
+        listAvailableCoupons(),
+        listGeneratedCoupons().catch(() => [] as Awaited<ReturnType<typeof listGeneratedCoupons>>),
+      ]);
+      const generatedById = new Map(generated.map((g) => [g.id, g]));
+      let upserted = 0;
+      for (const c of available.coupons) {
+        const gen = generatedById.get(c.id);
+        const status = gen
+          ? gen.status === 'ACTIVE' && c.remaining_budget <= 0
+            ? 'EXHAUSTED'
+            : gen.status
+          : new Date(c.expiration_date) < new Date()
+            ? 'EXPIRED'
+            : 'AVAILABLE';
+        await prisma.mlCoupon.upsert({
+          where: { mlCouponId: c.id },
+          create: {
+            mlCouponId: c.id,
+            alias: gen?.alias,
+            prefix: available.prefix,
+            title: c.title,
+            seller: c.seller,
+            category: c.category,
+            remainingBudget: c.remaining_budget,
+            expirationDate: new Date(c.expiration_date),
+            status,
+            lastSyncedAt: new Date(),
+          },
+          update: {
+            alias: gen?.alias ?? undefined,
+            prefix: available.prefix,
+            title: c.title,
+            seller: c.seller,
+            remainingBudget: c.remaining_budget,
+            expirationDate: new Date(c.expiration_date),
+            status,
+            lastSyncedAt: new Date(),
+          },
+        });
+        upserted++;
+      }
+      return { prefix: available.prefix, upserted, generated: generated.length };
+    } catch (err) {
+      if (err instanceof MercadoLivrePanelError) {
+        return reply.code(400).send({ error: err.message, kind: err.kind });
+      }
+      throw err;
+    }
+  });
+
+  app.post(
+    '/sources/MERCADOLIVRE/coupons/:id/generate',
+    {
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: z.object({ code: z.string().min(3).max(20).regex(/^[A-Za-z0-9]+$/) }),
+      },
+    },
+    async (req, reply) => {
+      const local = await prisma.mlCoupon.findUnique({ where: { id: req.params.id } });
+      if (!local) return reply.code(404).send({ error: 'cupom não encontrado' });
+      if (local.alias) return reply.code(409).send({ error: `cupom já gerado: ${local.alias}` });
+      try {
+        const { alias } = await generateMlCouponCode({
+          couponId: local.mlCouponId,
+          code: req.body.code.toUpperCase(),
+        });
+        return prisma.mlCoupon.update({
+          where: { id: req.params.id },
+          data: {
+            alias,
+            code: req.body.code.toUpperCase(),
+            status: 'ACTIVE',
+          },
+        });
+      } catch (err) {
+        if (err instanceof MercadoLivrePanelError) {
+          return reply
+            .code(err.kind === 'conflict' ? 409 : 400)
+            .send({ error: err.message, kind: err.kind });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.patch(
+    '/sources/MERCADOLIVRE/coupons/:id',
+    {
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: z.object({ enabled: z.boolean() }),
+      },
+    },
+    async (req) => {
+      return prisma.mlCoupon.update({
+        where: { id: req.params.id },
+        data: { enabled: req.body.enabled },
+      });
     },
   );
 

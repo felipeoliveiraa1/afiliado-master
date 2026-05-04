@@ -5,7 +5,11 @@ import { logger } from '@/lib/logger.js';
 import { env } from '@/config/env.js';
 import { evolution } from '@/lib/evolution.js';
 import { validateShopeeCookie } from '@/sources/shopee_panel.js';
-import { validateMercadoLivreCookie } from '@/sources/mercadolivre_panel.js';
+import {
+  listAvailableCoupons,
+  listGeneratedCoupons,
+  validateMercadoLivreCookie,
+} from '@/sources/mercadolivre_panel.js';
 import { runDueCampaigns } from '@/services/campaign-runner.js';
 import { getSettingsSection } from '@/lib/settings.js';
 
@@ -19,6 +23,7 @@ type AutomationCfg = {
 
 let lastFetchAt = 0;
 let lastCookieCheckDate = '';
+let lastCouponSyncDate = '';
 
 export function startCron(): void {
   // Tick alto frequência (1 min) decide internamente se cada subtask deve rodar
@@ -68,6 +73,18 @@ export function startCron(): void {
       lastCookieCheckDate = today;
       runCookieHealthCheck().catch((err) => logger.error({ err }, 'cookie health check failed'));
     }
+
+    // === SYNC CUPONS ML (1x por dia, mesma hora do cookie health) ===
+    // Refresca remainingBudget e marca EXPIRED/EXHAUSTED. Sem refresh, o
+    // template do WhatsApp pode mostrar cupom morto e o comprador não usa.
+    if (
+      env.MERCADOLIVRE_PANEL_AUTO_ENABLED &&
+      now.getHours() === cookieHealthHour &&
+      lastCouponSyncDate !== today
+    ) {
+      lastCouponSyncDate = today;
+      runMlCouponSync().catch((err) => logger.error({ err }, 'ml coupon sync failed'));
+    }
   });
 
   logger.info('cron started (1-min tick gating via settings.automation)');
@@ -104,4 +121,55 @@ async function runCookieHealthCheck(): Promise<void> {
     }
   }
   logger.info({ expired }, 'cookie health check done');
+}
+
+/**
+ * Refresh diário dos cupons ML. Mesma lógica do endpoint POST /coupons/sync —
+ * pega lista do HTML + status dos gerados, atualiza remainingBudget e marca
+ * EXPIRED quando data passa ou EXHAUSTED quando orçamento zera.
+ */
+async function runMlCouponSync(): Promise<void> {
+  const [available, generated] = await Promise.all([
+    listAvailableCoupons(),
+    listGeneratedCoupons().catch(() => [] as Awaited<ReturnType<typeof listGeneratedCoupons>>),
+  ]);
+  const generatedById = new Map(generated.map((g) => [g.id, g]));
+  let upserted = 0;
+  for (const c of available.coupons) {
+    const gen = generatedById.get(c.id);
+    const status = gen
+      ? gen.status === 'ACTIVE' && c.remaining_budget <= 0
+        ? 'EXHAUSTED'
+        : gen.status
+      : new Date(c.expiration_date) < new Date()
+        ? 'EXPIRED'
+        : 'AVAILABLE';
+    await prisma.mlCoupon.upsert({
+      where: { mlCouponId: c.id },
+      create: {
+        mlCouponId: c.id,
+        alias: gen?.alias,
+        prefix: available.prefix,
+        title: c.title,
+        seller: c.seller,
+        category: c.category,
+        remainingBudget: c.remaining_budget,
+        expirationDate: new Date(c.expiration_date),
+        status,
+        lastSyncedAt: new Date(),
+      },
+      update: {
+        alias: gen?.alias ?? undefined,
+        prefix: available.prefix,
+        title: c.title,
+        seller: c.seller,
+        remainingBudget: c.remaining_budget,
+        expirationDate: new Date(c.expiration_date),
+        status,
+        lastSyncedAt: new Date(),
+      },
+    });
+    upserted++;
+  }
+  logger.info({ upserted, generated: generated.length }, 'ml coupon sync done');
 }

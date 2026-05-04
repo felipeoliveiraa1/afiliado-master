@@ -167,3 +167,28 @@ model Dispatch {
   @@unique([campaignId, offerId, channelId])
   @@index([status, scheduledFor])
 }
+
+/// Cupons do programa de afiliados do Mercado Livre.
+/// Lista vem do scrape do HTML de /afiliados/coupons (campo
+/// `availableCouponsData.coupons`). Após gerar via POST /create-code,
+/// guardamos `alias` (#PREFIXOSUFIXO) que é o código que vai pro
+/// comprador. Sync periódico atualiza `remainingBudget` e `status`.
+model MlCoupon {
+  id              String   @id @default(cuid())
+  mlCouponId      Int      @unique
+  alias           String?  // ex: "#PRECORADARADARHOJE" — só após generate
+  code            String?  // sufixo escolhido pelo afiliado: "RADARHOJE"
+  prefix          String?  // prefixo do afiliado: "PRECORADA"
+  title           String   // "R$ 30 OFF" ou "25% OFF"
+  seller          String   // "Darklab"
+  category        String   // "PRODUCT_DISCOUNT"
+  remainingBudget Float
+  expirationDate  DateTime
+  status          String   @default("AVAILABLE") // AVAILABLE | ACTIVE | EXPIRED | EXHAUSTED
+  enabled         Boolean  @default(true)
+  lastSyncedAt    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([seller, enabled, status])
+}
