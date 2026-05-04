@@ -9,25 +9,21 @@ export type DispatchJob = { dispatchId: string };
 export type ShopeeShortlinkJob = { offerId: string };
 export type MercadoLivreShortlinkJob = { offerId: string };
 
-export const fetchQueue = new Queue<FetchJob>('fetch-offers', { connection: redisConnection });
-export const curateQueue = new Queue<CurateJob>('curate-offers', { connection: redisConnection });
-export const dispatchQueue = new Queue<DispatchJob>('dispatch', { connection: redisConnection });
-export const shopeeShortlinkQueue = new Queue<ShopeeShortlinkJob>('shopee-shortlink', {
-  connection: redisConnection,
-});
-export const mercadoLivreShortlinkQueue = new Queue<MercadoLivreShortlinkJob>(
-  'mercadolivre-shortlink',
-  { connection: redisConnection },
-);
-
-const attachQueueErrorLogging = (queue: Queue, queueName: string): void => {
-  queue.on('error', (err) => {
-    logger.error({ err, queueName }, 'bullmq queue error');
+/** Build queue + attach error listener before any async Redis error can fire without a handler. */
+function createQueue<DataType, ResultType = any, NameType extends string = string>(
+  name: NameType,
+): Queue<DataType, ResultType, NameType> {
+  const queue = new Queue<DataType, ResultType, NameType>(name, { connection: redisConnection });
+  queue.on('error', (err: Error) => {
+    logger.error({ err, queueName: name }, 'bullmq queue error');
   });
-};
+  return queue;
+}
 
-attachQueueErrorLogging(fetchQueue, 'fetch-offers');
-attachQueueErrorLogging(curateQueue, 'curate-offers');
-attachQueueErrorLogging(dispatchQueue, 'dispatch');
-attachQueueErrorLogging(shopeeShortlinkQueue, 'shopee-shortlink');
-attachQueueErrorLogging(mercadoLivreShortlinkQueue, 'mercadolivre-shortlink');
+export const fetchQueue = createQueue<FetchJob>('fetch-offers');
+export const curateQueue = createQueue<CurateJob>('curate-offers');
+export const dispatchQueue = createQueue<DispatchJob>('dispatch');
+export const shopeeShortlinkQueue = createQueue<ShopeeShortlinkJob>('shopee-shortlink');
+export const mercadoLivreShortlinkQueue = createQueue<MercadoLivreShortlinkJob>(
+  'mercadolivre-shortlink',
+);

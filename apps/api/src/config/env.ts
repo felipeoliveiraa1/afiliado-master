@@ -5,6 +5,8 @@ export const env = cleanEnv(process.env, {
   NODE_ENV: str({ choices: ['development', 'test', 'production'], default: 'development' }),
   PORT: port({ default: 3000 }),
   LOG_LEVEL: str({ default: 'info' }),
+  /** Skip BullMQ workers + cron (HTTP only); use to debug infra without Redis jobs. */
+  API_DISABLE_BACKGROUND: bool({ default: false }),
 
   DATABASE_URL: url(),
 

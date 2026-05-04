@@ -26,6 +26,12 @@ import {
 
 const jitter = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1) + min) * 1000;
 
+const registerWorkerErrors = (w: Worker, name: string): void => {
+  w.on('error', (err: Error) => {
+    logger.error({ err, worker: name }, 'bullmq worker error');
+  });
+};
+
 export function startWorkers() {
   const fetchWorker = new Worker<FetchJob>(
     'fetch-offers',
@@ -124,6 +130,7 @@ export function startWorkers() {
     },
     { connection: redisConnection, concurrency: 2 },
   );
+  registerWorkerErrors(fetchWorker, 'fetch-offers');
 
   const curateWorker = new Worker<CurateJob>(
     'curate-offers',
@@ -140,6 +147,7 @@ export function startWorkers() {
     },
     { connection: redisConnection, concurrency: 5 },
   );
+  registerWorkerErrors(curateWorker, 'curate-offers');
 
   const dispatchWorker = new Worker<DispatchJob>(
     'dispatch',
@@ -167,6 +175,7 @@ export function startWorkers() {
       limiter: { max: 1, duration: 1000 },
     },
   );
+  registerWorkerErrors(dispatchWorker, 'dispatch');
 
   // Worker dedicado pra gerar shortlink Shopee via painel (cookie hijacking)
   // Concurrency 1 + rate limit explícito pra parecer humano
@@ -251,6 +260,7 @@ export function startWorkers() {
       limiter: { max: 1, duration: 30_000 },
     },
   );
+  registerWorkerErrors(shopeeShortlinkWorker, 'shopee-shortlink');
 
   const mercadoLivreShortlinkWorker = new Worker<MercadoLivreShortlinkJob>(
     'mercadolivre-shortlink',
@@ -336,6 +346,7 @@ export function startWorkers() {
       limiter: { max: 1, duration: 30_000 },
     },
   );
+  registerWorkerErrors(mercadoLivreShortlinkWorker, 'mercadolivre-shortlink');
 
   const allWorkers = [
     fetchWorker,
@@ -345,9 +356,6 @@ export function startWorkers() {
     mercadoLivreShortlinkWorker,
   ];
   for (const w of allWorkers) {
-    w.on('error', (err) => {
-      logger.error({ err, worker: w.name }, 'bullmq worker error');
-    });
     w.on('failed', (job, err) => logger.error({ jobId: job?.id, err }, `${w.name} failed`));
     w.on('completed', (job) => logger.info({ jobId: job.id, queue: w.name }, 'job completed'));
   }
