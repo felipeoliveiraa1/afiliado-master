@@ -24,7 +24,7 @@ import type { MlPanelProduct } from '@afiliado-master/types';
 
 type SearchResponse =
   | { found: number; products: MlPanelProduct[] }
-  | { found: number; imported: number; offerIds: string[] };
+  | { found: number; imported: number; offerIds: string[]; products: MlPanelProduct[] };
 
 export default function MlSearchPage(): React.ReactElement {
   const [categoryId, setCategoryId] = useState(ML_CATEGORIES[0]?.id ?? '');

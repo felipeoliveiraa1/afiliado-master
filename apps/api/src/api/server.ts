@@ -530,7 +530,8 @@ export async function buildServer() {
         });
         offerIds.push(offer.id);
       }
-      return { found: products.length, imported: offerIds.length, offerIds };
+      // Retorna products também pra UI mostrar preview (lista + badges)
+      return { found: products.length, imported: offerIds.length, offerIds, products };
     },
   );
 
