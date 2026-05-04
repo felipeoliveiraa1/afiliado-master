@@ -32,12 +32,13 @@ const DEFAULT_KEYWORDS = [
 ];
 
 /**
- * Defaults focados em PROMOÇÕES quando o usuário não preencher
- * `amazonCategoryUrls` nem `amazonKeywords`. Cobre ofertas do dia +
- * goldbox + deals page (todos centrados em desconto).
+ * Defaults focados em LIGHTNING DEALS (ofertas do dia oficiais Amazon)
+ * quando o usuário não preencher amazonCategoryUrls nem amazonKeywords.
+ *
+ * /gp/goldbox = página oficial das Lightning Deals (mais qualidade que /deals
+ * que tende a misturar produtos genéricos).
  */
 const DEFAULT_DEAL_URLS_BR = [
-  'https://www.amazon.com.br/deals',
   'https://www.amazon.com.br/gp/goldbox',
 ];
 
@@ -108,7 +109,7 @@ export const amazonSource: SourceAdapter = {
     // - amazonMaxPerUrl é HARD CAP por URL (default 5). Setting precede limit.
     // - perUrl efetivo = min(amazonMaxPerUrl, ceil(limit/N))
     // Fórmula garante que custo NUNCA passa de amazonMaxPerUrl × N URLs × $0.012
-    const hardCap = cfg.amazonMaxPerUrl ?? 5;
+    const hardCap = cfg.amazonMaxPerUrl ?? 3;
     const desired = Math.max(1, Math.ceil(limit / Math.max(1, urls.length)));
     const perUrl = Math.min(hardCap, desired);
 
