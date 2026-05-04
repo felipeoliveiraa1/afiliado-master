@@ -114,6 +114,7 @@ const SECTIONS: SectionMeta[] = [
       { key: 'amazonCountry', label: 'País Amazon', placeholder: 'BR', hint: 'Código ISO de 2 letras. BR pra Brasil, US pra Estados Unidos.' },
       { key: 'amazonKeywords', label: 'Keywords Amazon (CSV)', type: 'textarea', placeholder: 'fone bluetooth, smartwatch, echo dot, mochila', hint: 'Lista de termos separados por vírgula. Cada termo vira busca ordenada por popularidade. Vazio = usa Deals/Goldbox (promoções centrais).' },
       { key: 'amazonCategoryUrls', label: 'Amazon URLs diretas (RECOMENDADO p/ promoções)', type: 'textarea', placeholder: 'https://www.amazon.com.br/deals, https://www.amazon.com.br/gp/goldbox, https://www.amazon.com.br/gp/bestsellers/electronics', hint: 'URLs Amazon completas. Sobrescreve keywords. URLs úteis: /deals (todas ofertas), /gp/goldbox (relâmpago), /gp/bestsellers/<cat>.' },
+      { key: 'amazonMaxPerUrl', label: 'Máx. produtos POR URL (controle de custo)', type: 'number', hint: 'HARD CAP por URL (default 5). $0,012/produto. Ex: 3 URLs × 5 = 15 produtos × $0,012 = $0,18/fetch. Cron diário (1x/dia) × 30 dias = $5,40/mês.' },
     ],
   },
   {

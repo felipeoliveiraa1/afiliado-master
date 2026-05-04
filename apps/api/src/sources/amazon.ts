@@ -17,6 +17,7 @@ type MarketplacesCfg = {
   amazonKeywords?: string; // CSV: "fone bluetooth, smartwatch, mochila"
   amazonCountry?: string; // default 'BR'
   amazonCategoryUrls?: string; // CSV de URLs Amazon (sobrescreve keywords se setado)
+  amazonMaxPerUrl?: number; // hard cap por URL (controle de custo Apify)
 };
 
 const DEFAULT_KEYWORDS = [
@@ -103,9 +104,13 @@ export const amazonSource: SourceAdapter = {
       urls = country.toUpperCase() === 'BR' ? DEFAULT_DEAL_URLS_BR : DEFAULT_KEYWORDS.map((k) => keywordToSearchUrl(k, country));
     }
 
-    // Limit total = soma de itens por URL. Cada URL puxa min(5, ceil(limit/N))
-    // pra distribuir custo Apify ($0.012/result) entre keywords.
-    const perUrl = Math.max(3, Math.ceil(limit / Math.max(1, urls.length)));
+    // CONTROLE DE CUSTO Apify ($0.012/result):
+    // - amazonMaxPerUrl é HARD CAP por URL (default 5). Setting precede limit.
+    // - perUrl efetivo = min(amazonMaxPerUrl, ceil(limit/N))
+    // Fórmula garante que custo NUNCA passa de amazonMaxPerUrl × N URLs × $0.012
+    const hardCap = cfg.amazonMaxPerUrl ?? 5;
+    const desired = Math.max(1, Math.ceil(limit / Math.max(1, urls.length)));
+    const perUrl = Math.min(hardCap, desired);
 
     // Schema do actor `junglee/free-amazon-product-scraper`:
     //   { categoryUrls: [{url}], maxItemsPerStartUrl, ... }

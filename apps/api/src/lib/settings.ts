@@ -65,6 +65,7 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     amazonKeywords: '',
     amazonCountry: 'BR',
     amazonCategoryUrls: '',
+    amazonMaxPerUrl: 5,
   },
   antiban: {
     minIntervalSec: env.DISPATCH_MIN_INTERVAL,
