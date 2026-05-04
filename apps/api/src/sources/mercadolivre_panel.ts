@@ -668,6 +668,53 @@ function normalizePanelProduct(item: Record<string, unknown>): MercadoLivrePanel
   };
 }
 
+/**
+ * Paridade com Divulga Links: dado uma categoria, busca produtos no painel ML
+ * e gera shortlink de afiliado para cada um (em série, com throttle pra parecer
+ * humano). Produtos que não participam do programa de afiliados ou que falham
+ * na geração são silenciosamente pulados — isso é exatamente o "X de Y produtos
+ * adicionados" mostrado pelo Divulga Links no vídeo de referência.
+ *
+ * Por que não paralelizar: a Shopee/ML observa cadência. 50 requisições em
+ * paralelo em <1s seriam classificadas como bot na hora.
+ */
+export async function searchAndAffiliateByCategory(
+  args: SearchByCategoryArgs,
+  opts: { jitterMinMs?: number; jitterMaxMs?: number; maxAffiliated?: number } = {},
+): Promise<MercadoLivrePanelProduct[]> {
+  const products = await searchMercadoLivreByCategory(args);
+  const minMs = opts.jitterMinMs ?? 800;
+  const maxMs = opts.jitterMaxMs ?? 2400;
+  const cap = opts.maxAffiliated ?? products.length;
+  const result: MercadoLivrePanelProduct[] = [];
+  for (const p of products) {
+    if (result.length >= cap) break;
+    if (!p.url) continue;
+    if (p.affiliateUrl) {
+      result.push(p);
+      continue;
+    }
+    try {
+      const shortUrl = await generateMercadoLivreShortlink(p.url);
+      result.push({ ...p, affiliateUrl: shortUrl });
+      await new Promise((r) =>
+        setTimeout(r, minMs + Math.floor(Math.random() * (maxMs - minMs))),
+      );
+    } catch (err) {
+      if (err instanceof MercadoLivrePanelError && err.kind === 'auth') {
+        // Cookie expirou: aborta o loop inteiro — cooldown global já marcado.
+        logger.warn({ err: err.message }, 'ml panel cookie expired during bulk affiliate');
+        break;
+      }
+      logger.debug(
+        { url: p.url, err: err instanceof Error ? err.message : String(err) },
+        'ml shortlink gen skipped (likely product not in affiliate program)',
+      );
+    }
+  }
+  return result;
+}
+
 /** Test-only helper to reset the in-memory CSRF and cooldown state. */
 export function __resetPanelStateForTests(): void {
   csrfCache = null;

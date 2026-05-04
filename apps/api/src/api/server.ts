@@ -9,6 +9,7 @@ import { evolution } from '@/lib/evolution.js';
 import { fetchQueue, dispatchQueue } from '@/queue/queues.js';
 import { validateShopeeCookie } from '@/sources/shopee_panel.js';
 import {
+  searchAndAffiliateByCategory,
   searchMercadoLivreByCategory,
   validateMercadoLivreCookie,
 } from '@/sources/mercadolivre_panel.js';
@@ -393,12 +394,18 @@ export async function buildServer() {
       },
     },
     async (req) => {
-      const products = await searchMercadoLivreByCategory({
+      const args = {
         categoryId: req.body.categoryId,
         subCategoryId: req.body.subCategoryId,
         bestSellersOnly: req.body.bestSellersOnly,
         limit: req.body.limit,
-      });
+      };
+      // autoImport=true gera shortlink de afiliado pra cada produto (paridade
+      // Divulga Links). Sem autoImport, só faz a busca rápida (sem chamar o
+      // endpoint de geração — útil pra preview de catálogo).
+      const products = req.body.autoImport
+        ? await searchAndAffiliateByCategory(args, { maxAffiliated: req.body.limit ?? 50 })
+        : await searchMercadoLivreByCategory(args);
       if (!req.body.autoImport) {
         return { found: products.length, products };
       }
