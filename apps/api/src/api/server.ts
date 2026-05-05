@@ -419,7 +419,16 @@ export async function buildServer() {
               maxPrice: z.number().optional(),
             })
             .optional(),
-          schedule: z.object({ intervalMinutes: z.number().int().min(5) }).optional(),
+          schedule: z
+            .object({
+              intervalMinutes: z.number().int().min(1),
+              // Override por campanha — se ausente, fallback pra settings.antiban.
+              windowStartHour: z.number().int().min(0).max(23).optional(),
+              windowEndHour: z.number().int().min(0).max(24).optional(),
+              dailyLimit: z.number().int().min(1).optional(),
+              postLoop: z.boolean().optional(), // true = recomeça quando tudo dispatched
+            })
+            .optional(),
           channelIds: z.array(z.string()).min(1),
         }),
       },
@@ -450,10 +459,29 @@ export async function buildServer() {
     {
       schema: {
         params: z.object({ id: z.string() }),
-        body: z.object({ enabled: z.boolean().optional(), name: z.string().optional() }),
+        body: z.object({
+          enabled: z.boolean().optional(),
+          name: z.string().optional(),
+          filters: z.record(z.unknown()).optional(),
+          schedule: z
+            .object({
+              intervalMinutes: z.number().int().min(1).optional(),
+              windowStartHour: z.number().int().min(0).max(23).optional(),
+              windowEndHour: z.number().int().min(0).max(24).optional(),
+              dailyLimit: z.number().int().min(1).optional(),
+              postLoop: z.boolean().optional(),
+            })
+            .optional(),
+        }),
       },
     },
-    async (req) => prisma.campaign.update({ where: { id: req.params.id }, data: req.body }),
+    async (req) => {
+      // Cast pra evitar conflito JsonNull do Prisma com unknown record.
+      return prisma.campaign.update({
+        where: { id: req.params.id },
+        data: req.body as never,
+      });
+    },
   );
 
   app.delete(

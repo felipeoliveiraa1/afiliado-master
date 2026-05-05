@@ -14,18 +14,33 @@ type AntibanCfg = {
   maxIntervalSec?: number;
 };
 
+type CampaignSchedule = {
+  windowStartHour?: number;
+  windowEndHour?: number;
+  dailyLimit?: number;
+};
+
 /**
- * Lê janela horária + limites do `settings.antiban` (não do env). Settings
- * são editáveis via UI sem restart. Fallback pro env se setting ausente.
+ * Hierarchy: campaign.schedule (override) > settings.antiban > env.
+ * Permite por exemplo "Grupo 24h" rodar 0-23 enquanto resto fica 8-22.
  */
-async function getAntibanCfg(): Promise<Required<AntibanCfg>> {
-  const cfg = await getSettingsSection<AntibanCfg>('antiban').catch(() => ({}) as AntibanCfg);
+async function getAntibanCfg(
+  campaignSchedule?: CampaignSchedule,
+): Promise<Required<AntibanCfg>> {
+  const global = await getSettingsSection<AntibanCfg>('antiban').catch(
+    () => ({}) as AntibanCfg,
+  );
   return {
-    windowStartHour: cfg.windowStartHour ?? env.DISPATCH_WINDOW_START,
-    windowEndHour: cfg.windowEndHour ?? env.DISPATCH_WINDOW_END,
-    dailyLimitPerInstance: cfg.dailyLimitPerInstance ?? env.DISPATCH_DAILY_LIMIT_PER_INSTANCE,
-    minIntervalSec: cfg.minIntervalSec ?? env.DISPATCH_MIN_INTERVAL,
-    maxIntervalSec: cfg.maxIntervalSec ?? env.DISPATCH_MAX_INTERVAL,
+    windowStartHour:
+      campaignSchedule?.windowStartHour ?? global.windowStartHour ?? env.DISPATCH_WINDOW_START,
+    windowEndHour:
+      campaignSchedule?.windowEndHour ?? global.windowEndHour ?? env.DISPATCH_WINDOW_END,
+    dailyLimitPerInstance:
+      campaignSchedule?.dailyLimit ??
+      global.dailyLimitPerInstance ??
+      env.DISPATCH_DAILY_LIMIT_PER_INSTANCE,
+    minIntervalSec: global.minIntervalSec ?? env.DISPATCH_MIN_INTERVAL,
+    maxIntervalSec: global.maxIntervalSec ?? env.DISPATCH_MAX_INTERVAL,
   };
 }
 
@@ -39,7 +54,8 @@ export type DispatchExecutionResult =
   | { kind: 'SKIPPED'; dispatchId: string; reason: string }
   | { kind: 'RESCHEDULED'; dispatchId: string; runAt: Date };
 
-type LoadedDispatch = Dispatch & { offer: Offer; channel: Channel };
+import type { Campaign } from '@prisma/client';
+type LoadedDispatch = Dispatch & { offer: Offer; channel: Channel; campaign?: Campaign | null };
 
 /**
  * Executa um dispatch para canal WhatsApp respeitando janela horária, limite
@@ -51,7 +67,7 @@ type LoadedDispatch = Dispatch & { offer: Offer; channel: Channel };
 export async function executeWhatsappDispatch(dispatchId: string): Promise<DispatchExecutionResult> {
   const dispatch = await prisma.dispatch.findUnique({
     where: { id: dispatchId },
-    include: { offer: true, channel: true },
+    include: { offer: true, channel: true, campaign: true },
   });
   if (!dispatch) {
     return { kind: 'SKIPPED', dispatchId, reason: 'dispatch not found' };
@@ -60,7 +76,8 @@ export async function executeWhatsappDispatch(dispatchId: string): Promise<Dispa
     return { kind: 'SKIPPED', dispatchId, reason: `status=${dispatch.status}` };
   }
 
-  const antiban = await getAntibanCfg();
+  const campaignSchedule = (dispatch.campaign?.schedule as CampaignSchedule) ?? undefined;
+  const antiban = await getAntibanCfg(campaignSchedule);
   const window = checkDispatchWindow(new Date(), antiban.windowStartHour, antiban.windowEndHour);
   if (!window.open) {
     logger.info(

@@ -43,6 +43,10 @@ export default function CampaignsPage(): React.ReactElement {
     minDiscount: 0,
     maxPrice: 0,
     intervalMinutes: 60,
+    windowStartHour: 8,
+    windowEndHour: 22,
+    dailyLimit: 0, // 0 = usa global
+    postLoop: false,
     sources: ['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT'] as string[],
     channelIds: [] as string[],
   });
@@ -69,7 +73,13 @@ export default function CampaignsPage(): React.ReactElement {
             minDiscount: form.minDiscount || undefined,
             maxPrice: form.maxPrice || undefined,
           },
-          schedule: { intervalMinutes: form.intervalMinutes },
+          schedule: {
+            intervalMinutes: form.intervalMinutes,
+            windowStartHour: form.windowStartHour,
+            windowEndHour: form.windowEndHour,
+            dailyLimit: form.dailyLimit > 0 ? form.dailyLimit : undefined,
+            postLoop: form.postLoop,
+          },
           channelIds: form.channelIds,
         },
       }),
@@ -172,6 +182,45 @@ export default function CampaignsPage(): React.ReactElement {
                   value={form.maxPrice}
                   onChange={(e) => setForm((f) => ({ ...f, maxPrice: Number(e.target.value) }))}
                 />
+              </Field>
+              <Field label="Hora início (BRT, 0–23)">
+                <Input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={form.windowStartHour}
+                  onChange={(e) => setForm((f) => ({ ...f, windowStartHour: Number(e.target.value) }))}
+                />
+              </Field>
+              <Field label="Hora fim (BRT, 0–24)">
+                <Input
+                  type="number"
+                  min={0}
+                  max={24}
+                  value={form.windowEndHour}
+                  onChange={(e) => setForm((f) => ({ ...f, windowEndHour: Number(e.target.value) }))}
+                />
+              </Field>
+              <Field label="Limite diário/canal (0=usa global)">
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.dailyLimit}
+                  onChange={(e) => setForm((f) => ({ ...f, dailyLimit: Number(e.target.value) }))}
+                />
+              </Field>
+              <Field label="Loop (repete ao chegar no fim)">
+                <label className="flex items-center gap-2 h-10">
+                  <input
+                    type="checkbox"
+                    checked={form.postLoop}
+                    onChange={(e) => setForm((f) => ({ ...f, postLoop: e.target.checked }))}
+                    className="size-4"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {form.postLoop ? 'Sim — recomeça do produto de maior score' : 'Não — para quando esgotar'}
+                  </span>
+                </label>
               </Field>
             </div>
 

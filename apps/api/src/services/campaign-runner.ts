@@ -38,24 +38,39 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
     maxPrice?: number;
   }) ?? {};
 
+  const schedule = (campaign.schedule as { postLoop?: boolean }) ?? {};
+
   // Sub-query: IDs de offers que JÁ têm dispatch criado pra essa campanha.
   // Usa `none` (Prisma) — equivalente a NOT EXISTS no SQL. Garante que cada
   // tick do cron pega uma offer fresh, sem repetir.
-  const offers = await prisma.offer.findMany({
+  const baseWhere = {
+    affiliateUrl: { not: null },
+    score: { gte: filters.minScore ?? 0 },
+    discountPct: filters.minDiscount ? { gte: filters.minDiscount } : undefined,
+    price: filters.maxPrice ? { lte: filters.maxPrice } : undefined,
+    source: filters.sources?.length
+      ? { kind: { in: filters.sources as ('SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'PROMOBIT')[] } }
+      : undefined,
+  };
+  let offers = await prisma.offer.findMany({
     where: {
-      affiliateUrl: { not: null },
-      score: { gte: filters.minScore ?? 0 },
-      discountPct: filters.minDiscount ? { gte: filters.minDiscount } : undefined,
-      price: filters.maxPrice ? { lte: filters.maxPrice } : undefined,
-      source: filters.sources?.length
-        ? { kind: { in: filters.sources as ('SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'PROMOBIT')[] } }
-        : undefined,
-      // Filtro chave — exclui offers já despachadas nessa campanha (qualquer status).
+      ...baseWhere,
       dispatches: { none: { campaignId: campaign.id } },
     },
     orderBy: { score: 'desc' },
     take: takeOffers,
   });
+  // postLoop=true: quando esgotou as offers novas, deleta dispatches dessa
+  // campanha pra recomeçar o ciclo desde a oferta de maior score.
+  if (offers.length === 0 && schedule.postLoop) {
+    const deleted = await prisma.dispatch.deleteMany({ where: { campaignId: campaign.id } });
+    logger.info({ campaignId, deleted: deleted.count }, 'postLoop: ciclo reiniciado');
+    offers = await prisma.offer.findMany({
+      where: { ...baseWhere, dispatches: { none: { campaignId: campaign.id } } },
+      orderBy: { score: 'desc' },
+      take: takeOffers,
+    });
+  }
   if (offers.length === 0) {
     return { campaignId, queued: 0, dispatchIds: [], reason: 'no-offers' };
   }
