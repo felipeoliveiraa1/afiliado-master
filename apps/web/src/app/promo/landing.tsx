@@ -1,21 +1,42 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
+import Script from 'next/script';
 
 type Props = {
-  groupLink: string;
+  /** Aceita 1 ou múltiplos. Quando > 1, escolhe aleatório no mount. */
+  groupLinks: string[];
   totalVagas: number;
   vagasBase: number;
   deadlineSeconds: number;
+  headline?: string;
+  subheadline?: string;
+  /** Meta Pixel ID. Vazio = pixel desativado. */
+  metaPixelId?: string;
 };
 
+// fbq global injetado pelo script do Meta Pixel (definido em runtime).
+declare global {
+  interface Window {
+    fbq?: (...args: unknown[]) => void;
+  }
+}
+
 export function PromoLanding({
-  groupLink,
+  groupLinks,
   totalVagas,
   vagasBase,
   deadlineSeconds,
+  headline,
+  subheadline,
+  metaPixelId,
 }: Props): React.ReactElement {
+  // Rotação aleatória entre múltiplos grupos. Mantém estável durante toda a
+  // sessão (não muda no re-render). Cada visita pega 1 grupo random.
+  const [groupLink] = useState<string>(() => {
+    if (groupLinks.length === 0) return 'https://chat.whatsapp.com/CONFIGURAR';
+    return groupLinks[Math.floor(Math.random() * groupLinks.length)];
+  });
   // Timer countdown — começa em deadlineSeconds pra cada visitante
   // (sessão do navegador, persiste em localStorage pra mesma session continuar)
   const [secondsLeft, setSecondsLeft] = useState<number>(deadlineSeconds);
@@ -67,8 +88,53 @@ export function PromoLanding({
   const pct = Math.min(100, (vagas / totalVagas) * 100);
   const vagasRestantes = totalVagas - vagas;
 
+  // Click handler do CTA — dispara Lead no pixel ANTES de abrir o WhatsApp.
+  // Não bloqueia: window.open() roda na sequência mesmo se fbq não existir.
+  const handleEnterGroup = (): void => {
+    if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+      try {
+        window.fbq('track', 'Lead');
+      } catch {
+        // Fallback silencioso — pixel não pode quebrar o CTA.
+      }
+    }
+    window.open(groupLink, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#FAF6F0] via-[#F4E4E1] to-[#E8D5E5] flex items-center justify-center p-4">
+      {metaPixelId ? (
+        <>
+          <Script
+            id="meta-pixel"
+            strategy="afterInteractive"
+            dangerouslySetInnerHTML={{
+              __html: `
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '${metaPixelId}');
+fbq('track', 'PageView');
+              `,
+            }}
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <noscript>
+            <img
+              height="1"
+              width="1"
+              style={{ display: 'none' }}
+              src={`https://www.facebook.com/tr?id=${metaPixelId}&ev=PageView&noscript=1`}
+              alt=""
+            />
+          </noscript>
+        </>
+      ) : null}
       <div className="w-full max-w-md mx-auto">
         <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl shadow-pink-200/40 p-6 sm:p-8 space-y-5 border border-white/60">
           {/* Logo */}
@@ -81,14 +147,14 @@ export function PromoLanding({
             />
           </div>
 
-          {/* Headline */}
+          {/* Headline (configurável via dashboard) */}
           <div className="text-center space-y-1">
             <h1 className="text-2xl sm:text-3xl font-bold text-[#7B6E8C] leading-tight">
-              Achadinhos<span className="text-[#D89399]"> de mãe</span> pra mãe 💕
+              {headline || 'Achadinhos de mãe pra mãe 💕'}
             </h1>
             <p className="text-sm sm:text-base text-[#A58B7E]">
-              Promoções selecionadas com{' '}
-              <strong className="text-[#7B6E8C]">cupons exclusivos</strong> direto no seu WhatsApp.
+              {subheadline ||
+                'Promoções selecionadas com cupons exclusivos direto no seu WhatsApp.'}
             </p>
           </div>
 
@@ -138,18 +204,17 @@ export function PromoLanding({
             </p>
           </div>
 
-          {/* CTA WhatsApp */}
-          <a
-            href={groupLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block w-full bg-gradient-to-r from-[#25D366] to-[#128C7E] hover:from-[#128C7E] hover:to-[#25D366] text-white font-bold text-center py-4 px-6 rounded-2xl shadow-lg shadow-green-300/50 transition-all hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
+          {/* CTA WhatsApp — button (não <a>) pra disparar Lead no pixel antes de abrir */}
+          <button
+            type="button"
+            onClick={handleEnterGroup}
+            className="block w-full bg-gradient-to-r from-[#25D366] to-[#128C7E] hover:from-[#128C7E] hover:to-[#25D366] text-white font-bold text-center py-4 px-6 rounded-2xl shadow-lg shadow-green-300/50 transition-all hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <span className="flex items-center justify-center gap-2 text-base sm:text-lg">
               <WhatsAppIcon />
               ENTRAR NO GRUPO GRÁTIS
             </span>
-          </a>
+          </button>
 
           {/* Social proof */}
           <p className="text-center text-xs text-[#A58B7E]">

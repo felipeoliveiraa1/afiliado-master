@@ -24,7 +24,8 @@ export type SettingsSection =
   | 'marketplaces'
   | 'antiban'
   | 'automation'
-  | 'admin';
+  | 'admin'
+  | 'landing';
 
 /**
  * Default settings expostos via env (legacy). Migrações futuras podem
@@ -97,6 +98,21 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
   admin: {
     adminAlertGroupId: env.ADMIN_ALERT_GROUP_ID,
     webOriginUrl: env.WEB_ORIGIN_URL,
+  },
+  /// Config da landing page pública (/). Editável via dashboard, sem rebuild.
+  /// groupLinks aceita 1 ou múltiplos — landing rotaciona automaticamente
+  /// (random no mount) quando há > 1.
+  landing: {
+    groupLinks: [] as string[],
+    totalVagas: 500,
+    vagasBase: 423,
+    deadlineSeconds: 120,
+    headline: 'Achadinhos de mãe pra mãe 💕',
+    subheadline:
+      'Promoções selecionadas com cupons exclusivos direto no seu WhatsApp.',
+    /// Meta Pixel ID. Vazio = pixel desativado (script não injeta).
+    /// PageView dispara no mount. Lead dispara no clique do CTA do grupo.
+    metaPixelId: '',
   },
 };
 
@@ -186,6 +202,7 @@ export async function getAllSettings(): Promise<Record<SettingsSection, unknown>
     'antiban',
     'automation',
     'admin',
+    'landing',
   ];
   const out = {} as Record<SettingsSection, unknown>;
   for (const s of sections) {

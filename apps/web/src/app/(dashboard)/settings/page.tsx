@@ -41,7 +41,8 @@ type Section =
   | 'marketplaces'
   | 'antiban'
   | 'automation'
-  | 'admin';
+  | 'admin'
+  | 'landing';
 
 type SectionMeta = {
   key: Section;
@@ -255,6 +256,21 @@ const SECTIONS: SectionMeta[] = [
       { key: 'webOriginUrl', label: 'CORS allowed origins', hint: 'Suporta wildcard ex: https://*.vercel.app,https://meu-dominio.com' },
     ],
   },
+  {
+    key: 'landing',
+    title: '🚀 Landing Page (/)',
+    description: 'Edita a página pública sem rebuild. Múltiplos grupos = rotação automática (cada visita pega 1 random).',
+    icon: Wand2,
+    fields: [
+      { key: 'groupLinks', label: 'Links de grupos WhatsApp (CSV)', type: 'textarea', placeholder: 'https://chat.whatsapp.com/Cn3t4N0gTpF5c0K4hcDN8F', hint: 'Cola 1 ou MAIS links separados por vírgula. Quando houver mais de 1, sistema escolhe aleatoriamente em cada visita (distribui entrada).' },
+      { key: 'totalVagas', label: 'Total de vagas exibido', type: 'number', hint: 'Usado na barra de progresso. Default 500.' },
+      { key: 'vagasBase', label: 'Vagas iniciais (já preenchidas)', type: 'number', hint: 'Onde a barra começa. Default 423. Sobe sozinho 1-2 a cada 8-25s pra simular demanda.' },
+      { key: 'deadlineSeconds', label: 'Timer countdown (segundos)', type: 'number', hint: '120 = 2min, 600 = 10min, 3600 = 1h. Default 120.' },
+      { key: 'headline', label: 'Headline', placeholder: 'Achadinhos de mãe pra mãe 💕' },
+      { key: 'subheadline', label: 'Subheadline', placeholder: 'Promoções selecionadas com cupons exclusivos direto no seu WhatsApp.' },
+      { key: 'metaPixelId', label: 'Meta Pixel ID', placeholder: '1015768407789187', hint: 'ID numérico do pixel do Facebook/Meta. Vazio = pixel desativado. PageView dispara automaticamente; Lead dispara no clique do botão de entrar no grupo.' },
+    ],
+  },
 ];
 
 export default function SettingsPage(): React.ReactElement {
@@ -311,7 +327,14 @@ function SectionCard({
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   useEffect(() => {
-    if (query.data) setDraft({ ...query.data });
+    if (!query.data) return;
+    // Hidrata: campos array (ex: landing.groupLinks) viram string CSV pra UI
+    const hydrated: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(query.data)) {
+      if (Array.isArray(v)) hydrated[k] = v.join('\n');
+      else hydrated[k] = v;
+    }
+    setDraft(hydrated);
   }, [query.data]);
 
   const dirty = useMemo(() => {
@@ -328,7 +351,16 @@ function SectionCard({
         typeof v === 'string' && v.includes('…') && /\(\d+ chars\)\s*$/.test(v);
       const cleanBody: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(draft)) {
-        if (!isMasked(v)) cleanBody[k] = v;
+        if (isMasked(v)) continue;
+        // landing.groupLinks vem do textarea como string CSV/multilinha — converte em array
+        if (meta.key === 'landing' && k === 'groupLinks' && typeof v === 'string') {
+          cleanBody[k] = v
+            .split(/[\n,]/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          continue;
+        }
+        cleanBody[k] = v;
       }
       return clientFetch(`/settings/${meta.key}`, {
         method: 'PATCH',

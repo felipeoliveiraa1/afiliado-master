@@ -116,6 +116,31 @@ export async function buildServer() {
 
   app.get('/health', async () => ({ ok: true, ts: new Date().toISOString() }));
 
+  // Endpoint PÚBLICO — landing page (/) consome essa config sem auth.
+  // Devolve só dados de display (sem secrets).
+  app.get('/landing-config', async () => {
+    const cfg = await getSettingsSection<{
+      groupLinks?: string[];
+      totalVagas?: number;
+      vagasBase?: number;
+      deadlineSeconds?: number;
+      headline?: string;
+      subheadline?: string;
+      metaPixelId?: string;
+    }>('landing');
+    return {
+      groupLinks: cfg.groupLinks ?? [],
+      totalVagas: cfg.totalVagas ?? 500,
+      vagasBase: cfg.vagasBase ?? 423,
+      deadlineSeconds: cfg.deadlineSeconds ?? 120,
+      headline: cfg.headline ?? 'Achadinhos de mãe pra mãe 💕',
+      subheadline:
+        cfg.subheadline ??
+        'Promoções selecionadas com cupons exclusivos direto no seu WhatsApp.',
+      metaPixelId: cfg.metaPixelId ?? '',
+    };
+  });
+
   // ===== Settings (configuração editável pelo dashboard) =====
   // GET /settings devolve todas as seções com secrets MASCARADOS (cookie/apiKey).
   // GET /settings/:section?reveal=1 devolve secrets em claro (pra edição).
@@ -129,6 +154,7 @@ export async function buildServer() {
     'antiban',
     'automation',
     'admin',
+    'landing',
   ] as const;
 
   app.get('/settings', async () => {
