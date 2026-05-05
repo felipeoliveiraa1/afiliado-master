@@ -550,6 +550,85 @@ export async function buildServer() {
   // como couponOffer, shopOfferV2 etc sem precisar da doc oficial.
   app.get('/sources/SHOPEE/introspect', async () => introspectShopeeSchema());
 
+  // Busca ad-hoc Shopee — análogo ao ML search-by-category. Retorna lista
+  // de produtos pra preview na UI; quando autoImport=true, cria offers no DB.
+  app.post(
+    '/sources/SHOPEE/search-by-category',
+    {
+      schema: {
+        body: z.object({
+          categoryId: z.number().int().optional(),
+          keyword: z.string().optional(),
+          limit: z.number().int().min(1).max(50).optional(),
+          onlyMall: z.boolean().optional(),
+          onlyKeySellers: z.boolean().optional(),
+          autoImport: z.boolean().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const { fetchShopeeProducts } = await import('@/sources/shopee.js');
+      const products = await fetchShopeeProducts({
+        keyword: req.body.keyword,
+        productCatId: req.body.categoryId,
+        limit: req.body.limit ?? 20,
+        sortType: 2, // bestseller
+        onlyMall: req.body.onlyMall,
+        onlyKeySellers: req.body.onlyKeySellers,
+      });
+      if (!req.body.autoImport) {
+        return { found: products.length, products };
+      }
+      // Auto-import: igual flow do worker fetch (sem dedup com cron)
+      const source = await prisma.source.upsert({
+        where: { kind: 'SHOPEE' },
+        update: {},
+        create: { kind: 'SHOPEE' },
+      });
+      const offerIds: string[] = [];
+      for (const p of products) {
+        if (!p.affiliateUrl) continue;
+        const offer = await prisma.offer.upsert({
+          where: { sourceId_externalId: { sourceId: source.id, externalId: p.externalId } },
+          create: {
+            sourceId: source.id,
+            externalId: p.externalId,
+            title: p.title,
+            imageUrl: p.imageUrl,
+            price: p.price,
+            originalPrice: p.originalPrice,
+            discountPct: p.discountPct,
+            url: p.url,
+            affiliateUrl: p.affiliateUrl,
+            commissionPct: p.commissionPct,
+            rating: p.rating,
+            salesCount: p.salesCount,
+            category: p.category,
+            score: scoreOffer({
+              discountPct: p.discountPct ?? null,
+              rating: p.rating ?? null,
+              ratingCount: null,
+              salesCount: p.salesCount ?? null,
+              commissionPct: p.commissionPct ?? null,
+            }),
+            raw: (p.raw ?? {}) as object,
+          },
+          update: {
+            title: p.title,
+            imageUrl: p.imageUrl,
+            price: p.price,
+            originalPrice: p.originalPrice,
+            discountPct: p.discountPct,
+            affiliateUrl: p.affiliateUrl,
+            fetchedAt: new Date(),
+          },
+        });
+        offerIds.push(offer.id);
+      }
+      return { found: products.length, imported: offerIds.length, offerIds, products };
+    },
+  );
+
   app.post(
     '/sources/SHOPEE/validate-cookie',
     async () => {

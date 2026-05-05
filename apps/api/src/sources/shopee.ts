@@ -102,8 +102,8 @@ export async function fetchShopeeProducts(opts?: ShopeeFetchOpts): Promise<RawOf
       $keyword: String
       $limit: Int
       $sortType: Int
-      $productCatId: Int32
-      $isKeySeller: Bool
+      $productCatId: Int
+      $isKeySeller: Boolean
     ) {
       productOfferV2(
         keyword: $keyword

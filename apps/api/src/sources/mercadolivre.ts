@@ -1,4 +1,7 @@
 import { request } from 'undici';
+import { env } from '@/config/env.js';
+import { logger } from '@/lib/logger.js';
+import { searchAndAffiliateByCategory } from './mercadolivre_panel.js';
 import type { RawOffer, SourceAdapter } from './types.js';
 
 /**
@@ -21,8 +24,41 @@ export function makeMercadoLivreSource(config: Config = {}): SourceAdapter {
     kind: 'MERCADOLIVRE',
     async fetch(opts) {
       const limit = opts?.limit ?? 50;
-      // Se opts trouxer categoryId/keyword (vem do Source.config no worker),
-      // sobrescreve a busca padrão. Senão, usa o default config.searches.
+      // CAMINHO PRIMÁRIO: cookie panel quando há categoria + cookie configurado.
+      // Gera shortlinks meli.la oficiais (afiliação real). Public API só serve
+      // como fallback porque NÃO retorna products quando a busca é só por
+      // category (sem keyword `q`).
+      if (opts?.categoryId && env.MERCADOLIVRE_PANEL_AUTO_ENABLED) {
+        try {
+          const products = await searchAndAffiliateByCategory(
+            { categoryId: opts.categoryId, limit, bestSellersOnly: false },
+            { maxAffiliated: limit },
+          );
+          return products
+            .filter((p) => p.affiliateUrl)
+            .map<RawOffer>((p) => ({
+              externalId: p.externalId,
+              title: p.title,
+              imageUrl: p.imageUrl,
+              price: p.price,
+              originalPrice: p.originalPrice,
+              discountPct: p.discountPct,
+              url: p.url,
+              affiliateUrl: p.affiliateUrl,
+              category: opts.categoryId,
+              salesCount: p.isBestSeller ? 1000 : undefined,
+              raw: { panelSearch: true, isBestSeller: p.isBestSeller, seller: p.seller } as Record<string, unknown>,
+            }));
+        } catch (err) {
+          logger.warn(
+            { err: (err as Error).message, categoryId: opts.categoryId },
+            'ml panel falhou — tentando public API fallback',
+          );
+          // continua pro fallback abaixo
+        }
+      }
+
+      // Fallback: public API (precisa keyword `q`, não funciona só com categoria)
       const dynamicSearch =
         opts?.categoryId || opts?.keyword
           ? [{ q: opts.keyword ?? '', categoryId: opts.categoryId, sort: 'sold_quantity_desc' }]
