@@ -17,6 +17,7 @@ export const authConfig: NextAuthConfig = {
       if (url.pathname.startsWith('/login')) return true;
       if (url.pathname.startsWith('/api/auth')) return true;
       // Landing pages públicas (anúncios direcionam pra cá — sem auth)
+      if (url.pathname === '/') return true;
       if (url.pathname.startsWith('/promo')) return true;
       return isLogged;
     },
