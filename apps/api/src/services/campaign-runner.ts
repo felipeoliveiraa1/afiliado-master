@@ -26,11 +26,12 @@ export type CampaignRunResult = {
 export async function runCampaign(campaignId: string, takeOffers = 1): Promise<CampaignRunResult> {
   const campaign = await prisma.campaign.findUniqueOrThrow({
     where: { id: campaignId },
-    include: { channels: true },
+    include: { channels: true, niches: true },
   });
   if (campaign.channels.length === 0) {
     return { campaignId, queued: 0, dispatchIds: [], reason: 'no-channels' };
   }
+  // Filtros base da campanha
   const filters = (campaign.filters as {
     sources?: string[];
     minDiscount?: number;
@@ -38,19 +39,76 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
     maxPrice?: number;
   }) ?? {};
 
+  // Agrega filtros dos nichos (UNION de categorias/keywords, MAX dos filtros).
+  // Permite ter campanha "Grupo Tudo" com niches=[Bebê, Casa] que pega offers
+  // de qualquer um dos dois nichos.
+  type NicheFilters = {
+    categoryIds?: { SHOPEE?: string[]; MERCADOLIVRE?: string[]; AMAZON?: string[]; PROMOBIT?: string[] };
+    keywords?: string[];
+    minDiscount?: number;
+    minScore?: number;
+    maxPrice?: number;
+  };
+  const nicheCategoryIds = new Set<string>();
+  const nicheKeywords = new Set<string>();
+  let nicheMinDiscount: number | undefined;
+  let nicheMinScore: number | undefined;
+  let nicheMaxPrice: number | undefined;
+  for (const n of campaign.niches.filter((x) => x.enabled)) {
+    const f = (n.filters as NicheFilters) ?? {};
+    for (const arr of Object.values(f.categoryIds ?? {})) {
+      for (const id of arr ?? []) nicheCategoryIds.add(id);
+    }
+    for (const k of f.keywords ?? []) nicheKeywords.add(k.toLowerCase());
+    if (f.minDiscount != null) nicheMinDiscount = Math.max(nicheMinDiscount ?? 0, f.minDiscount);
+    if (f.minScore != null) nicheMinScore = Math.max(nicheMinScore ?? 0, f.minScore);
+    if (f.maxPrice != null) nicheMaxPrice = Math.min(nicheMaxPrice ?? Infinity, f.maxPrice);
+  }
+  // Filtros efetivos: campaign.filters override > niche aggregated > default
+  const effective = {
+    minDiscount: filters.minDiscount ?? nicheMinDiscount,
+    minScore: filters.minScore ?? nicheMinScore ?? 0,
+    maxPrice: filters.maxPrice ?? (nicheMaxPrice === Infinity ? undefined : nicheMaxPrice),
+    categoryIds: nicheCategoryIds,
+    keywords: nicheKeywords,
+  };
+
   const schedule = (campaign.schedule as { postLoop?: boolean }) ?? {};
 
   // Sub-query: IDs de offers que JÁ têm dispatch criado pra essa campanha.
   // Usa `none` (Prisma) — equivalente a NOT EXISTS no SQL. Garante que cada
   // tick do cron pega uma offer fresh, sem repetir.
+  // Match por categoria do nicho — offer.category armazena o ID que veio do
+  // adapter (ex MLB1384, 100068). Se há categorias do nicho, exige match.
+  // Keywords: substring no title (case-insensitive).
+  const categoryFilter =
+    effective.categoryIds.size > 0
+      ? { category: { in: Array.from(effective.categoryIds) } }
+      : undefined;
+  const keywordFilter =
+    effective.keywords.size > 0
+      ? {
+          OR: Array.from(effective.keywords).map((kw) => ({
+            title: { contains: kw, mode: 'insensitive' as const },
+          })),
+        }
+      : undefined;
   const baseWhere = {
     affiliateUrl: { not: null },
-    score: { gte: filters.minScore ?? 0 },
-    discountPct: filters.minDiscount ? { gte: filters.minDiscount } : undefined,
-    price: filters.maxPrice ? { lte: filters.maxPrice } : undefined,
+    score: { gte: effective.minScore },
+    discountPct: effective.minDiscount ? { gte: effective.minDiscount } : undefined,
+    price: effective.maxPrice ? { lte: effective.maxPrice } : undefined,
     source: filters.sources?.length
       ? { kind: { in: filters.sources as ('SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'PROMOBIT')[] } }
       : undefined,
+    // Combinador: se tem categoria E keyword, OR. Se tem só uma, aplica direto.
+    ...(categoryFilter && keywordFilter
+      ? { OR: [categoryFilter, ...(keywordFilter.OR as { title: object }[])] }
+      : categoryFilter
+        ? categoryFilter
+        : keywordFilter
+          ? keywordFilter
+          : {}),
   };
   let offers = await prisma.offer.findMany({
     where: {

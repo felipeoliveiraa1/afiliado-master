@@ -67,6 +67,7 @@ const SECTIONS: NavSection[] = [
     label: 'Disparo',
     items: [
       { href: '/channels', label: 'Canais (WhatsApp)', icon: Users },
+      { href: '/niches', label: 'Nichos', icon: Tag },
       { href: '/campaigns', label: 'Campanhas', icon: Megaphone },
       { href: '/dispatches', label: 'Disparos', icon: Send },
     ],

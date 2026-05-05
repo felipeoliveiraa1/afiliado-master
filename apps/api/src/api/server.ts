@@ -476,17 +476,21 @@ export async function buildServer() {
             })
             .optional(),
           channelIds: z.array(z.string()).min(1),
+          nicheIds: z.array(z.string()).optional(),
         }),
       },
     },
     async (req) => {
-      const { channelIds, ...rest } = req.body;
+      const { channelIds, nicheIds, ...rest } = req.body;
       return prisma.campaign.create({
         data: {
           ...rest,
           filters: rest.filters ?? {},
           schedule: rest.schedule ?? {},
           channels: { connect: channelIds.map((id) => ({ id })) },
+          ...(nicheIds && nicheIds.length > 0
+            ? { niches: { connect: nicheIds.map((id) => ({ id })) } }
+            : {}),
         },
       });
     },
@@ -1033,6 +1037,77 @@ export async function buildServer() {
       };
     },
   );
+
+  // ===========================================================================
+  // NICHOS — preset reutilizável de filtros pra atribuir a 1+ campanhas
+  // ===========================================================================
+  app.get('/niches', async () =>
+    prisma.niche.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { campaigns: true } } },
+    }),
+  );
+
+  app.post(
+    '/niches',
+    {
+      schema: {
+        body: z.object({
+          name: z.string().min(1).max(60),
+          description: z.string().max(200).optional(),
+          icon: z.string().max(8).optional(), // emoji curto
+          filters: z
+            .object({
+              categoryIds: z
+                .object({
+                  SHOPEE: z.array(z.string()).optional(),
+                  MERCADOLIVRE: z.array(z.string()).optional(),
+                  AMAZON: z.array(z.string()).optional(),
+                  PROMOBIT: z.array(z.string()).optional(),
+                })
+                .optional(),
+              keywords: z.array(z.string()).optional(),
+              minDiscount: z.number().min(0).max(100).optional(),
+              minScore: z.number().min(0).max(1).optional(),
+              maxPrice: z.number().min(0).optional(),
+            })
+            .optional(),
+        }),
+      },
+    },
+    async (req) => {
+      return prisma.niche.create({
+        data: {
+          name: req.body.name,
+          description: req.body.description,
+          icon: req.body.icon,
+          filters: (req.body.filters ?? {}) as never,
+        },
+      });
+    },
+  );
+
+  app.patch(
+    '/niches/:id',
+    {
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: z.object({
+          name: z.string().optional(),
+          description: z.string().optional(),
+          icon: z.string().optional(),
+          enabled: z.boolean().optional(),
+          filters: z.record(z.unknown()).optional(),
+        }),
+      },
+    },
+    async (req) => prisma.niche.update({ where: { id: req.params.id }, data: req.body as never }),
+  );
+
+  app.delete('/niches/:id', { schema: { params: z.object({ id: z.string() }) } }, async (req) => {
+    await prisma.niche.delete({ where: { id: req.params.id } });
+    return { deleted: true };
+  });
 
   app.get('/admin/cookie-health', async () => {
     const sources = await prisma.source.findMany({

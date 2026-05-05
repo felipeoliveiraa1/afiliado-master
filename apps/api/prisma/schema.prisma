@@ -143,6 +143,7 @@ model Campaign {
   // Schedule: cron expression OR { intervalMinutes: number }
   schedule    Json       @default("{}")
   channels    Channel[]  @relation("CampaignChannels")
+  niches      Niche[]    @relation("CampaignNiches")
   dispatches  Dispatch[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -215,4 +216,28 @@ model ShopeeCoupon {
 
   @@index([seller, enabled])
   @@index([validUntil])
+}
+
+/// Nicho = preset reutilizável de filtros (categorias por marketplace +
+/// keywords + filtros de qualidade). Atribuído a 1+ campanhas — permite ter
+/// grupo "Mães" só com nicho Bebê + grupo "Tudo" com Bebê+Casa+Beleza.
+///
+/// filters JSON shape:
+///   {
+///     categoryIds: { SHOPEE: ["100068"], MERCADOLIVRE: ["MLB1384"], AMAZON: [] },
+///     keywords: ["carrinho bebe", "fralda"],
+///     minDiscount?: 20,
+///     minScore?: 0.5,
+///     maxPrice?: 500
+///   }
+model Niche {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  description String?
+  icon        String?    // emoji ex "🍼"
+  filters     Json       @default("{}")
+  enabled     Boolean    @default(true)
+  campaigns   Campaign[] @relation("CampaignNiches")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }

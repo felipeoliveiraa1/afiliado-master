@@ -45,10 +45,17 @@ export default function CampaignsPage(): React.ReactElement {
     intervalMinutes: 60,
     windowStartHour: 8,
     windowEndHour: 22,
-    dailyLimit: 0, // 0 = usa global
+    dailyLimit: 0,
     postLoop: false,
     sources: ['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT'] as string[],
     channelIds: [] as string[],
+    nicheIds: [] as string[],
+  });
+
+  const niches = useQuery<{ id: string; name: string; icon: string | null; enabled: boolean }[]>({
+    queryKey: ['niches'],
+    queryFn: () =>
+      clientFetch<{ id: string; name: string; icon: string | null; enabled: boolean }[]>('/niches'),
   });
 
   const campaigns = useQuery<CampaignDTO[]>({
@@ -81,6 +88,7 @@ export default function CampaignsPage(): React.ReactElement {
             postLoop: form.postLoop,
           },
           channelIds: form.channelIds,
+          nicheIds: form.nicheIds,
         },
       }),
     onSuccess: () => {
@@ -116,6 +124,13 @@ export default function CampaignsPage(): React.ReactElement {
     setForm((f) => ({
       ...f,
       sources: f.sources.includes(kind) ? f.sources.filter((s) => s !== kind) : [...f.sources, kind],
+    }));
+  };
+
+  const toggleNiche = (id: string): void => {
+    setForm((f) => ({
+      ...f,
+      nicheIds: f.nicheIds.includes(id) ? f.nicheIds.filter((n) => n !== id) : [...f.nicheIds, id],
     }));
   };
 
@@ -222,6 +237,37 @@ export default function CampaignsPage(): React.ReactElement {
                   </span>
                 </label>
               </Field>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nichos (escolha 1+ pra direcionar — sem nicho = todas as ofertas)</Label>
+              <div className="flex flex-wrap gap-2">
+                {(niches.data ?? [])
+                  .filter((n) => n.enabled)
+                  .map((n) => {
+                    const active = form.nicheIds.includes(n.id);
+                    return (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => toggleNiche(n.id)}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          active
+                            ? 'border-accent bg-accent text-accent-foreground'
+                            : 'border-border bg-background text-muted-foreground hover:border-accent/50 hover:text-foreground'
+                        }`}
+                      >
+                        {n.icon ? `${n.icon} ` : ''}
+                        {n.name}
+                      </button>
+                    );
+                  })}
+                {(niches.data ?? []).filter((n) => n.enabled).length === 0 ? (
+                  <span className="text-xs text-muted-foreground">
+                    Nenhum nicho cadastrado. Crie em <a href="/niches" className="underline">/niches</a>
+                  </span>
+                ) : null}
+              </div>
             </div>
 
             <div className="space-y-2">
