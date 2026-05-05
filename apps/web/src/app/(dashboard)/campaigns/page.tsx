@@ -8,10 +8,13 @@ import {
   ChevronUp,
   Clock,
   Megaphone,
+  Pencil,
   Play,
   Plus,
+  Save,
   Trash2,
   Users,
+  X,
   Tag as TagIcon,
 } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
@@ -161,6 +164,13 @@ export default function DisparosPage(): React.ReactElement {
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       clientFetch(`/campaigns/${id}`, { method: 'PATCH', body: { enabled } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['campaigns'] }),
+  });
+
+  const update = useMutation<CampaignDTO, Error, { id: string; body: Record<string, unknown> }>({
+    mutationFn: ({ id, body }) =>
+      clientFetch<CampaignDTO>(`/campaigns/${id}`, { method: 'PATCH', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['campaigns'] }),
+    onError: (err) => setError(err.message),
   });
 
   const del = useMutation({
@@ -467,14 +477,18 @@ export default function DisparosPage(): React.ReactElement {
               <CampaignCard
                 key={c.id}
                 campaign={c}
+                channels={channels.data ?? []}
+                niches={niches.data ?? []}
                 onRunNow={() => runNow.mutate(c.id)}
                 onToggle={() => toggleEnabled.mutate({ id: c.id, enabled: !c.enabled })}
+                onSave={(body) => update.mutate({ id: c.id, body })}
                 onDelete={() => {
                   if (confirm(`Excluir disparo "${c.name}"? Vai apagar todos os dispatches dele.`)) {
                     del.mutate(c.id);
                   }
                 }}
                 runPending={runNow.isPending && runNow.variables === c.id}
+                savePending={update.isPending && update.variables?.id === c.id}
               />
             ))
           )}
@@ -486,20 +500,107 @@ export default function DisparosPage(): React.ReactElement {
 
 function CampaignCard({
   campaign,
+  channels,
+  niches,
   onRunNow,
   onToggle,
+  onSave,
   onDelete,
   runPending,
+  savePending,
 }: {
   campaign: CampaignDTO;
+  channels: ChannelDTO[];
+  niches: NicheDTO[];
   onRunNow: () => void;
   onToggle: () => void;
+  onSave: (body: Record<string, unknown>) => void;
   onDelete: () => void;
   runPending: boolean;
+  savePending: boolean;
 }): React.ReactElement {
+  const [editing, setEditing] = useState(false);
   const interval = campaign.schedule?.intervalMinutes ?? 60;
   const windowStart = campaign.schedule?.windowStartHour ?? 8;
   const windowEnd = campaign.schedule?.windowEndHour ?? 22;
+
+  // Form de edição: hidrata com os valores atuais. Sai do edit ao salvar.
+  const [editForm, setEditForm] = useState({
+    name: campaign.name,
+    channelId: campaign.channels?.[0]?.id ?? '',
+    nicheIds: campaign.niches?.map((n) => n.id) ?? [],
+    sources: (campaign.filters?.sources ?? ['SHOPEE', 'MERCADOLIVRE']) as string[],
+    intervalMinutes: campaign.schedule?.intervalMinutes ?? 90,
+    windowStartHour: campaign.schedule?.windowStartHour ?? 8,
+    windowEndHour: campaign.schedule?.windowEndHour ?? 22,
+    postLoop: campaign.schedule?.postLoop ?? true,
+    burstSizeMin: campaign.schedule?.burstSizeMin ?? 5,
+    burstSizeMax: campaign.schedule?.burstSizeMax ?? 12,
+    burstSpreadMinSec: campaign.schedule?.burstSpreadMinSec ?? 30,
+    burstSpreadMaxSec: campaign.schedule?.burstSpreadMaxSec ?? 120,
+    minScore: campaign.filters?.minScore ?? 0.4,
+    minDiscount: campaign.filters?.minDiscount ?? 0,
+    maxPrice: campaign.filters?.maxPrice ?? 0,
+  });
+
+  const startEdit = (): void => {
+    setEditForm({
+      name: campaign.name,
+      channelId: campaign.channels?.[0]?.id ?? '',
+      nicheIds: campaign.niches?.map((n) => n.id) ?? [],
+      sources: (campaign.filters?.sources ?? ['SHOPEE', 'MERCADOLIVRE']) as string[],
+      intervalMinutes: campaign.schedule?.intervalMinutes ?? 90,
+      windowStartHour: campaign.schedule?.windowStartHour ?? 8,
+      windowEndHour: campaign.schedule?.windowEndHour ?? 22,
+      postLoop: campaign.schedule?.postLoop ?? true,
+      burstSizeMin: campaign.schedule?.burstSizeMin ?? 5,
+      burstSizeMax: campaign.schedule?.burstSizeMax ?? 12,
+      burstSpreadMinSec: campaign.schedule?.burstSpreadMinSec ?? 30,
+      burstSpreadMaxSec: campaign.schedule?.burstSpreadMaxSec ?? 120,
+      minScore: campaign.filters?.minScore ?? 0.4,
+      minDiscount: campaign.filters?.minDiscount ?? 0,
+      maxPrice: campaign.filters?.maxPrice ?? 0,
+    });
+    setEditing(true);
+  };
+
+  const handleSave = (): void => {
+    onSave({
+      name: editForm.name,
+      channelIds: editForm.channelId ? [editForm.channelId] : [],
+      nicheIds: editForm.nicheIds,
+      filters: {
+        minScore: editForm.minScore || undefined,
+        minDiscount: editForm.minDiscount || undefined,
+        maxPrice: editForm.maxPrice || undefined,
+        sources: editForm.sources,
+      },
+      schedule: {
+        intervalMinutes: editForm.intervalMinutes,
+        windowStartHour: editForm.windowStartHour,
+        windowEndHour: editForm.windowEndHour,
+        postLoop: editForm.postLoop,
+        burstSizeMin: editForm.burstSizeMin,
+        burstSizeMax: editForm.burstSizeMax,
+        burstSpreadMinSec: editForm.burstSpreadMinSec,
+        burstSpreadMaxSec: editForm.burstSpreadMaxSec,
+      },
+    });
+    setEditing(false);
+  };
+
+  const toggleSource = (s: string): void =>
+    setEditForm((f) => ({
+      ...f,
+      sources: f.sources.includes(s) ? f.sources.filter((x) => x !== s) : [...f.sources, s],
+    }));
+
+  const toggleEditNiche = (id: string): void =>
+    setEditForm((f) => ({
+      ...f,
+      nicheIds: f.nicheIds.includes(id) ? f.nicheIds.filter((x) => x !== id) : [...f.nicheIds, id],
+    }));
+
   return (
     <div className="rounded-lg border bg-card/50 p-4 transition-shadow hover:shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -547,6 +648,10 @@ function CampaignCard({
             <Play className="size-3.5" />
             Run now
           </Button>
+          <Button size="sm" variant="outline" onClick={editing ? () => setEditing(false) : startEdit}>
+            {editing ? <X className="size-3.5" /> : <Pencil className="size-3.5" />}
+            {editing ? 'Cancelar' : 'Editar'}
+          </Button>
           <Button size="sm" variant="outline" onClick={onToggle}>
             {campaign.enabled ? 'Pausar' : 'Ativar'}
           </Button>
@@ -561,6 +666,257 @@ function CampaignCard({
           </Button>
         </div>
       </div>
+
+      {editing ? (
+        <div className="mt-4 space-y-4 rounded-lg border-2 border-accent/40 bg-accent/5 p-4">
+          <p className="text-xs text-muted-foreground">
+            ✏️ Edição inline — campanha continua rodando enquanto você edita. Salvar = aplica
+            sem reiniciar.
+          </p>
+
+          {/* Nome + Canal */}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Nome</Label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Canal (grupo WhatsApp)</Label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={editForm.channelId}
+                onChange={(e) => setEditForm({ ...editForm, channelId: e.target.value })}
+              >
+                <option value="">— selecione —</option>
+                {channels.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Sources (rotação) */}
+          <div className="space-y-1">
+            <Label className="text-xs">Sources (2+ ativa rotação alternada)</Label>
+            <div className="flex flex-wrap gap-2">
+              {(['SHOPEE', 'MERCADOLIVRE', 'AMAZON'] as const).map((s) => {
+                const active = editForm.sources.includes(s);
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => toggleSource(s)}
+                    className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                      active
+                        ? 'border-accent bg-accent text-accent-foreground'
+                        : 'border-border bg-background hover:bg-muted'
+                    }`}
+                  >
+                    {s === 'SHOPEE' ? '🟠 Shopee' : s === 'MERCADOLIVRE' ? '🟡 ML' : '🔵 Amazon'}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Nichos */}
+          {niches.filter((n) => n.enabled).length > 0 ? (
+            <div className="space-y-1">
+              <Label className="text-xs">Nichos</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {niches
+                  .filter((n) => n.enabled)
+                  .map((n) => {
+                    const active = editForm.nicheIds.includes(n.id);
+                    return (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => toggleEditNiche(n.id)}
+                        className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                          active
+                            ? 'border-accent bg-accent text-accent-foreground'
+                            : 'border-border bg-background hover:bg-muted'
+                        }`}
+                      >
+                        {n.icon} {n.name}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Cadência */}
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">Cadência</Label>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Intervalo entre bursts</Label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={editForm.intervalMinutes}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, intervalMinutes: Number(e.target.value) })
+                  }
+                >
+                  <option value="15">15 min</option>
+                  <option value="30">30 min</option>
+                  <option value="60">60 min</option>
+                  <option value="90">90 min</option>
+                  <option value="120">2h</option>
+                  <option value="180">3h</option>
+                  <option value="240">4h</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Hora início (BRT)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={editForm.windowStartHour}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, windowStartHour: Number(e.target.value) })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Hora fim (BRT)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={24}
+                  value={editForm.windowEndHour}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, windowEndHour: Number(e.target.value) })
+                  }
+                />
+              </div>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs pt-1">
+              <input
+                type="checkbox"
+                checked={editForm.postLoop}
+                onChange={(e) => setEditForm({ ...editForm, postLoop: e.target.checked })}
+                className="size-4"
+              />
+              <span>♻️ Loop infinito</span>
+            </label>
+          </div>
+
+          {/* Burst */}
+          <div className="space-y-2 rounded-lg border border-dashed border-accent/30 bg-background p-3">
+            <Label className="text-xs font-medium">🌊 Burst</Label>
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Mín msgs/burst</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={editForm.burstSizeMin}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, burstSizeMin: Number(e.target.value) })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Máx msgs/burst</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={editForm.burstSizeMax}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, burstSizeMax: Number(e.target.value) })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Gap mín (s)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={600}
+                  value={editForm.burstSpreadMinSec}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, burstSpreadMinSec: Number(e.target.value) })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Gap máx (s)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={600}
+                  value={editForm.burstSpreadMaxSec}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, burstSpreadMaxSec: Number(e.target.value) })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Filtros */}
+          <details className="rounded-lg border border-dashed p-3">
+            <summary className="cursor-pointer text-xs font-medium">
+              🎚️ Filtros de qualidade
+            </summary>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Score mín (0-1)</Label>
+                <Input
+                  type="number"
+                  step="0.05"
+                  min={0}
+                  max={1}
+                  value={editForm.minScore}
+                  onChange={(e) => setEditForm({ ...editForm, minScore: Number(e.target.value) })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Desconto mín (%)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={editForm.minDiscount}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, minDiscount: Number(e.target.value) })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Preço máx (R$)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={editForm.maxPrice}
+                  onChange={(e) => setEditForm({ ...editForm, maxPrice: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+          </details>
+
+          <div className="flex justify-end gap-2 border-t pt-3">
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" variant="accent" onClick={handleSave} loading={savePending}>
+              <Save className="size-3.5" />
+              Salvar (sem parar)
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

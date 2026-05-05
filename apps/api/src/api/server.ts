@@ -564,16 +564,53 @@ export async function buildServer() {
               windowEndHour: z.number().int().min(0).max(24).optional(),
               dailyLimit: z.number().int().min(1).optional(),
               postLoop: z.boolean().optional(),
+              burstSizeMin: z.number().int().min(1).max(30).optional(),
+              burstSizeMax: z.number().int().min(1).max(30).optional(),
+              burstSpreadMinSec: z.number().int().min(0).max(600).optional(),
+              burstSpreadMaxSec: z.number().int().min(0).max(600).optional(),
             })
             .optional(),
+          channelIds: z.array(z.string()).optional(),
+          nicheIds: z.array(z.string()).optional(),
         }),
       },
     },
     async (req) => {
-      // Cast pra evitar conflito JsonNull do Prisma com unknown record.
+      const { channelIds, nicheIds, ...rest } = req.body as {
+        channelIds?: string[];
+        nicheIds?: string[];
+      } & Record<string, unknown>;
+      // Merge schedule existente com o partial — pra não perder fields que o front omitiu.
+      const data: Record<string, unknown> = { ...rest };
+      if (rest.schedule || rest.filters) {
+        const current = await prisma.campaign.findUniqueOrThrow({
+          where: { id: req.params.id },
+          select: { schedule: true, filters: true },
+        });
+        if (rest.schedule) {
+          data.schedule = {
+            ...((current.schedule as Record<string, unknown>) ?? {}),
+            ...(rest.schedule as Record<string, unknown>),
+          };
+        }
+        if (rest.filters) {
+          data.filters = {
+            ...((current.filters as Record<string, unknown>) ?? {}),
+            ...(rest.filters as Record<string, unknown>),
+          };
+        }
+      }
+      // Relations: usa `set` pra substituir (zero downtime — campanha não pausa).
+      if (channelIds) {
+        data.channels = { set: channelIds.map((id) => ({ id })) };
+      }
+      if (nicheIds) {
+        data.niches = { set: nicheIds.map((id) => ({ id })) };
+      }
       return prisma.campaign.update({
         where: { id: req.params.id },
-        data: req.body as never,
+        data: data as never,
+        include: { channels: true, niches: true },
       });
     },
   );
