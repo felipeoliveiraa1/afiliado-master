@@ -166,6 +166,13 @@ async function rejectIfMissingAffiliateUrl(dispatch: LoadedDispatch): Promise<st
   return null;
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  MERCADOLIVRE: 'Mercado Livre',
+  AMAZON: 'Amazon',
+  SHOPEE: 'Shopee',
+  PROMOBIT: 'Promobit',
+};
+
 async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
   const variant = await prisma.variant.findFirst({
     where: { offerId: dispatch.offerId, channelKind: dispatch.channel.kind },
@@ -174,6 +181,12 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
   const trackingLink = env.CLICK_TRACKING_ENABLED
     ? `${env.PUBLIC_BASE_URL.replace(/\/$/, '')}/r/${dispatch.id}`
     : (dispatch.offer.affiliateUrl ?? dispatch.offer.url);
+  // Extrai nome do vendedor do raw da offer (populado pelo seller hidratação
+  // em ML, ou pelo PA-API ByLineInfo.Brand.DisplayValue em Amazon).
+  const sellerName =
+    (dispatch.offer.raw as Record<string, unknown> | null)?.seller as string | undefined;
+  const source = await prisma.source.findUnique({ where: { id: dispatch.offer.sourceId } });
+  const sourceName = source ? SOURCE_LABELS[source.kind] ?? source.kind : null;
   return formatOfferMessage({
     title: dispatch.offer.title,
     price: Number(dispatch.offer.price),
@@ -182,6 +195,8 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     coupon: dispatch.offer.coupon,
     hookLine: variant?.caption ?? null,
     link: trackingLink,
+    sellerName: sellerName ?? null,
+    sourceName,
   });
 }
 

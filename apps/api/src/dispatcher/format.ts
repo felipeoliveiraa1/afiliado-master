@@ -37,6 +37,12 @@ export type FormatOfferInput = {
   readonly coupon?: string | null;
   readonly hookLine?: string | null;
   readonly link: string;
+  /** Nome do vendedor (ex: "Decco Moda Íntima"). Quando presente, gera a linha
+   * "Achado em Mercado Livre na loja oficial X" antes do link — aumenta
+   * credibilidade no padrão dos grupos brasileiros. */
+  readonly sellerName?: string | null;
+  /** Nome da source (ex: "Mercado Livre", "Amazon"). Usado junto do sellerName. */
+  readonly sourceName?: string | null;
 };
 
 export function formatOfferMessage(input: FormatOfferInput): string {
@@ -47,9 +53,21 @@ export function formatOfferMessage(input: FormatOfferInput): string {
   sections.push(buildPriceBlock(input));
   const couponLine = buildCouponLine(input.coupon);
   if (couponLine) sections.push(couponLine);
+  const sellerLine = buildSellerLine(input.sellerName, input.sourceName);
+  if (sellerLine) sections.push(sellerLine);
   sections.push(`📦 ${input.link}`);
   sections.push(DISCLAIMER);
   return sections.join('\n\n');
+}
+
+function buildSellerLine(
+  sellerName: string | null | undefined,
+  sourceName: string | null | undefined,
+): string | null {
+  const seller = sellerName?.trim();
+  if (!seller) return null;
+  const source = sourceName?.trim() || 'Mercado Livre';
+  return `Achado em ${source} na loja oficial ${seller}`;
 }
 
 function pickHookLine(input: FormatOfferInput): string | null {
