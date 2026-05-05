@@ -130,59 +130,68 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
 
         <Card>
           <CardHeader>
-            <CardTitle>Cookies de afiliação</CardTitle>
-            <CardDescription>Sessões logadas usadas pra gerar shortlinks.</CardDescription>
+            <CardTitle>Status de afiliação</CardTitle>
+            <CardDescription>
+              ML usa cookie do painel. Shopee/Amazon usam API oficial (sem cookie).
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {!stats || stats.cookieHealth.length === 0 ? (
-              <EmptyState
-                icon={Cookie}
-                title="Nenhum cookie validado"
-                description="Cole o cookie do painel ML ou Shopee para habilitar conversão automática URL → afiliado."
-                action={
-                  <div className="flex gap-2">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href="/sources/mercadolivre/cookie">Cookie ML</Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href="/sources/shopee/cookie">Cookie Shopee</Link>
-                    </Button>
-                  </div>
-                }
-              />
-            ) : (
-              <ul className="space-y-2">
-                {stats.cookieHealth.map((s) => (
-                  <li
-                    key={s.kind}
-                    className="flex items-center justify-between rounded-lg border bg-background/40 px-3 py-2.5 transition-colors hover:bg-muted/40"
-                  >
+            <ul className="space-y-2">
+              {/* Mercado Livre — depende de cookie do painel */}
+              {(() => {
+                const mlStatus = stats?.cookieHealth.find((s) => s.kind === 'MERCADOLIVRE');
+                return (
+                  <li className="flex items-center justify-between rounded-lg border bg-background/40 px-3 py-2.5 transition-colors hover:bg-muted/40">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-medium">{s.kind}</span>
-                        {s.cookieHealth?.affiliateName ? (
+                        <span className="text-sm font-medium">🟡 Mercado Livre</span>
+                        {mlStatus?.cookieHealth?.affiliateName ? (
                           <span className="truncate text-xs text-muted-foreground">
-                            · {s.cookieHealth.affiliateName}
+                            · {mlStatus.cookieHealth.affiliateName}
                           </span>
                         ) : null}
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        validado em {formatDate(s.cookieValidatedAt)}
+                        {mlStatus?.cookieValidatedAt
+                          ? `Cookie validado em ${formatDate(mlStatus.cookieValidatedAt)}`
+                          : 'Cookie não configurado — sem afiliação'}
                       </p>
                     </div>
-                    {s.cookieHealth?.valid ? (
+                    {mlStatus?.cookieHealth?.valid ? (
                       <Badge variant="success" dot>
                         <CheckCircle2 className="size-3" /> ok
                       </Badge>
                     ) : (
-                      <Badge variant="destructive" dot>
-                        expirado
-                      </Badge>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href="/sources/mercadolivre/cookie">Configurar</Link>
+                      </Button>
                     )}
                   </li>
-                ))}
-              </ul>
-            )}
+                );
+              })()}
+              {/* Shopee — Open API (App ID + Secret em /settings) */}
+              <li className="flex items-center justify-between rounded-lg border bg-background/40 px-3 py-2.5">
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">🟠 Shopee</span>
+                  <p className="text-[11px] text-muted-foreground">
+                    Open API GraphQL · sem cookie
+                  </p>
+                </div>
+                <Badge variant="success" dot>
+                  <CheckCircle2 className="size-3" /> ok
+                </Badge>
+              </li>
+              {/* Amazon — PA-API (disabled até liberar) */}
+              <li className="flex items-center justify-between rounded-lg border bg-background/40 px-3 py-2.5">
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">🔵 Amazon</span>
+                  <p className="text-[11px] text-muted-foreground">
+                    PA-API · libera após 10 vendas qualificadas
+                  </p>
+                </div>
+                <Badge variant="secondary">desativado</Badge>
+              </li>
+            </ul>
           </CardContent>
         </Card>
       </section>
