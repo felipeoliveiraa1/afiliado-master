@@ -39,17 +39,19 @@ type MlCoupon = {
 type SyncResp = { prefix: string; upserted: number; generated: number };
 
 /**
- * Sugere sufixo padronizado a partir do título do cupom. Mantém o sistema
- * consistente: RADARHOJE + valor numérico. Ex:
- *   "R$ 30 OFF"  → RADARHOJE30
- *   "25% OFF"    → RADARHOJE25
- *   "R$ 1200 OFF"→ RADARHOJE1200
- * Usuário pode editar livremente se quiser variar.
+ * Sugere sufixo padronizado. ML aceita ≤10 chars no `code` — RADARHOJE (9)
+ * estoura quando concatenado com valor. Usamos "RADAR" (5) que cabe
+ * qualquer valor numérico de até 5 dígitos. Mantém branding "Radar de
+ * Promos" + identifica o desconto:
+ *   "R$ 30 OFF"  → RADAR30
+ *   "25% OFF"    → RADAR25
+ *   "R$ 100 OFF" → RADAR100
+ *   "R$ 1200 OFF"→ RADAR1200
  */
 function suggestCode(title: string): string {
-  const m = title.match(/(\d{1,4})/);
+  const m = title.match(/(\d{1,5})/);
   const value = m ? m[1] : '';
-  return `RADARHOJE${value}`;
+  return `RADAR${value}`.slice(0, 10);
 }
 
 const STATUS_BADGE: Record<MlCoupon['status'], { label: string; variant: 'default' | 'accent' | 'destructive' | 'secondary' }> = {

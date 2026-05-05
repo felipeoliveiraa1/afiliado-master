@@ -399,7 +399,31 @@ export async function buildServer() {
     {
       schema: { params: z.object({ id: z.string() }) },
     },
-    async (req) => runCampaign(req.params.id),
+    async (req) => runCampaign(req.params.id, 1),
+  );
+
+  app.patch(
+    '/campaigns/:id',
+    {
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: z.object({ enabled: z.boolean().optional(), name: z.string().optional() }),
+      },
+    },
+    async (req) => prisma.campaign.update({ where: { id: req.params.id }, data: req.body }),
+  );
+
+  app.delete(
+    '/campaigns/:id',
+    {
+      schema: { params: z.object({ id: z.string() }) },
+    },
+    async (req) => {
+      // FK Dispatch.campaignId não tem cascade — limpa antes pra evitar P2003.
+      await prisma.dispatch.deleteMany({ where: { campaignId: req.params.id } });
+      await prisma.campaign.delete({ where: { id: req.params.id } });
+      return { deleted: true };
+    },
   );
 
   app.post(
@@ -604,7 +628,9 @@ export async function buildServer() {
     {
       schema: {
         params: z.object({ id: z.string() }),
-        body: z.object({ code: z.string().min(3).max(20).regex(/^[A-Za-z0-9]+$/) }),
+        // ML rejeita sufixos > 10 chars com "Invalid values in body object".
+        // Regex aceita só A-Z + 0-9. min 3 evita códigos genéricos demais.
+        body: z.object({ code: z.string().min(3).max(10).regex(/^[A-Z0-9]+$/) }),
       },
     },
     async (req, reply) => {

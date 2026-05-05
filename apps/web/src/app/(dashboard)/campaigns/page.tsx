@@ -82,6 +82,24 @@ export default function CampaignsPage(): React.ReactElement {
 
   const runNowMutation = useMutation({
     mutationFn: (id: string) => clientFetch(`/campaigns/${id}/run-now`, { method: 'POST' }),
+    onSuccess: () => campaigns.refetch(),
+  });
+
+  const toggleEnabledMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      clientFetch(`/campaigns/${id}`, { method: 'PATCH', body: { enabled } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      campaigns.refetch();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => clientFetch(`/campaigns/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      campaigns.refetch();
+    },
   });
 
   const toggleSource = (kind: string): void => {
@@ -279,6 +297,25 @@ export default function CampaignsPage(): React.ReactElement {
                       loading={runNowMutation.isPending && runNowMutation.variables === c.id}
                     >
                       <Play className="size-3.5" /> Run now
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toggleEnabledMutation.mutate({ id: c.id, enabled: !c.enabled })}
+                    >
+                      {c.enabled ? 'Pausar' : 'Ativar'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (confirm(`Excluir campanha "${c.name}"? Vai deletar todos os dispatches dela.`)) {
+                          deleteMutation.mutate(c.id);
+                        }
+                      }}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      Excluir
                     </Button>
                   </div>
                 </div>

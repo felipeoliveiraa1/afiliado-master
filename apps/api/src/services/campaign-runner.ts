@@ -10,15 +10,20 @@ export type CampaignRunResult = {
 };
 
 /**
- * Executa uma campanha agora: busca top N ofertas que batem os filtros,
- * cria/reusa Dispatches por (campaign × offer × channel), enfileira no
- * dispatchQueue. Idempotente — Dispatches já existentes não duplicam.
+ * Executa uma campanha agora: pega a PRÓXIMA oferta ainda não despachada
+ * pra essa campanha (ordem: maior score primeiro), cria Dispatches por
+ * channel, enfileira no dispatchQueue.
+ *
+ * Cada chamada despacha NO MÁXIMO `takeOffers` ofertas NOVAS — as já
+ * despachadas (qualquer status) ficam de fora. Isso evita o bug do upsert
+ * antigo, que após popular as top 10 nunca mais disparava nada (o cron
+ * pegava sempre as mesmas top 10 que já tinham dispatch criado).
  *
  * Usado por:
- *   - POST /campaigns/:id/run-now (handler manual no server.ts)
- *   - cron de campanhas (auto loop por intervalMinutes)
+ *   - POST /campaigns/:id/run-now (handler manual)
+ *   - cron de campanhas (auto loop por intervalMinutes — usa takeOffers=1)
  */
-export async function runCampaign(campaignId: string, takeOffers = 10): Promise<CampaignRunResult> {
+export async function runCampaign(campaignId: string, takeOffers = 1): Promise<CampaignRunResult> {
   const campaign = await prisma.campaign.findUniqueOrThrow({
     where: { id: campaignId },
     include: { channels: true },
@@ -33,6 +38,9 @@ export async function runCampaign(campaignId: string, takeOffers = 10): Promise<
     maxPrice?: number;
   }) ?? {};
 
+  // Sub-query: IDs de offers que JÁ têm dispatch criado pra essa campanha.
+  // Usa `none` (Prisma) — equivalente a NOT EXISTS no SQL. Garante que cada
+  // tick do cron pega uma offer fresh, sem repetir.
   const offers = await prisma.offer.findMany({
     where: {
       affiliateUrl: { not: null },
@@ -42,6 +50,8 @@ export async function runCampaign(campaignId: string, takeOffers = 10): Promise<
       source: filters.sources?.length
         ? { kind: { in: filters.sources as ('SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'PROMOBIT')[] } }
         : undefined,
+      // Filtro chave — exclui offers já despachadas nessa campanha (qualquer status).
+      dispatches: { none: { campaignId: campaign.id } },
     },
     orderBy: { score: 'desc' },
     take: takeOffers,
@@ -53,6 +63,8 @@ export async function runCampaign(campaignId: string, takeOffers = 10): Promise<
   const dispatchIds: string[] = [];
   for (const offer of offers) {
     for (const channel of campaign.channels) {
+      // Como filtramos NOT-dispatched no findMany, esses CREATEs são novos.
+      // Mas mantém upsert pra robustez contra race condition (2 workers).
       const d = await prisma.dispatch.upsert({
         where: {
           campaignId_offerId_channelId: {

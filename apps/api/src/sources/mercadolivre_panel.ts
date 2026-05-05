@@ -1020,6 +1020,41 @@ export async function listAvailableCoupons(): Promise<AvailableCouponsResponse> 
  *   - 409: código já existe (sufixo conflita com outro alias do afiliado)
  *   - 422: código inválido (caracteres especiais, comprimento)
  */
+/**
+ * Headers EXATOS do HAR capturado em /afiliados/coupons. ML valida múltiplos
+ * client hints + sec-fetch-* — replicar EXATAMENTE evita 400 "Service
+ * validation failed". Inclui priority + traceparent (ML pode usar pra rastrear
+ * sessão). Sem content-length (fetch calcula sozinho).
+ */
+function buildCreateCodeHeaders(cookie: string, csrfToken: string): Record<string, string> {
+  return {
+    accept: 'application/json, text/plain, */*',
+    'accept-language': 'en-US,en;q=0.9',
+    'content-type': 'application/json',
+    'device-memory': '16',
+    downlink: '10',
+    dpr: '1',
+    ect: '4g',
+    origin: 'https://www.mercadolivre.com.br',
+    priority: 'u=1, i',
+    referer: COUPONS_PAGE_URL,
+    rtt: '0',
+    'sec-ch-ua': '"Chromium";v="147", "Not.A/Brand";v="8"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-model': '""',
+    'sec-ch-ua-platform': '"macOS"',
+    'sec-ch-ua-platform-version': '"26.3.1"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
+    'user-agent':
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
+    'viewport-width': '1272',
+    'x-csrf-token': csrfToken,
+    cookie,
+  };
+}
+
 export async function generateMlCouponCode(args: {
   couponId: number;
   code: string;
@@ -1030,23 +1065,34 @@ export async function generateMlCouponCode(args: {
   // sessões longas e causar 400 "Service validation failed".
   const { csrfToken } = await getCsrfTokenAndTag(cookie, true);
   const body = JSON.stringify({ couponId: args.couponId, code: args.code });
-  logger.info({ body, codeLen: args.code.length, csrfLen: csrfToken.length }, 'ml create-code request');
+  logger.info(
+    { body, codeLen: args.code.length, csrfLen: csrfToken.length },
+    'ml create-code request',
+  );
   const res = await fetch(CREATE_CODE_URL, {
     method: 'POST',
-    headers: buildBrowserHeaders({
-      cookie,
-      csrfToken,
-      withJsonBody: true,
-      referer: COUPONS_PAGE_URL,
-    }),
+    headers: buildCreateCodeHeaders(cookie, csrfToken),
     body,
   });
   if (res.status === 401 || res.status === 403) handleAuthFailure(res.status);
   if (res.status === 429) handleRateLimit();
   const text = await res.text();
+  // CRÍTICO: log do response COMPLETO em qualquer erro pra debug.
+  // Sem isso a mensagem genérica do ML ("Service validation failed") não
+  // diz qual field rejeitou.
   if (!res.ok) {
+    logger.error(
+      {
+        status: res.status,
+        responseBody: text,
+        sentBody: body,
+        sentBodyLen: body.length,
+        codeLen: args.code.length,
+      },
+      'ml create-code FAILED — full diagnostic',
+    );
     throw new MercadoLivrePanelError(
-      `HTTP ${res.status} em create-code: ${text.slice(0, 200)}`,
+      `HTTP ${res.status} em create-code: ${text.slice(0, 400)}`,
       res.status === 409 ? 'conflict' : 'unknown',
     );
   }
