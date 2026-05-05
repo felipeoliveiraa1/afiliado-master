@@ -48,56 +48,180 @@ async function gql<T = unknown>(query: string, variables: Record<string, unknown
   return json.data as T;
 }
 
+/**
+ * Shopee Affiliate Open API — Get Product Offer List.
+ * Doc: https://affiliate.shopee.com.br/open_api/list?type=product_offer
+ *
+ * Campos importantes:
+ *   - commission: valor R$ (não rate)
+ *   - productCatIds: array Lv1/Lv2/Lv3 (categorias seller)
+ *   - shopType: [1]=Mall, [2]=Preferred, [4]=PreferredPlus
+ *   - priceDiscountRate: % off (Int 10 = 10%)
+ *   - sales: count vendas
+ *
+ * sortType:
+ *   1 = RELEVANCE_DESC (só com keyword)
+ *   2 = ITEM_SOLD_DESC (bestseller — DEFAULT)
+ *   5 = COMMISSION_DESC (mais lucrativo)
+ *
+ * Shopee NÃO tem cupom como ML — offerLink já vem com benefício embutido.
+ */
+type ShopeeFetchOpts = {
+  limit?: number;
+  keyword?: string;
+  productCatId?: number;
+  sortType?: number;
+  onlyMall?: boolean;
+  onlyKeySellers?: boolean;
+};
+
 export const shopeeSource: SourceAdapter = {
   kind: 'SHOPEE',
   async fetch(opts) {
-    const limit = opts?.limit ?? 50;
-    const keyword = opts?.keyword ?? '';
-    // Schema da Shopee Open API (descoberto por introspection — campos sem
-    // 'categoryId' que era erro 10010). Mantemos enxuto pra evitar erros
-    // de campo faltante. Pra adicionar mais campos (ex: couponInfo) rodar
-    // introspection: GET /sources/SHOPEE/introspect
-    const query = `
-      query ProductOfferV2($keyword: String, $limit: Int) {
-        productOfferV2(keyword: $keyword, limit: $limit, sortType: 2) {
-          nodes {
-            itemId
-            productName
-            commissionRate
-            sales
-            imageUrl
-            price
-            priceMin
-            priceMax
-            priceDiscountRate
-            ratingStar
-            shopId
-            shopName
-            offerLink
-            productLink
-          }
+    return fetchShopeeProducts(opts as ShopeeFetchOpts);
+  },
+};
+
+export async function fetchShopeeProducts(opts?: ShopeeFetchOpts): Promise<RawOffer[]> {
+  const limit = opts?.limit ?? 30;
+  const keyword = opts?.keyword ?? '';
+  const sortType = opts?.sortType ?? 2;
+  const productCatId = opts?.productCatId;
+  const isKeySeller = opts?.onlyKeySellers;
+
+  const query = `
+    query ProductOfferV2(
+      $keyword: String
+      $limit: Int
+      $sortType: Int
+      $productCatId: Int32
+      $isKeySeller: Bool
+    ) {
+      productOfferV2(
+        keyword: $keyword
+        limit: $limit
+        sortType: $sortType
+        productCatId: $productCatId
+        isKeySeller: $isKeySeller
+      ) {
+        nodes {
+          itemId
+          productName
+          commissionRate
+          sellerCommissionRate
+          shopeeCommissionRate
+          commission
+          sales
+          imageUrl
+          priceMin
+          priceMax
+          priceDiscountRate
+          ratingStar
+          shopId
+          shopName
+          shopType
+          productCatIds
+          offerLink
+          productLink
+          periodStartTime
+          periodEndTime
         }
+        pageInfo { page limit hasNextPage }
       }
-    `;
-    type Resp = { productOfferV2: { nodes: any[] } };
-    const data = await gql<Resp>(query, { keyword, limit });
-    const nodes = data.productOfferV2?.nodes ?? [];
-    return nodes.map<RawOffer>((n) => ({
+    }
+  `;
+  type Node = {
+    itemId: number;
+    productName: string;
+    commissionRate?: string;
+    sellerCommissionRate?: string;
+    shopeeCommissionRate?: string;
+    commission?: string;
+    sales?: number;
+    imageUrl?: string;
+    priceMin?: string;
+    priceMax?: string;
+    priceDiscountRate?: number;
+    ratingStar?: string;
+    shopId?: number;
+    shopName?: string;
+    shopType?: number[];
+    productCatIds?: number[];
+    offerLink?: string;
+    productLink?: string;
+    periodStartTime?: number;
+    periodEndTime?: number;
+  };
+  type Resp = { productOfferV2: { nodes: Node[] } };
+  const data = await gql<Resp>(query, {
+    keyword,
+    limit,
+    sortType,
+    productCatId,
+    isKeySeller,
+  });
+  const nodes = data.productOfferV2?.nodes ?? [];
+  let result = nodes.map<RawOffer>((n) => {
+    const price = Number(n.priceMin ?? '0');
+    const priceMax = n.priceMax ? Number(n.priceMax) : undefined;
+    const discountPct = n.priceDiscountRate ? Number(n.priceDiscountRate) : undefined;
+    // commissionRate vem como string decimal "0.0123" = 1.23%
+    const commissionPct = n.commissionRate ? Number(n.commissionRate) * 100 : undefined;
+    // shopType[0]==1 = Shopee Mall (oficial)
+    const isOfficialMall = Array.isArray(n.shopType) && n.shopType.includes(1);
+    return {
       externalId: String(n.itemId),
       title: n.productName,
       imageUrl: n.imageUrl,
-      price: Number(n.price ?? n.priceMin),
-      originalPrice: n.priceMax ? Number(n.priceMax) : undefined,
-      discountPct: n.priceDiscountRate ? Number(n.priceDiscountRate) : undefined,
-      url: n.productLink,
+      price,
+      originalPrice: priceMax && priceMax > price ? priceMax : undefined,
+      discountPct,
+      url: n.productLink ?? '',
+      // offerLink já vem com tag de afiliado + cashback embutido
       affiliateUrl: n.offerLink,
-      commissionPct: n.commissionRate ? Number(n.commissionRate) : undefined,
+      commissionPct,
       rating: n.ratingStar ? Number(n.ratingStar) : undefined,
-      salesCount: n.sales ? Number(n.sales) : undefined,
-      raw: n,
-    }));
-  },
-};
+      salesCount: n.sales,
+      category: n.productCatIds?.[0] ? String(n.productCatIds[0]) : undefined,
+      raw: {
+        ...n,
+        seller: n.shopName, // pra linha "Achado em Shopee na loja oficial X"
+        isOfficialMall,
+      },
+    };
+  });
+  if (opts?.onlyMall) {
+    result = result.filter(
+      (o) => (o.raw as { isOfficialMall?: boolean })?.isOfficialMall === true,
+    );
+  }
+  return result;
+}
+
+/**
+ * Encurta link Shopee com subIDs (UTM tracking). Útil pra:
+ *   - Identificar qual grupo WhatsApp clicou (subId = group_id)
+ *   - Métricas de conversão por canal via /conversionReport
+ *
+ * Aceita até 5 subIds — Shopee anexa como utm_content na URL.
+ */
+export async function generateShopeeShortLink(
+  originUrl: string,
+  subIds: string[] = [],
+): Promise<string> {
+  const mutation = `
+    mutation GenerateShortLink($input: ShortLinkInput!) {
+      generateShortLink(input: $input) {
+        shortLink
+      }
+    }
+  `;
+  type Resp = { generateShortLink: { shortLink: string } };
+  const data = await gql<Resp>(mutation, {
+    input: { originUrl, subIds: subIds.slice(0, 5) },
+  });
+  return data.generateShortLink.shortLink;
+}
 
 /**
  * Introspection do schema GraphQL da Shopee Open API.
