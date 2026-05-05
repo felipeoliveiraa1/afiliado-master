@@ -310,22 +310,30 @@ export async function buildServer() {
     {
       schema: {
         body: z.object({
+          ids: z.array(z.string()).optional(),
           source: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']).optional(),
           olderThanDays: z.number().int().positive().optional(),
         }),
       },
     },
     async (req) => {
-      // Limpeza em massa: por source ou por idade. Útil quando rodou um
-      // fetch ruim e quer recomeçar limpo.
-      const where = {
-        source: req.body.source ? { kind: req.body.source } : undefined,
-        fetchedAt: req.body.olderThanDays
-          ? { lt: new Date(Date.now() - req.body.olderThanDays * 86_400_000) }
-          : undefined,
-      };
-      const offers = await prisma.offer.findMany({ where, select: { id: true } });
-      const ids = offers.map((o) => o.id);
+      // 3 modos de limpeza em massa:
+      //   1) ids[] explícitos — UI checkbox selection (preferido)
+      //   2) source — todos de um marketplace
+      //   3) olderThanDays — limpeza por idade
+      let ids: string[];
+      if (req.body.ids?.length) {
+        ids = req.body.ids;
+      } else {
+        const where = {
+          source: req.body.source ? { kind: req.body.source } : undefined,
+          fetchedAt: req.body.olderThanDays
+            ? { lt: new Date(Date.now() - req.body.olderThanDays * 86_400_000) }
+            : undefined,
+        };
+        const offers = await prisma.offer.findMany({ where, select: { id: true } });
+        ids = offers.map((o) => o.id);
+      }
       await prisma.dispatch.deleteMany({ where: { offerId: { in: ids } } });
       await prisma.variant.deleteMany({ where: { offerId: { in: ids } } });
       await prisma.offer.deleteMany({ where: { id: { in: ids } } });

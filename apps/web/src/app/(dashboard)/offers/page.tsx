@@ -73,9 +73,48 @@ export default function OffersPage(): React.ReactElement {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['offers'] }),
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      clientFetch<{ deleted: number }>('/offers/bulk-delete', {
+        method: 'POST',
+        body: { ids },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['offers'] });
+      setSelected(new Set());
+    },
+  });
+
   const handleDelete = (id: string, title: string): void => {
     if (confirm(`Excluir "${title.slice(0, 60)}"? Vai apagar todos os dispatches dessa oferta também.`)) {
       deleteMutation.mutate(id);
+    }
+  };
+
+  // Bulk select state
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggleSelected = (id: string): void => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const selectAll = (): void => {
+    const allIds = (data ?? []).map((o) => o.id);
+    setSelected(
+      selected.size === allIds.length ? new Set() : new Set(allIds),
+    );
+  };
+  const handleBulkDelete = (): void => {
+    if (selected.size === 0) return;
+    if (
+      confirm(
+        `Excluir ${selected.size} oferta${selected.size === 1 ? '' : 's'}? Vai apagar dispatches relacionados também.`,
+      )
+    ) {
+      bulkDeleteMutation.mutate(Array.from(selected));
     }
   };
 
@@ -191,9 +230,41 @@ export default function OffersPage(): React.ReactElement {
         </Card>
       ) : view === 'grid' ? (
         <>
-          <div className="text-xs text-muted-foreground">
-            Mostrando {(data ?? []).length} oferta{(data ?? []).length !== 1 ? 's' : ''} (ordenadas por score)
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-muted-foreground">
+              Mostrando {(data ?? []).length} oferta{(data ?? []).length !== 1 ? 's' : ''} (ordenadas por score)
+            </div>
+            <Button size="sm" variant="ghost" onClick={selectAll}>
+              {selected.size === (data ?? []).length && (data ?? []).length > 0
+                ? 'Desmarcar todos'
+                : 'Selecionar todos'}
+            </Button>
           </div>
+          {/* Barra de ações em massa — aparece só com seleção */}
+          {selected.size > 0 && (
+            <div className="sticky top-2 z-10 flex items-center justify-between gap-3 rounded-lg border bg-accent/10 p-3 shadow-sm backdrop-blur">
+              <span className="text-sm font-medium">
+                {selected.size} oferta{selected.size === 1 ? '' : 's'} selecionada
+                {selected.size === 1 ? '' : 's'}
+              </span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setSelected(new Set())}>
+                  Limpar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleteMutation.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  <Trash2 className="mr-1 size-3.5" />
+                  {bulkDeleteMutation.isPending
+                    ? 'Excluindo...'
+                    : `Excluir ${selected.size}`}
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {(data ?? []).map((o) => (
               <OfferGridCard
@@ -201,17 +272,56 @@ export default function OffersPage(): React.ReactElement {
                 offer={o}
                 onSave={(patch) => updateMutation.mutate({ id: o.id, patch })}
                 onDelete={() => handleDelete(o.id, o.title)}
+                selected={selected.has(o.id)}
+                onToggleSelect={() => toggleSelected(o.id)}
               />
             ))}
           </div>
         </>
       ) : (
+        <>
+          {/* Barra de ações em massa — view tabela */}
+          {selected.size > 0 && (
+            <div className="sticky top-2 z-10 flex items-center justify-between gap-3 rounded-lg border bg-accent/10 p-3 shadow-sm backdrop-blur">
+              <span className="text-sm font-medium">
+                {selected.size} oferta{selected.size === 1 ? '' : 's'} selecionada
+                {selected.size === 1 ? '' : 's'}
+              </span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setSelected(new Set())}>
+                  Limpar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleteMutation.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  <Trash2 className="mr-1 size-3.5" />
+                  {bulkDeleteMutation.isPending
+                    ? 'Excluindo...'
+                    : `Excluir ${selected.size}`}
+                </Button>
+              </div>
+            </div>
+          )}
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                   <tr>
+                    <th className="px-3 py-3 text-center font-medium">
+                      <input
+                        type="checkbox"
+                        checked={
+                          selected.size === (data ?? []).length && (data ?? []).length > 0
+                        }
+                        onChange={selectAll}
+                        className="size-4 cursor-pointer"
+                        aria-label="Selecionar todos"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left font-medium">Produto</th>
                     <th className="px-4 py-3 text-left font-medium">Source</th>
                     <th className="px-4 py-3 text-right font-medium">Preço</th>
@@ -231,6 +341,8 @@ export default function OffersPage(): React.ReactElement {
                       odd={i % 2 === 1}
                       onSave={(patch) => updateMutation.mutate({ id: o.id, patch })}
                       onDelete={() => handleDelete(o.id, o.title)}
+                      selected={selected.has(o.id)}
+                      onToggleSelect={() => toggleSelected(o.id)}
                     />
                   ))}
                 </tbody>
@@ -238,6 +350,7 @@ export default function OffersPage(): React.ReactElement {
             </div>
           </CardContent>
         </Card>
+        </>
       )}
     </div>
   );
@@ -248,11 +361,15 @@ function OfferEditableRow({
   odd,
   onSave,
   onDelete,
+  selected,
+  onToggleSelect,
 }: {
   offer: OfferRow;
   odd: boolean;
   onSave: (patch: OfferPatch) => void;
   onDelete: () => void;
+  selected: boolean;
+  onToggleSelect: () => void;
 }): React.ReactElement {
   const [editingLink, setEditingLink] = useState(false);
   const [editingPromo, setEditingPromo] = useState(false);
@@ -280,7 +397,16 @@ function OfferEditableRow({
   };
 
   return (
-    <tr className={`border-b last:border-b-0 row-hover ${odd ? 'bg-muted/15' : ''}`}>
+    <tr className={`border-b last:border-b-0 row-hover ${odd ? 'bg-muted/15' : ''} ${selected ? 'bg-accent/10' : ''}`}>
+      <td className="px-3 py-3 text-center">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          className="size-4 cursor-pointer"
+          aria-label="Selecionar"
+        />
+      </td>
       <td className="px-4 py-3 max-w-[340px]">
         <div className="flex items-center gap-3">
           {offer.imageUrl ? (
@@ -461,10 +587,14 @@ function OfferGridCard({
   offer,
   onSave,
   onDelete,
+  selected,
+  onToggleSelect,
 }: {
   offer: OfferRow;
   onSave: (patch: OfferPatch) => void;
   onDelete: () => void;
+  selected: boolean;
+  onToggleSelect: () => void;
 }): React.ReactElement {
   const [editingLink, setEditingLink] = useState(false);
   const [linkValue, setLinkValue] = useState(offer.affiliateUrl ?? '');
@@ -476,7 +606,24 @@ function OfferGridCard({
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <div className="group flex flex-col rounded-xl border bg-card overflow-hidden transition-shadow hover:shadow-pop animate-fade-in-up">
+    <div
+      className={`group flex flex-col rounded-xl border-2 bg-card overflow-hidden transition-all animate-fade-in-up ${
+        selected ? 'border-accent shadow-pop ring-2 ring-accent/30' : 'border-border hover:shadow-pop'
+      }`}
+    >
+      {/* Checkbox de seleção — sempre visível, canto superior esquerdo */}
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        aria-label={selected ? 'Desmarcar' : 'Selecionar'}
+        className={`absolute z-10 ml-2 mt-2 grid size-7 place-items-center rounded-md border-2 bg-white/95 shadow transition-all ${
+          selected
+            ? 'border-accent bg-accent text-accent-foreground'
+            : 'border-border opacity-0 group-hover:opacity-100'
+        }`}
+      >
+        {selected ? <Check className="size-4" /> : null}
+      </button>
       <a href={offer.url} target="_blank" rel="noreferrer" className="relative block aspect-square overflow-hidden bg-muted">
         {offer.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -492,7 +639,7 @@ function OfferGridCard({
           </div>
         )}
         {offer.discountPct ? (
-          <span className="absolute top-2 left-2 rounded-md bg-success px-2 py-0.5 text-xs font-bold text-success-foreground">
+          <span className="absolute top-2 left-12 rounded-md bg-success px-2 py-0.5 text-xs font-bold text-success-foreground">
             -{formatPct(offer.discountPct)}
           </span>
         ) : null}
