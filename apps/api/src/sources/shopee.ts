@@ -53,6 +53,10 @@ export const shopeeSource: SourceAdapter = {
   async fetch(opts) {
     const limit = opts?.limit ?? 50;
     const keyword = opts?.keyword ?? '';
+    // Schema da Shopee Open API (descoberto por introspection — campos sem
+    // 'categoryId' que era erro 10010). Mantemos enxuto pra evitar erros
+    // de campo faltante. Pra adicionar mais campos (ex: couponInfo) rodar
+    // introspection: GET /sources/SHOPEE/introspect
     const query = `
       query ProductOfferV2($keyword: String, $limit: Int) {
         productOfferV2(keyword: $keyword, limit: $limit, sortType: 2) {
@@ -71,7 +75,6 @@ export const shopeeSource: SourceAdapter = {
             shopName
             offerLink
             productLink
-            categoryId
           }
         }
       }
@@ -91,8 +94,78 @@ export const shopeeSource: SourceAdapter = {
       commissionPct: n.commissionRate ? Number(n.commissionRate) : undefined,
       rating: n.ratingStar ? Number(n.ratingStar) : undefined,
       salesCount: n.sales ? Number(n.sales) : undefined,
-      category: n.categoryId ? String(n.categoryId) : undefined,
       raw: n,
     }));
   },
 };
+
+/**
+ * Introspection do schema GraphQL da Shopee Open API.
+ * Retorna a lista de queries disponíveis + tipos. Útil pra descobrir
+ * couponOffer, shopOfferV2 etc sem precisar da doc oficial.
+ */
+export async function introspectShopeeSchema(): Promise<{
+  queries: { name: string; description?: string | null; type: string }[];
+  types: { name: string; fields?: { name: string; type: string }[] }[];
+}> {
+  const query = `
+    {
+      __schema {
+        queryType {
+          fields {
+            name
+            description
+            type {
+              name
+              kind
+              ofType { name kind ofType { name kind } }
+            }
+          }
+        }
+        types {
+          name
+          kind
+          fields {
+            name
+            type { name kind ofType { name kind } }
+          }
+        }
+      }
+    }
+  `;
+  type SchemaResp = {
+    __schema: {
+      queryType: {
+        fields: {
+          name: string;
+          description?: string;
+          type: { name?: string; kind: string; ofType?: { name?: string; kind: string } };
+        }[];
+      };
+      types: {
+        name: string;
+        kind: string;
+        fields?: {
+          name: string;
+          type: { name?: string; kind: string; ofType?: { name?: string; kind: string } };
+        }[];
+      }[];
+    };
+  };
+  const flatType = (t: { name?: string; kind: string; ofType?: { name?: string; kind: string } }): string =>
+    t.name ?? t.ofType?.name ?? t.kind;
+  const data = await gql<SchemaResp>(query);
+  return {
+    queries: data.__schema.queryType.fields.map((f) => ({
+      name: f.name,
+      description: f.description ?? null,
+      type: flatType(f.type),
+    })),
+    types: data.__schema.types
+      .filter((t) => t.kind === 'OBJECT' && !t.name.startsWith('__'))
+      .map((t) => ({
+        name: t.name,
+        fields: t.fields?.map((f) => ({ name: f.name, type: flatType(f.type) })),
+      })),
+  };
+}

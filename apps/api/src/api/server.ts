@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db.js';
 import { evolution } from '@/lib/evolution.js';
 import { fetchQueue, dispatchQueue } from '@/queue/queues.js';
 import { validateShopeeCookie } from '@/sources/shopee_panel.js';
+import { introspectShopeeSchema } from '@/sources/shopee.js';
 import {
   defaultCouponSuffix,
   generateMlCouponCode,
@@ -497,6 +498,10 @@ export async function buildServer() {
       return { deleted: true };
     },
   );
+
+  // Introspection do schema GraphQL Shopee — útil pra descobrir queries
+  // como couponOffer, shopOfferV2 etc sem precisar da doc oficial.
+  app.get('/sources/SHOPEE/introspect', async () => introspectShopeeSchema());
 
   app.post(
     '/sources/SHOPEE/validate-cookie',
