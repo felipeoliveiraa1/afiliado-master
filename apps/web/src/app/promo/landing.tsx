@@ -7,18 +7,18 @@ type Props = {
   groupLink: string;
   totalVagas: number;
   vagasBase: number;
-  deadlineHours: number;
+  deadlineSeconds: number;
 };
 
 export function PromoLanding({
   groupLink,
   totalVagas,
   vagasBase,
-  deadlineHours,
+  deadlineSeconds,
 }: Props): React.ReactElement {
-  // Timer countdown — começa em deadlineHours pra cada visitante
+  // Timer countdown — começa em deadlineSeconds pra cada visitante
   // (sessão do navegador, persiste em localStorage pra mesma session continuar)
-  const [secondsLeft, setSecondsLeft] = useState<number>(deadlineHours * 3600);
+  const [secondsLeft, setSecondsLeft] = useState<number>(deadlineSeconds);
   const [vagas, setVagas] = useState<number>(vagasBase);
 
   useEffect(() => {
@@ -28,11 +28,11 @@ export function PromoLanding({
     if (saved) {
       target = Number(saved);
       if (target < Date.now()) {
-        target = Date.now() + deadlineHours * 3600 * 1000;
+        target = Date.now() + deadlineSeconds * 1000;
         window.localStorage.setItem(key, String(target));
       }
     } else {
-      target = Date.now() + deadlineHours * 3600 * 1000;
+      target = Date.now() + deadlineSeconds * 1000;
       if (typeof window !== 'undefined') window.localStorage.setItem(key, String(target));
     }
     const update = (): void => {
@@ -42,7 +42,7 @@ export function PromoLanding({
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [deadlineHours]);
+  }, [deadlineSeconds]);
 
   // Vagas — incrementa ~1 a cada 8-25s pra simular preenchimento orgânico.
   // Para quando chegar a totalVagas - 5 (sempre fica "vagas finais").
@@ -98,11 +98,21 @@ export function PromoLanding({
               ⏰ Inscrições encerram em
             </p>
             <div className="flex justify-center gap-2 sm:gap-3">
-              <TimeBox value={hours} label="horas" />
-              <span className="text-2xl font-bold text-[#A58B7E] self-center">:</span>
-              <TimeBox value={mins} label="min" />
-              <span className="text-2xl font-bold text-[#A58B7E] self-center">:</span>
-              <TimeBox value={secs} label="seg" />
+              {hours > 0 ? (
+                <>
+                  <TimeBox value={hours} label="horas" />
+                  <span className="text-2xl font-bold text-[#A58B7E] self-center">:</span>
+                  <TimeBox value={mins} label="min" />
+                  <span className="text-2xl font-bold text-[#A58B7E] self-center">:</span>
+                  <TimeBox value={secs} label="seg" />
+                </>
+              ) : (
+                <>
+                  <TimeBoxLarge value={mins} label="minutos" />
+                  <span className="text-4xl font-bold text-[#D89399] self-center">:</span>
+                  <TimeBoxLarge value={secs} label="segundos" />
+                </>
+              )}
             </div>
           </div>
 
@@ -163,6 +173,17 @@ function TimeBox({ value, label }: { value: number; label: string }): React.Reac
         {String(value).padStart(2, '0')}
       </span>
       <span className="text-[10px] uppercase tracking-wider text-[#A58B7E]">{label}</span>
+    </div>
+  );
+}
+
+function TimeBoxLarge({ value, label }: { value: number; label: string }): React.ReactElement {
+  return (
+    <div className="flex flex-col items-center min-w-[5rem] sm:min-w-[6rem]">
+      <span className="text-5xl sm:text-6xl font-bold text-[#D89399] tabular-nums leading-none">
+        {String(value).padStart(2, '0')}
+      </span>
+      <span className="text-[11px] uppercase tracking-wider text-[#A58B7E] mt-1">{label}</span>
     </div>
   );
 }
