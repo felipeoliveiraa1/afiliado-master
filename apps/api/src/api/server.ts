@@ -316,28 +316,39 @@ export async function buildServer() {
         }),
       },
     },
-    async (req) => {
-      // 3 modos de limpeza em massa:
+    async (req, reply) => {
+      // 3 modos de limpeza em massa (mutuamente exclusivos):
       //   1) ids[] explícitos — UI checkbox selection (preferido)
       //   2) source — todos de um marketplace
       //   3) olderThanDays — limpeza por idade
+      //
+      // SEGURANÇA: rejeita se TODOS os filtros vazios (evita apagar tudo).
+      const hasIds = Array.isArray(req.body.ids) && req.body.ids.length > 0;
+      const hasSource = Boolean(req.body.source);
+      const hasAge = Boolean(req.body.olderThanDays);
+      if (!hasIds && !hasSource && !hasAge) {
+        return reply.code(400).send({
+          error: 'Nada filtrado — passe ids[], source ou olderThanDays explicitamente',
+        });
+      }
       let ids: string[];
-      if (req.body.ids?.length) {
-        ids = req.body.ids;
+      if (hasIds) {
+        ids = req.body.ids!;
       } else {
         const where = {
-          source: req.body.source ? { kind: req.body.source } : undefined,
-          fetchedAt: req.body.olderThanDays
-            ? { lt: new Date(Date.now() - req.body.olderThanDays * 86_400_000) }
+          source: hasSource ? { kind: req.body.source } : undefined,
+          fetchedAt: hasAge
+            ? { lt: new Date(Date.now() - req.body.olderThanDays! * 86_400_000) }
             : undefined,
         };
         const offers = await prisma.offer.findMany({ where, select: { id: true } });
         ids = offers.map((o) => o.id);
       }
+      if (ids.length === 0) return { deleted: 0 };
       await prisma.dispatch.deleteMany({ where: { offerId: { in: ids } } });
       await prisma.variant.deleteMany({ where: { offerId: { in: ids } } });
-      await prisma.offer.deleteMany({ where: { id: { in: ids } } });
-      return { deleted: ids.length };
+      const result = await prisma.offer.deleteMany({ where: { id: { in: ids } } });
+      return { deleted: result.count };
     },
   );
 
