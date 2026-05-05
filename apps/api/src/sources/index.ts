@@ -1,16 +1,16 @@
 import type { SourceKind } from '@prisma/client';
-import { env } from '@/config/env.js';
 import { logger } from '@/lib/logger.js';
 import { getSettingsSection } from '@/lib/settings.js';
 import { shopeeSource } from './shopee.js';
 import { mercadoLivreSource } from './mercadolivre.js';
-import { mercadoLivreApifySource } from './mercadolivre-apify.js';
 import { promobitSource } from './promobit.js';
 import { amazonPaapiSource } from './amazon_paapi.js';
 import type { SourceAdapter } from './types.js';
 
-const mercadoLivreAdapter: SourceAdapter =
-  env.MERCADOLIVRE_SCRAPER === 'apify' ? mercadoLivreApifySource : mercadoLivreSource;
+// ML: usa só API pública como fallback. O caminho principal é o cookie
+// panel (mercadolivre_panel.ts) chamado direto pelo search-by-category.
+// Apify-ML foi removido (dead code — nunca foi usado em prod).
+const mercadoLivreAdapter: SourceAdapter = mercadoLivreSource;
 
 /**
  * Amazon: provider switch via settings.marketplaces.amazonProvider

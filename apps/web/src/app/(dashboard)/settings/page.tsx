@@ -87,21 +87,9 @@ const SECTIONS: SectionMeta[] = [
       { key: 'maxIntervalSec', label: 'Intervalo máx. (s)', type: 'number' },
     ],
   },
-  {
-    key: 'shopee_panel',
-    title: 'Shopee Panel (cookie — fallback)',
-    description: 'Cookie do painel affiliate.shopee. Use só se a Open API não liberar — risco de banir conta.',
-    icon: Cookie,
-    fields: [
-      { key: 'autoEnabled', label: 'Auto-gerar shortlinks', type: 'boolean' },
-      { key: 'cookie', label: 'Cookie completo', secret: true, type: 'textarea' },
-      { key: 'generateEndpoint', label: 'Endpoint de geração (do HAR)', placeholder: 'https://affiliate.shopee.com.br/api/...' },
-      { key: 'csrfToken', label: 'CSRF token (do HAR)', secret: true },
-      { key: 'dailyLimit', label: 'Limite diário', type: 'number' },
-      { key: 'minIntervalSec', label: 'Intervalo mín. (s)', type: 'number' },
-      { key: 'maxIntervalSec', label: 'Intervalo máx. (s)', type: 'number' },
-    ],
-  },
+  // Shopee Panel (cookie hijacking) — REMOVIDO da UI. Open API GraphQL
+  // (App ID + Secret) substitui completamente. Código mantido em
+  // shopee_panel.ts como dead-stub pra não quebrar imports antigos.
   {
     key: 'marketplaces',
     title: '🟡 Mercado Livre',

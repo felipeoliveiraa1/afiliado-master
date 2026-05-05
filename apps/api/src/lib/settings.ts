@@ -57,10 +57,6 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
   marketplaces: {
     amazonAffiliateTag: env.AMAZON_AFFILIATE_TAG,
     mercadoLivreAffiliateTag: env.MERCADOLIVRE_AFFILIATE_TAG,
-    apifyToken: env.APIFY_TOKEN,
-    apifyMercadoLivreActor: env.APIFY_MERCADOLIVRE_ACTOR,
-    mercadoLivreScraper: env.MERCADOLIVRE_SCRAPER,
-    mercadoLivreApifyStartUrls: env.MERCADOLIVRE_APIFY_START_URLS,
     // Amazon PA-API (oficial). Provider switch: 'paapi' | 'disabled'
     // Default 'disabled' — só liga quando você bater 10 vendas qualificadas
     // em 180 dias e Amazon BR liberar PA-API pra você.
