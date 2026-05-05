@@ -1,22 +1,24 @@
 /**
- * Formatação da mensagem de oferta no padrão usado nos grupos de WhatsApp:
+ * Formatação de mensagem de oferta no padrão dos grupos brasileiros
+ * (referência: @achadinhoo_do_bebe / DivulgaLinks):
  *
- *   {HOOK LINE EM CAPS COM 1 EMOJI}
+ *   {HOOK EM CAPS} 😍
  *
  *   🛍️ {title}
  *
- *   de R$ {originalPrice}
- *   💥 por R$ {price}
- *   💳 ou {installments}x de R$ {installmentValue} sem juros
+ *   De: R$ {originalPrice} ❌
+ *   💸 Por: R$ {priceWithCoupon} com cupom
  *
- *   🎟️ Use o cupom: {coupon}
+ *   🎟️ Use o cupom {couponCode} onde tem cupom Shopee
  *
- *   📦 {link}
+ *   🔗 Link para comprar:
  *
- *   ⚠️ Promoção sujeita a alteração a qualquer momento.
+ *   {link}
  *
- * Linhas opcionais (originalPrice, installments, coupon) são omitidas quando
- * o dado não estiver presente — sem deixar linhas em branco sobrando.
+ *   Siga nosso perfil:
+ *   @{instagramHandle}
+ *
+ * Linhas opcionais omitidas quando dados ausentes.
  */
 
 const CURRENCY_LOCALE = 'pt-BR';
@@ -27,87 +29,126 @@ const CURRENCY_OPTIONS: Intl.NumberFormatOptions = {
   maximumFractionDigits: 2,
 };
 
-const DISCLAIMER = '⚠️ Promoção sujeita a alteração a qualquer momento.';
+export type CouponConfig = {
+  code: string | null;
+  type: 'PERCENT' | 'FIXED';
+  value: number;
+  minPurchase?: number | null;
+  maxDiscount?: number | null;
+};
+
+export type CouponApplied = {
+  applies: boolean;
+  discountValue: number;
+  finalPrice: number;
+};
+
+/**
+ * Aplica cupom num preço (lógica do DivulgaLinks):
+ * - PERCENT: multiplica % e limita ao maxDiscount (se setado)
+ * - FIXED: subtrai valor direto
+ * - Verifica minPurchase: se preço < mínimo, retorna applies=false
+ */
+export function applyCoupon(price: number, coupon: CouponConfig): CouponApplied {
+  if (coupon.minPurchase != null && price < coupon.minPurchase) {
+    return { applies: false, discountValue: 0, finalPrice: price };
+  }
+  let discount: number;
+  if (coupon.type === 'PERCENT') {
+    discount = price * (coupon.value / 100);
+    if (coupon.maxDiscount != null) {
+      discount = Math.min(discount, coupon.maxDiscount);
+    }
+  } else {
+    discount = coupon.value;
+  }
+  // Não permite desconto maior que o preço
+  discount = Math.min(discount, price);
+  return {
+    applies: true,
+    discountValue: Math.round(discount * 100) / 100,
+    finalPrice: Math.max(0, Math.round((price - discount) * 100) / 100),
+  };
+}
 
 export type FormatOfferInput = {
   readonly title: string;
   readonly price: number;
   readonly originalPrice?: number | null;
+  /** Preço final com cupom aplicado (já calculado). Se null/igual, mostra só price. */
+  readonly priceWithCoupon?: number | null;
+  /** Code do cupom (digitável). null se cupom é automático ou ausente. */
+  readonly couponCode?: string | null;
   readonly installments?: number | null;
-  readonly coupon?: string | null;
   readonly hookLine?: string | null;
   readonly link: string;
-  /** Nome do vendedor (ex: "Decco Moda Íntima"). Quando presente, gera a linha
-   * "Achado em Mercado Livre na loja oficial X" antes do link — aumenta
-   * credibilidade no padrão dos grupos brasileiros. */
-  readonly sellerName?: string | null;
-  /** Nome da source (ex: "Mercado Livre", "Amazon"). Usado junto do sellerName. */
-  readonly sourceName?: string | null;
+  readonly instagramHandle?: string | null;
 };
 
 export function formatOfferMessage(input: FormatOfferInput): string {
   const sections: string[] = [];
-  const hook = pickHookLine(input);
-  if (hook) sections.push(hook);
+
+  // 1. Hook (caps lock)
+  if (input.hookLine?.trim()) {
+    sections.push(input.hookLine.trim().replace(/[\r\n]+/g, ' ').slice(0, 120).toUpperCase());
+  }
+
+  // 2. Título
   sections.push(`🛍️ ${input.title.trim()}`);
-  sections.push(buildPriceBlock(input));
-  const couponLine = buildCouponLine(input.coupon);
-  if (couponLine) sections.push(couponLine);
-  const sellerLine = buildSellerLine(input.sellerName, input.sourceName);
-  if (sellerLine) sections.push(sellerLine);
-  sections.push(`📦 ${input.link}`);
-  sections.push(DISCLAIMER);
+
+  // 3. Bloco de preços (com riscado quando há original ou cupom)
+  const priceLines: string[] = [];
+  const showOriginal =
+    typeof input.originalPrice === 'number' && input.originalPrice > input.price;
+  const hasCouponPrice =
+    typeof input.priceWithCoupon === 'number' && input.priceWithCoupon < input.price;
+  if (showOriginal) {
+    priceLines.push(`De: ${formatBRL(input.originalPrice as number)} ❌`);
+  } else if (hasCouponPrice) {
+    // Sem original mas tem cupom → mostra preço normal como riscado
+    priceLines.push(`De: ${formatBRL(input.price)} ❌`);
+  }
+  if (hasCouponPrice) {
+    priceLines.push(`💸 Por: ${formatBRL(input.priceWithCoupon as number)} com cupom`);
+  } else {
+    priceLines.push(`💸 Por: ${formatBRL(input.price)}`);
+  }
+  const installmentLine = buildInstallmentLine(
+    hasCouponPrice ? (input.priceWithCoupon as number) : input.price,
+    input.installments,
+  );
+  if (installmentLine) priceLines.push(installmentLine);
+  sections.push(priceLines.join('\n'));
+
+  // 4. Cupom digitável (só quando tem code — cupons automáticos não exibem essa linha)
+  if (input.couponCode?.trim()) {
+    sections.push(`🎟️ Use o cupom ${input.couponCode.trim().toUpperCase()} onde tem cupom Shopee`);
+  }
+
+  // 5. Link com label
+  sections.push(`🔗 Link para comprar:\n\n${input.link}`);
+
+  // 6. Footer Instagram
+  if (input.instagramHandle?.trim()) {
+    const handle = input.instagramHandle.trim().replace(/^@/, '');
+    sections.push(`Siga nosso perfil:\n@${handle}`);
+  }
+
   return sections.join('\n\n');
 }
 
-function buildSellerLine(
-  sellerName: string | null | undefined,
-  sourceName: string | null | undefined,
+function buildInstallmentLine(
+  price: number,
+  installments: number | null | undefined,
 ): string | null {
-  const seller = sellerName?.trim();
-  if (!seller) return null;
-  const source = sourceName?.trim() || 'Mercado Livre';
-  return `Achado em ${source} na loja oficial ${seller}`;
-}
-
-function pickHookLine(input: FormatOfferInput): string | null {
-  const raw = input.hookLine?.trim();
-  if (!raw) return null;
-  const stripped = raw.replace(/[\r\n]+/g, ' ').slice(0, 120);
-  return stripped.toUpperCase();
-}
-
-function buildPriceBlock(input: FormatOfferInput): string {
-  const lines: string[] = [];
-  if (isValidOriginalPrice(input.originalPrice, input.price)) {
-    lines.push(`de ${formatBRL(input.originalPrice as number)}`);
-  }
-  lines.push(`💥 por ${formatBRL(input.price)}`);
-  const installmentLine = buildInstallmentLine(input.price, input.installments);
-  if (installmentLine) lines.push(installmentLine);
-  return lines.join('\n');
-}
-
-function buildInstallmentLine(price: number, installments: number | null | undefined): string | null {
   if (!installments || installments < 2) return null;
   const value = price / installments;
   return `💳 ou ${installments}x de ${formatBRL(value)} sem juros`;
 }
 
 /**
- * Template de "alerta de cupom" (post dedicado, não produto). Estilo dos
- * grupos brasileiros tipo achadinhoo_do_bebe:
- *
- *   SAIU CUPOM CORREEE 🚨
- *
- *   💸 R$5 OFF
- *   🎯 Em compras a partir de R$20
- *   🎟️ Código: OLH4CUP0M5AFF
- *
- *   Copie e cole aqui:
- *   https://s.shopee.com.br/5q4m7dNQnW
- *
- *   ⚠️ Promoção sujeita a alteração a qualquer momento.
+ * Template de "alerta de cupom" — post DEDICADO a cupom (não a produto).
+ * Estilo: "SAIU CUPOM CORREEE 🚨".
  */
 export function formatCouponAlert(input: {
   code: string;
@@ -115,6 +156,7 @@ export function formatCouponAlert(input: {
   description?: string | null;
   validUntil?: Date | null;
   shortLink?: string | null;
+  instagramHandle?: string | null;
 }): string {
   const sections: string[] = ['SAIU CUPOM CORREEE 🚨'];
   if (input.discountText) sections.push(`💸 ${input.discountText.toUpperCase()}`);
@@ -125,18 +167,11 @@ export function formatCouponAlert(input: {
     const formatted = input.validUntil.toLocaleDateString('pt-BR');
     sections.push(`⏰ Válido até ${formatted}`);
   }
-  sections.push(DISCLAIMER);
+  if (input.instagramHandle?.trim()) {
+    const handle = input.instagramHandle.trim().replace(/^@/, '');
+    sections.push(`Siga nosso perfil:\n@${handle}`);
+  }
   return sections.join('\n\n');
-}
-
-function buildCouponLine(coupon: string | null | undefined): string | null {
-  const cleaned = coupon?.trim();
-  if (!cleaned) return null;
-  return `🎟️ Use o cupom: ${cleaned.toUpperCase()}`;
-}
-
-function isValidOriginalPrice(original: number | null | undefined, price: number): boolean {
-  return typeof original === 'number' && original > price;
 }
 
 function formatBRL(value: number): string {

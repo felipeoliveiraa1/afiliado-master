@@ -197,25 +197,31 @@ model MlCoupon {
 /// Cupons Shopee cadastrados manualmente. Diferente do MlCoupon porque
 /// Open API Shopee NÃO expõe códigos — afiliado recebe via email/app e
 /// cola aqui. Match automático com offer.raw.seller no dispatcher.
+/// Cupons Shopee — modelo inspirado no DivulgaLinks.
+/// Sistema calcula o preço final aplicando type/value/maxDiscount/minPurchase.
+/// `code` opcional: vazio = cupom aplicado AUTO no checkout, preenchido = digitável.
 model ShopeeCoupon {
   id            String    @id @default(cuid())
-  code          String    @unique  // ex: "M0D4555HP" — único pra evitar duplicatas
-  description   String?   // ex: "20% off + frete grátis em moda"
-  /// Nome da loja Shopee. Quando NULL/vazio, aplica em QUALQUER offer Shopee
-  /// sem outro cupom específico (cupom de plataforma).
+  code          String?   @unique  // null = automático; preenchido = digitável
+  description   String?
+  /// 'PERCENT' (25 = 25%) ou 'FIXED' (35 = R$35 fixo)
+  type          String    @default("PERCENT")
+  /// Número: 25 quando PERCENT, ou 35 quando FIXED
+  value         Float     @default(0)
+  /// Compra mínima pra cupom valer (R$). null = sem mínimo
+  minPurchase   Float?
+  /// Teto do desconto pra cupons %. Ex: cupom 25% mas máx R$10 → cap em R$10
+  maxDiscount   Float?
+  /// Display textual livre (ex: "25% off limitado a R$10"). Opcional.
+  discountText  String?
   seller        String?
-  /// % ou R$ — só pra display, não há cálculo automático
-  discountText  String?   // "20% off", "R$30 off", "Frete grátis"
-  /// URL externa de imagem pra enviar junto no alerta (banner do cupom).
-  /// Quando presente, dispatch usa sendMedia em vez de sendText.
   imageUrl      String?
   validUntil    DateTime?
   enabled       Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  @@index([seller, enabled])
-  @@index([validUntil])
+  @@index([enabled, validUntil])
 }
 
 /// Nicho = preset reutilizável de filtros (categorias por marketplace +

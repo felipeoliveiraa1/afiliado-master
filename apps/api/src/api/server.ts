@@ -1019,34 +1019,43 @@ export async function buildServer() {
     {
       schema: {
         body: z.object({
-          code: z.string().min(3).max(40),
+          code: z.string().min(3).max(40).optional(),
           description: z.string().max(200).optional(),
+          type: z.enum(['PERCENT', 'FIXED']).default('PERCENT'),
+          value: z.number().min(0).max(10000),
+          minPurchase: z.number().min(0).optional(),
+          maxDiscount: z.number().min(0).optional(),
           seller: z.string().max(100).optional(),
-          discountText: z.string().max(40).optional(),
+          discountText: z.string().max(80).optional(),
           imageUrl: z.string().url().optional(),
           validUntil: z.string().datetime().optional(),
         }),
       },
     },
     async (req) => {
-      return prisma.shopeeCoupon.upsert({
-        where: { code: req.body.code.toUpperCase() },
-        create: {
-          code: req.body.code.toUpperCase(),
-          description: req.body.description,
-          seller: req.body.seller,
-          discountText: req.body.discountText,
-          imageUrl: req.body.imageUrl,
-          validUntil: req.body.validUntil ? new Date(req.body.validUntil) : null,
-        },
-        update: {
-          description: req.body.description,
-          seller: req.body.seller,
-          discountText: req.body.discountText,
-          imageUrl: req.body.imageUrl,
-          validUntil: req.body.validUntil ? new Date(req.body.validUntil) : null,
-        },
-      });
+      const code = req.body.code ? req.body.code.toUpperCase() : null;
+      const data = {
+        code,
+        description: req.body.description,
+        type: req.body.type,
+        value: req.body.value,
+        minPurchase: req.body.minPurchase,
+        maxDiscount: req.body.maxDiscount,
+        seller: req.body.seller,
+        discountText: req.body.discountText,
+        imageUrl: req.body.imageUrl,
+        validUntil: req.body.validUntil ? new Date(req.body.validUntil) : null,
+      };
+      // Upsert por code SE tiver code; senão sempre cria novo (cupons automáticos
+      // sem code não dedupam — múltiplos auto-coupons podem coexistir).
+      if (code) {
+        return prisma.shopeeCoupon.upsert({
+          where: { code },
+          create: data,
+          update: data,
+        });
+      }
+      return prisma.shopeeCoupon.create({ data });
     },
   );
 
@@ -1089,6 +1098,11 @@ export async function buildServer() {
       if (!channel?.whatsappGroupId) {
         return reply.code(400).send({ error: 'canal sem whatsappGroupId' });
       }
+      if (!coupon.code) {
+        return reply.code(400).send({
+          error: 'Cupom sem code não pode ser disparado como alerta (é automático no checkout)',
+        });
+      }
       const { generateShopeeShortLink } = await import('@/sources/shopee.js');
       const { formatCouponAlert } = await import('@/dispatcher/format.js');
       const { evolution } = await import('@/lib/evolution.js');
@@ -1098,7 +1112,6 @@ export async function buildServer() {
           coupon.code,
         ]);
       } catch (err) {
-        // Sem shortlink não é fatal — manda só o código
         app.log.warn({ err }, 'failed to generate shortlink for coupon alert');
       }
       const text = formatCouponAlert({
@@ -1284,7 +1297,7 @@ export async function buildServer() {
         price: Number(offer.price),
         originalPrice: offer.originalPrice ? Number(offer.originalPrice) : null,
         installments: offer.installments,
-        coupon: offer.coupon,
+        couponCode: offer.coupon,
         hookLine: variant?.caption ?? null,
         link: previewLink,
       });
@@ -1331,7 +1344,7 @@ export async function buildServer() {
         price: Number(offer.price),
         originalPrice: offer.originalPrice ? Number(offer.originalPrice) : null,
         installments: offer.installments,
-        coupon: offer.coupon,
+        couponCode: offer.coupon,
         hookLine: variant?.caption ?? '[TESTE] OFERTA DE EXEMPLO🚀',
         link: offer.affiliateUrl ?? offer.url,
       });

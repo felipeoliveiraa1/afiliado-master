@@ -2,7 +2,7 @@ import { env } from '@/config/env.js';
 import { prisma } from '@/lib/db.js';
 import { logger } from '@/lib/logger.js';
 import { evolution } from '@/lib/evolution.js';
-import { formatOfferMessage } from '@/dispatcher/format.js';
+import { applyCoupon, formatOfferMessage } from '@/dispatcher/format.js';
 import { getSettingsSection } from '@/lib/settings.js';
 import type { Channel, Dispatch, Offer } from '@prisma/client';
 
@@ -177,24 +177,56 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     where: { offerId: dispatch.offerId, channelKind: dispatch.channel.kind },
     orderBy: { createdAt: 'desc' },
   });
-  // Link direto — click tracking removido (era opt-in, ninguém usava).
   const trackingLink = dispatch.offer.affiliateUrl ?? dispatch.offer.url;
-  // Extrai nome do vendedor do raw da offer (populado pelo seller hidratação
-  // em ML, ou pelo PA-API ByLineInfo.Brand.DisplayValue em Amazon).
-  const sellerName =
-    (dispatch.offer.raw as Record<string, unknown> | null)?.seller as string | undefined;
   const source = await prisma.source.findUnique({ where: { id: dispatch.offer.sourceId } });
-  const sourceName = source ? SOURCE_LABELS[source.kind] ?? source.kind : null;
+  const price = Number(dispatch.offer.price);
+
+  // Aplica cupom Shopee — pega o que dá MAIOR desconto e é elegível (price >= minPurchase).
+  // Sistema testa todos cupons ativos e escolhe o melhor pra esse produto específico.
+  let couponCode: string | null = null;
+  let priceWithCoupon: number | null = null;
+  if (source?.kind === 'SHOPEE') {
+    const activeCoupons = await prisma.shopeeCoupon.findMany({
+      where: {
+        enabled: true,
+        OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
+      },
+    });
+    let best: { code: string | null; finalPrice: number; discount: number } | null = null;
+    for (const c of activeCoupons) {
+      const result = applyCoupon(price, {
+        code: c.code,
+        type: (c.type === 'FIXED' ? 'FIXED' : 'PERCENT') as 'PERCENT' | 'FIXED',
+        value: c.value,
+        minPurchase: c.minPurchase,
+        maxDiscount: c.maxDiscount,
+      });
+      if (result.applies && result.discountValue > 0) {
+        if (!best || result.discountValue > best.discount) {
+          best = { code: c.code, finalPrice: result.finalPrice, discount: result.discountValue };
+        }
+      }
+    }
+    if (best) {
+      couponCode = best.code;
+      priceWithCoupon = best.finalPrice;
+    }
+  } else if (dispatch.offer.coupon) {
+    // ML / outros: cupom já vem como texto no offer.coupon (ex: alias ML)
+    couponCode = dispatch.offer.coupon;
+  }
+
+  const instagramHandle = process.env.INSTAGRAM_HANDLE || 'promodahelena.oficial';
   return formatOfferMessage({
     title: dispatch.offer.title,
-    price: Number(dispatch.offer.price),
+    price,
     originalPrice: dispatch.offer.originalPrice ? Number(dispatch.offer.originalPrice) : null,
     installments: dispatch.offer.installments,
-    coupon: dispatch.offer.coupon,
+    couponCode,
+    priceWithCoupon,
     hookLine: variant?.caption ?? null,
     link: trackingLink,
-    sellerName: sellerName ?? null,
-    sourceName,
+    instagramHandle,
   });
 }
 

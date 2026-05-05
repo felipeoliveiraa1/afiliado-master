@@ -38,6 +38,10 @@ export default function ShopeeCouponsPage(): React.ReactElement {
   const [form, setForm] = useState({
     code: '',
     description: '',
+    type: 'PERCENT' as 'PERCENT' | 'FIXED',
+    value: 0,
+    minPurchase: 0,
+    maxDiscount: 0,
     seller: '',
     discountText: '',
     imageUrl: '',
@@ -72,8 +76,12 @@ export default function ShopeeCouponsPage(): React.ReactElement {
       clientFetch<ShopeeCoupon>('/sources/SHOPEE/coupons', {
         method: 'POST',
         body: {
-          code: form.code,
+          code: form.code || undefined,
           description: form.description || undefined,
+          type: form.type,
+          value: form.value,
+          minPurchase: form.minPurchase > 0 ? form.minPurchase : undefined,
+          maxDiscount: form.maxDiscount > 0 ? form.maxDiscount : undefined,
           seller: form.seller || undefined,
           discountText: form.discountText || undefined,
           imageUrl: form.imageUrl || undefined,
@@ -82,7 +90,7 @@ export default function ShopeeCouponsPage(): React.ReactElement {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['shopee-coupons'] });
-      setForm({ code: '', description: '', seller: '', discountText: '', imageUrl: '', validUntil: '' });
+      setForm({ code: '', description: '', type: 'PERCENT', value: 0, minPurchase: 0, maxDiscount: 0, seller: '', discountText: '', imageUrl: '', validUntil: '' });
       setErrorMsg(null);
     },
     onError: (err: Error) => setErrorMsg(err.message),
@@ -183,15 +191,16 @@ export default function ShopeeCouponsPage(): React.ReactElement {
             Cadastrar cupom
           </CardTitle>
           <CardDescription>
-            Code é obrigatório. Seller deixa vazio se for cupom de plataforma (todas as lojas).
+            Sistema calcula preço final aplicando o cupom (igual DivulgaLinks).
+            Code vazio = cupom automático no checkout (sem código pra digitar).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
-              <Label>Code *</Label>
+              <Label>Code (vazio = automático)</Label>
               <Input
-                placeholder="M0D4555HP"
+                placeholder="OLH4CUP0M5AFF"
                 value={form.code}
                 onChange={(e) =>
                   setForm({ ...form, code: e.target.value.toUpperCase().replace(/\s/g, '') })
@@ -200,20 +209,59 @@ export default function ShopeeCouponsPage(): React.ReactElement {
               />
             </div>
             <div className="space-y-1">
-              <Label>Seller (deixa vazio = plataforma)</Label>
-              <Input
-                placeholder="Loja oficial X"
-                value={form.seller}
-                onChange={(e) => setForm({ ...form, seller: e.target.value })}
-              />
+              <Label>Tipo</Label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={form.type}
+                onChange={(e) =>
+                  setForm({ ...form, type: e.target.value as 'PERCENT' | 'FIXED' })
+                }
+              >
+                <option value="PERCENT">Percentual (%)</option>
+                <option value="FIXED">Valor fixo (R$)</option>
+              </select>
             </div>
             <div className="space-y-1">
-              <Label>Desconto (texto)</Label>
+              <Label>
+                Valor {form.type === 'PERCENT' ? '(%)' : '(R$)'}
+              </Label>
               <Input
-                placeholder="20% off / R$30 off / Frete grátis"
-                value={form.discountText}
-                onChange={(e) => setForm({ ...form, discountText: e.target.value })}
+                type="number"
+                min={0}
+                step={form.type === 'PERCENT' ? '1' : '0.01'}
+                placeholder={form.type === 'PERCENT' ? '25' : '35.00'}
+                value={form.value}
+                onChange={(e) => setForm({ ...form, value: Number(e.target.value) })}
               />
+              <p className="text-[10px] text-muted-foreground">
+                {form.type === 'PERCENT' ? 'Ex: 25 = 25% off' : 'Ex: 35 = R$35 off'}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label>Compra mínima (R$)</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="0 = sem mínimo"
+                value={form.minPurchase}
+                onChange={(e) => setForm({ ...form, minPurchase: Number(e.target.value) })}
+              />
+              <p className="text-[10px] text-muted-foreground">Cupom só vale se preço {`>=`} mínimo.</p>
+            </div>
+            <div className="space-y-1">
+              <Label>Desconto máx (R$)</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="0 = sem teto"
+                value={form.maxDiscount}
+                onChange={(e) => setForm({ ...form, maxDiscount: Number(e.target.value) })}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Cap só pra cupom %. Ex: 25% mas máx R$10.
+              </p>
             </div>
             <div className="space-y-1">
               <Label>Validade</Label>
@@ -226,7 +274,7 @@ export default function ShopeeCouponsPage(): React.ReactElement {
             <div className="space-y-1 md:col-span-2">
               <Label>Descrição (opcional)</Label>
               <Input
-                placeholder="Ex: 20% off + frete grátis em moda feminina"
+                placeholder="Ex: 25% off em moda feminina"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
               />
@@ -256,7 +304,7 @@ export default function ShopeeCouponsPage(): React.ReactElement {
           </div>
           <Button
             onClick={() => create.mutate()}
-            disabled={create.isPending || form.code.length < 3}
+            disabled={create.isPending || form.value <= 0}
           >
             {create.isPending ? 'Salvando...' : 'Salvar cupom'}
           </Button>
