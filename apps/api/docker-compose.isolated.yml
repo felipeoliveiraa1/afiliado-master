@@ -81,6 +81,10 @@ services:
       NODE_ENV: production
       # Sempre 3000 dentro do container (publish do compose: 127.0.0.1:3047->3000).
       PORT: "3000"
+      # Timezone Brasil — sem isso Node usa CEST do host Contabo e janela
+      # antiban (windowStartHour/EndHour) interpreta horas erradas, fazendo
+      # cron pular dispatches no horário "errado".
+      TZ: America/Sao_Paulo
     depends_on:
       postgres:
         condition: service_healthy
