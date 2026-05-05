@@ -678,6 +678,76 @@ export function parseProductsFromHubSearchJson(json: unknown): MercadoLivrePanel
 }
 
 /**
+ * Hidrata o campo `seller` (nome do vendedor) chamando a API pública do ML.
+ * Polycard NÃO devolve seller_name em todos os casos — sem isso o lookup
+ * MlCoupon WHERE seller=match falha e nenhum cupom é aplicado em offer.
+ *
+ * Estratégia (2 passos):
+ *   1) /items?ids=MLB1,MLB2,...&attributes=id,seller_id  (até 20 IDs, 1 call)
+ *   2) Pra cada seller_id único: /users/SELLER_ID?attributes=nickname
+ *
+ * Custo: 1 + N calls onde N = vendedores únicos (~5-15 por busca).
+ * Cache em memória pra evitar refetch dos mesmos sellers.
+ */
+const sellerCache = new Map<number, string>();
+
+export async function hydrateSellersFromPublicApi(
+  products: MercadoLivrePanelProduct[],
+): Promise<MercadoLivrePanelProduct[]> {
+  const missing = products.filter((p) => !p.seller && p.externalId);
+  if (missing.length === 0) return products;
+
+  const itemSeller = new Map<string, number>();
+
+  // Passo 1: batch /items pra pegar seller_id por externalId
+  for (let i = 0; i < missing.length; i += 20) {
+    const batch = missing.slice(i, i + 20).map((p) => p.externalId);
+    try {
+      const url = `https://api.mercadolibre.com/items?ids=${batch.join(',')}&attributes=id,seller_id`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) {
+        logger.warn({ status: res.status }, 'public-api seller hydrate http fail');
+        continue;
+      }
+      const arr = (await res.json()) as Array<{
+        code?: number;
+        body?: { id?: string; seller_id?: number };
+      }>;
+      for (const entry of arr) {
+        if (entry.code !== 200 || !entry.body?.id || !entry.body.seller_id) continue;
+        itemSeller.set(entry.body.id, entry.body.seller_id);
+      }
+    } catch (err) {
+      logger.warn({ err }, 'hydrateSellersFromPublicApi /items batch failed');
+    }
+  }
+
+  // Passo 2: pra cada seller_id único não cacheado, busca nickname
+  const uniqueSellerIds = Array.from(new Set(itemSeller.values()));
+  const toFetch = uniqueSellerIds.filter((id) => !sellerCache.has(id));
+  for (const sellerId of toFetch) {
+    try {
+      const url = `https://api.mercadolibre.com/users/${sellerId}?attributes=nickname`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) continue;
+      const data = (await res.json()) as { nickname?: string };
+      if (data.nickname) sellerCache.set(sellerId, data.nickname);
+    } catch (err) {
+      logger.debug({ err, sellerId }, 'public-api /users hydrate failed');
+    }
+  }
+
+  return products.map((p) => {
+    if (p.seller) return p;
+    const sellerId = itemSeller.get(p.externalId);
+    if (!sellerId) return p;
+    const nickname = sellerCache.get(sellerId);
+    if (!nickname) return p;
+    return { ...p, seller: nickname };
+  });
+}
+
+/**
  * Searches products in the affiliate hub with optional category and
  * best-sellers filter. Uses POST `/affiliate-program/api/hub/search` with the
  * body captured from HAR cenário A (`search`, `sort`, `filters`, `offset`).
@@ -896,7 +966,16 @@ export async function searchAndAffiliateByCategory(
       );
     }
   }
-  return result;
+  // Hidrata seller_name pelos products via API pública. Sem isso, polycard
+  // raramente devolve seller e o lookup MlCoupon falha (cupom nunca aplica).
+  // Custo: 1 batch /items + N /users (sellers únicos). Tempo: ~3-5s extra.
+  const hydrated = await hydrateSellersFromPublicApi(result);
+  const matched = hydrated.filter((p) => p.seller).length;
+  logger.info(
+    { total: hydrated.length, withSeller: matched },
+    'searchAndAffiliateByCategory: sellers hydrated',
+  );
+  return hydrated;
 }
 
 /** Test-only helper to reset the in-memory CSRF and cooldown state. */

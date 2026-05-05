@@ -492,18 +492,23 @@ export async function buildServer() {
       const activeCoupons = await prisma.mlCoupon.findMany({
         where: { enabled: true, status: 'ACTIVE', alias: { not: null } },
       });
-      const couponBySeller = new Map(
-        activeCoupons.map((c) => [c.seller.toLowerCase().trim(), c]),
-      );
+      // Normalização agressiva: lowercase + remove diacríticos + remove
+      // não-alfanuméricos. Garante que "Profit_laboratorios" do cupom case
+      // com "profit laboratórios" / "PROFIT LABORATORIOS" do polycard.
+      const norm = (s: string): string =>
+        s
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .replace(/[^a-z0-9]/g, '');
+      const couponBySeller = new Map(activeCoupons.map((c) => [norm(c.seller), c]));
       const offerIds: string[] = [];
       let couponsApplied = 0;
       for (const p of products) {
         if (!p.affiliateUrl) continue;
         // Aplica cupom se vendedor da oferta tem cupom ativo associado.
         // Se não bater, deixa coupon=null e a oferta vai sem desconto extra.
-        const matchedCoupon = p.seller
-          ? couponBySeller.get(p.seller.toLowerCase().trim())
-          : undefined;
+        const matchedCoupon = p.seller ? couponBySeller.get(norm(p.seller)) : undefined;
         if (matchedCoupon) couponsApplied++;
         const offer = await prisma.offer.upsert({
           where: { sourceId_externalId: { sourceId: source.id, externalId: p.externalId } },
