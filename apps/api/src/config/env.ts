@@ -63,8 +63,6 @@ export const env = cleanEnv(process.env, {
   DISPATCH_WINDOW_START: num({ default: 8 }),
   DISPATCH_WINDOW_END: num({ default: 22 }),
 
-  CLICK_TRACKING_ENABLED: bool({ default: false }),
-  PUBLIC_BASE_URL: str({ default: 'http://localhost:3000' }),
 
   WEB_ORIGIN_URL: str({ default: 'http://localhost:3001' }),
 

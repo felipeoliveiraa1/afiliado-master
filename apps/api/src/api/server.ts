@@ -128,7 +128,6 @@ export async function buildServer() {
     'marketplaces',
     'antiban',
     'automation',
-    'tracking',
     'admin',
   ] as const;
 
@@ -1158,24 +1157,6 @@ export async function buildServer() {
         include: { offer: { select: { title: true, imageUrl: true } }, channel: { select: { name: true } } },
       }),
   );
-
-  app.get('/r/:dispatchId', async (req, reply) => {
-    const params = req.params as { dispatchId: string };
-    if (!env.CLICK_TRACKING_ENABLED) {
-      return reply.code(404).send({ error: 'click tracking disabled' });
-    }
-    const dispatch = await prisma.dispatch.findUnique({
-      where: { id: params.dispatchId },
-      include: { offer: { select: { affiliateUrl: true, url: true } } },
-    });
-    if (!dispatch) return reply.code(404).send({ error: 'not found' });
-    await prisma.dispatch.update({
-      where: { id: dispatch.id },
-      data: { clickCount: { increment: 1 } },
-    });
-    const target = dispatch.offer.affiliateUrl ?? dispatch.offer.url;
-    return reply.redirect(target, 302);
-  });
 
   // Monta o texto que seria enviado em um dispatch real, sem efetivamente
   // disparar — útil pra preview na UI de campanhas/canais.

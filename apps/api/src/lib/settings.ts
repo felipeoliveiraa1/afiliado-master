@@ -24,7 +24,6 @@ export type SettingsSection =
   | 'marketplaces'
   | 'antiban'
   | 'automation'
-  | 'tracking'
   | 'admin';
 
 /**
@@ -94,10 +93,6 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     campaignsEnabled: true,
     cookieHealthEnabled: true,
     cookieHealthHour: 7,
-  },
-  tracking: {
-    clickTrackingEnabled: env.CLICK_TRACKING_ENABLED,
-    publicBaseUrl: env.PUBLIC_BASE_URL,
   },
   admin: {
     adminAlertGroupId: env.ADMIN_ALERT_GROUP_ID,
@@ -190,7 +185,6 @@ export async function getAllSettings(): Promise<Record<SettingsSection, unknown>
     'marketplaces',
     'antiban',
     'automation',
-    'tracking',
     'admin',
   ];
   const out = {} as Record<SettingsSection, unknown>;

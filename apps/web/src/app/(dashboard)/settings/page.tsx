@@ -41,7 +41,6 @@ type Section =
   | 'marketplaces'
   | 'antiban'
   | 'automation'
-  | 'tracking'
   | 'admin';
 
 type SectionMeta = {
@@ -244,16 +243,6 @@ const SECTIONS: SectionMeta[] = [
       { key: 'campaignsEnabled', label: 'Disparo automático de campanhas', type: 'boolean', hint: 'Cron checa cada minuto quais campanhas vencidas (intervalMinutes da campanha) e dispara' },
       { key: 'cookieHealthEnabled', label: 'Health check diário dos cookies', type: 'boolean', hint: 'Valida cookie ML/Shopee 1x por dia, alerta no grupo admin se expirou' },
       { key: 'cookieHealthHour', label: 'Hora do health check (0-23)', type: 'number' },
-    ],
-  },
-  {
-    key: 'tracking',
-    title: 'Click Tracking',
-    description: 'Wrapper /r/:dispatchId → marketplace, contando cliques.',
-    icon: Webhook,
-    fields: [
-      { key: 'clickTrackingEnabled', label: 'Habilitar tracking', type: 'boolean' },
-      { key: 'publicBaseUrl', label: 'URL pública da API', placeholder: 'https://api.seu-dominio.com.br' },
     ],
   },
   {

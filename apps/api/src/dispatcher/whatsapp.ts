@@ -178,9 +178,8 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     where: { offerId: dispatch.offerId, channelKind: dispatch.channel.kind },
     orderBy: { createdAt: 'desc' },
   });
-  const trackingLink = env.CLICK_TRACKING_ENABLED
-    ? `${env.PUBLIC_BASE_URL.replace(/\/$/, '')}/r/${dispatch.id}`
-    : (dispatch.offer.affiliateUrl ?? dispatch.offer.url);
+  // Link direto — click tracking removido (era opt-in, ninguém usava).
+  const trackingLink = dispatch.offer.affiliateUrl ?? dispatch.offer.url;
   // Extrai nome do vendedor do raw da offer (populado pelo seller hidratação
   // em ML, ou pelo PA-API ByLineInfo.Brand.DisplayValue em Amazon).
   const sellerName =
