@@ -3,7 +3,7 @@
 import React, { use, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Cookie, Download, ExternalLink, ImageOff, Inbox, Zap } from 'lucide-react';
+import { Cookie, Download, ExternalLink, ImageOff, Inbox, Plus, X, Zap } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
 import {
   Card,
@@ -21,6 +21,20 @@ import { SkeletonRows } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ui/page-header';
 import { SourceBadge } from '@/components/source-badge';
 import { formatDate } from '@/lib/utils';
+import { ML_CATEGORIES } from '@/lib/ml-categories';
+import { SHOPEE_CATEGORIES } from '@/lib/shopee-categories';
+import { AMAZON_CATEGORIES } from '@/lib/amazon-categories';
+
+type CategoryOption = { id: string; name: string; emoji?: string };
+
+function getCategoriesForKind(kind: SourceKind): CategoryOption[] {
+  if (kind === 'MERCADOLIVRE') {
+    return ML_CATEGORIES.map((c) => ({ id: c.id, name: c.name }));
+  }
+  if (kind === 'SHOPEE') return SHOPEE_CATEGORIES;
+  if (kind === 'AMAZON') return AMAZON_CATEGORIES;
+  return [];
+}
 
 type SourceKind = 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE';
 
@@ -90,41 +104,78 @@ export default function SourcePage({ params }: { params: Promise<{ kind: string 
   });
 
   const [cfgForm, setCfgForm] = useState({
-    categoryIdsCsv: '',
-    keywordsCsv: '',
+    categoryIds: [] as string[],
+    customCategoryIds: [] as string[], // IDs digitados que não estão na lista predefinida
+    keywords: [] as string[],
     minDiscount: 0,
     limitPerCategory: 10,
     onlyMall: false,
     onlyKeySellers: false,
   });
+  const [keywordInput, setKeywordInput] = useState('');
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
 
-  // Hidrata form quando dados chegarem
+  const categoryOptions = getCategoriesForKind(kind);
+  const knownIds = new Set(categoryOptions.map((c) => c.id));
+
+  // Hidrata form quando dados chegarem (separa IDs conhecidos vs custom)
   React.useEffect(() => {
     const c = sourceQuery.data?.config;
     if (!c) return;
+    const allIds = c.categoryIds ?? [];
     setCfgForm({
-      categoryIdsCsv: (c.categoryIds ?? []).join(', '),
-      keywordsCsv: (c.keywords ?? []).join(', '),
+      categoryIds: allIds.filter((id) => knownIds.has(id)),
+      customCategoryIds: allIds.filter((id) => !knownIds.has(id)),
+      keywords: c.keywords ?? [],
       minDiscount: c.minDiscount ?? 0,
       limitPerCategory: c.limitPerCategory ?? 10,
       onlyMall: c.onlyMall ?? false,
       onlyKeySellers: c.onlyKeySellers ?? false,
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceQuery.data?.config]);
+
+  const toggleCategory = (id: string): void =>
+    setCfgForm((f) => ({
+      ...f,
+      categoryIds: f.categoryIds.includes(id)
+        ? f.categoryIds.filter((x) => x !== id)
+        : [...f.categoryIds, id],
+    }));
+
+  const addKeyword = (): void => {
+    const v = keywordInput.trim();
+    if (!v) return;
+    setCfgForm((f) => ({
+      ...f,
+      keywords: f.keywords.includes(v) ? f.keywords : [...f.keywords, v],
+    }));
+    setKeywordInput('');
+  };
+  const removeKeyword = (kw: string): void =>
+    setCfgForm((f) => ({ ...f, keywords: f.keywords.filter((k) => k !== kw) }));
+
+  const addCustomCategory = (): void => {
+    const v = customCategoryInput.trim();
+    if (!v) return;
+    setCfgForm((f) => ({
+      ...f,
+      customCategoryIds: f.customCategoryIds.includes(v)
+        ? f.customCategoryIds
+        : [...f.customCategoryIds, v],
+    }));
+    setCustomCategoryInput('');
+  };
+  const removeCustomCategory = (id: string): void =>
+    setCfgForm((f) => ({ ...f, customCategoryIds: f.customCategoryIds.filter((x) => x !== id) }));
 
   const saveConfig = useMutation({
     mutationFn: () =>
       clientFetch(`/sources/${kind}/config`, {
         method: 'PATCH',
         body: {
-          categoryIds: cfgForm.categoryIdsCsv
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
-          keywords: cfgForm.keywordsCsv
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
+          categoryIds: [...cfgForm.categoryIds, ...cfgForm.customCategoryIds],
+          keywords: cfgForm.keywords,
           minDiscount: cfgForm.minDiscount || undefined,
           limitPerCategory: cfgForm.limitPerCategory,
           onlyMall: cfgForm.onlyMall,
@@ -148,38 +199,138 @@ export default function SourcePage({ params }: { params: Promise<{ kind: string 
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">🎯 Configuração de captura (cron)</CardTitle>
+          <CardTitle className="text-base">🎯 O que o cron vai puxar</CardTitle>
           <CardDescription>
-            Define o que o cron puxa automaticamente a cada 30min. Sem categorias/keywords =
-            comportamento padrão (top trending). Hint: ML usa MLB&lt;num&gt;, Shopee Int (productCatId), Amazon BrowseNodeId.
+            Selecione categorias e adicione keywords. A cada 30min o sistema busca
+            produtos top dessas categorias e palavras. Sem nada selecionado, puxa o
+            trending geral do {copy.title}.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1">
-              <Label>Categorias (CSV)</Label>
-              <Input
-                placeholder={
-                  kind === 'MERCADOLIVRE'
-                    ? 'MLB1276, MLB1574, MLB5726'
-                    : kind === 'SHOPEE'
-                      ? '100012, 100068, 100256'
-                      : '17873924011, 17873925011'
-                }
-                value={cfgForm.categoryIdsCsv}
-                onChange={(e) => setCfgForm({ ...cfgForm, categoryIdsCsv: e.target.value })}
-              />
+        <CardContent className="space-y-6">
+          {/* Categorias — chips clicáveis com emojis */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">📁 Categorias</Label>
+              <span className="text-xs text-muted-foreground">
+                {cfgForm.categoryIds.length + cfgForm.customCategoryIds.length} selecionada
+                {cfgForm.categoryIds.length + cfgForm.customCategoryIds.length === 1 ? '' : 's'}
+              </span>
             </div>
-            <div className="space-y-1">
-              <Label>Keywords (CSV)</Label>
-              <Input
-                placeholder="smartwatch, fone bluetooth, perfume, suplemento"
-                value={cfgForm.keywordsCsv}
-                onChange={(e) => setCfgForm({ ...cfgForm, keywordsCsv: e.target.value })}
-              />
+            <div className="flex flex-wrap gap-2">
+              {categoryOptions.map((cat) => {
+                const active = cfgForm.categoryIds.includes(cat.id);
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => toggleCategory(cat.id)}
+                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-accent bg-accent text-accent-foreground shadow-sm'
+                        : 'border-border bg-background text-muted-foreground hover:border-accent/50 hover:text-foreground'
+                    }`}
+                  >
+                    {cat.emoji ? `${cat.emoji} ` : ''}
+                    {cat.name}
+                  </button>
+                );
+              })}
             </div>
+            {/* Categorias custom (IDs avançados) */}
+            {cfgForm.customCategoryIds.length > 0 ? (
+              <div className="space-y-1 pt-2">
+                <Label className="text-xs text-muted-foreground">IDs personalizados</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {cfgForm.customCategoryIds.map((id) => (
+                    <Badge key={id} variant="secondary" className="font-mono">
+                      {id}
+                      <button
+                        type="button"
+                        onClick={() => removeCustomCategory(id)}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">+ Adicionar ID de categoria personalizado</summary>
+              <div className="mt-2 flex gap-2">
+                <Input
+                  placeholder={
+                    kind === 'MERCADOLIVRE'
+                      ? 'MLB1234'
+                      : kind === 'SHOPEE'
+                        ? '100123'
+                        : '17873924011'
+                  }
+                  value={customCategoryInput}
+                  onChange={(e) => setCustomCategoryInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCustomCategory();
+                    }
+                  }}
+                  className="text-sm"
+                />
+                <Button size="sm" variant="outline" onClick={addCustomCategory}>
+                  <Plus className="size-3.5" />
+                </Button>
+              </div>
+            </details>
+          </div>
+
+          {/* Keywords — chips com remove */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">🔍 Keywords (busca livre)</Label>
+              <span className="text-xs text-muted-foreground">
+                {cfgForm.keywords.length} keyword{cfgForm.keywords.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Ex: smartwatch, fone bluetooth, perfume Natura..."
+                value={keywordInput}
+                onChange={(e) => setKeywordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addKeyword();
+                  }
+                }}
+              />
+              <Button onClick={addKeyword} disabled={!keywordInput.trim()}>
+                <Plus className="size-4" />
+                Adicionar
+              </Button>
+            </div>
+            {cfgForm.keywords.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {cfgForm.keywords.map((kw) => (
+                  <Badge key={kw} variant="accent">
+                    {kw}
+                    <button
+                      type="button"
+                      onClick={() => removeKeyword(kw)}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Filtros de qualidade — grid clean */}
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <Label>Desconto mínimo (%)</Label>
+              <Label className="text-sm">Desconto mínimo (%)</Label>
               <Input
                 type="number"
                 min={0}
@@ -187,9 +338,10 @@ export default function SourcePage({ params }: { params: Promise<{ kind: string 
                 value={cfgForm.minDiscount}
                 onChange={(e) => setCfgForm({ ...cfgForm, minDiscount: Number(e.target.value) })}
               />
+              <p className="text-xs text-muted-foreground">0 = sem filtro</p>
             </div>
             <div className="space-y-1">
-              <Label>Produtos por categoria/keyword</Label>
+              <Label className="text-sm">Produtos por categoria/keyword</Label>
               <Input
                 type="number"
                 min={1}
@@ -199,38 +351,58 @@ export default function SourcePage({ params }: { params: Promise<{ kind: string 
                   setCfgForm({ ...cfgForm, limitPerCategory: Number(e.target.value) })
                 }
               />
+              <p className="text-xs text-muted-foreground">Default 10. Quanto maior, mais variedade.</p>
             </div>
-            {kind === 'SHOPEE' ? (
-              <>
-                <div className="space-y-1">
-                  <Label>
-                    <input
-                      type="checkbox"
-                      checked={cfgForm.onlyMall}
-                      onChange={(e) => setCfgForm({ ...cfgForm, onlyMall: e.target.checked })}
-                      className="mr-2 size-4"
-                    />
-                    Apenas Shopee Mall (lojas oficiais)
-                  </Label>
-                </div>
-                <div className="space-y-1">
-                  <Label>
-                    <input
-                      type="checkbox"
-                      checked={cfgForm.onlyKeySellers}
-                      onChange={(e) =>
-                        setCfgForm({ ...cfgForm, onlyKeySellers: e.target.checked })
-                      }
-                      className="mr-2 size-4"
-                    />
-                    Apenas key sellers (top vendedores)
-                  </Label>
-                </div>
-              </>
-            ) : null}
           </div>
-          <Button onClick={() => saveConfig.mutate()} disabled={saveConfig.isPending}>
-            {saveConfig.isPending ? 'Salvando...' : 'Salvar config'}
+
+          {/* Filtros específicos Shopee */}
+          {kind === 'SHOPEE' ? (
+            <div className="space-y-2 rounded-lg border border-dashed p-3">
+              <Label className="text-sm font-medium">🟠 Filtros Shopee (opcional)</Label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={cfgForm.onlyMall}
+                  onChange={(e) => setCfgForm({ ...cfgForm, onlyMall: e.target.checked })}
+                  className="size-4"
+                />
+                <span>
+                  Só <strong>Shopee Mall</strong> (lojas oficiais — credibilidade maior)
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={cfgForm.onlyKeySellers}
+                  onChange={(e) =>
+                    setCfgForm({ ...cfgForm, onlyKeySellers: e.target.checked })
+                  }
+                  className="size-4"
+                />
+                <span>
+                  Só <strong>key sellers</strong> (top vendedores Shopee)
+                </span>
+              </label>
+            </div>
+          ) : null}
+
+          {/* Preview do que vai puxar */}
+          <div className="rounded-lg bg-muted/40 p-3 text-sm">
+            <p className="font-medium">📊 Preview da próxima rodada do cron:</p>
+            <p className="mt-1 text-muted-foreground">
+              {(() => {
+                const totalCats = cfgForm.categoryIds.length + cfgForm.customCategoryIds.length;
+                const totalKws = cfgForm.keywords.length;
+                if (totalCats === 0 && totalKws === 0) return 'Trending geral (sem filtro)';
+                const tasks = totalCats + totalKws;
+                const total = tasks * cfgForm.limitPerCategory;
+                return `${tasks} buscas paralelas × ${cfgForm.limitPerCategory} produtos = até ${total} ofertas/rodada`;
+              })()}
+            </p>
+          </div>
+
+          <Button onClick={() => saveConfig.mutate()} disabled={saveConfig.isPending} size="lg">
+            {saveConfig.isPending ? 'Salvando...' : '💾 Salvar configuração'}
           </Button>
           {saveConfig.isSuccess && (
             <div className="text-sm text-success">
