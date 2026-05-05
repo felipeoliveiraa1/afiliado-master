@@ -104,25 +104,130 @@ const SECTIONS: SectionMeta[] = [
   },
   {
     key: 'marketplaces',
-    title: 'Marketplaces (Amazon PA-API + Shopee Open API)',
-    description: 'Configurações dos providers oficiais. Amazon PA-API libera após 10 vendas qualificadas em 180 dias. Shopee Open API requer cadastro como afiliado oficial.',
+    title: '🟡 Mercado Livre',
+    description:
+      'Tag de afiliado, scraper opcional. O cookie do painel ML é configurado em /sources/mercadolivre/cookie (não aqui).',
     icon: Tag,
     fields: [
-      { key: 'amazonAffiliateTag', label: 'Amazon affiliate tag (legado)', placeholder: 'seunome-20', hint: 'Tag de afiliado Amazon. Usado como fallback se Partner Tag PA-API estiver vazio.' },
-      { key: 'mercadoLivreAffiliateTag', label: 'Mercado Livre affiliate tag', placeholder: 'ofpXXXXX', hint: 'Tag automática vinda do cookie ML — só edite se souber o que tá fazendo.' },
-      { key: 'apifyToken', label: 'Apify Token (só ML opcional)', secret: true, type: 'password', hint: 'Usado APENAS se MERCADOLIVRE_SCRAPER=apify. Pra Amazon não precisa mais (foi removido).' },
-      // === Amazon PA-API (oficial) ===
-      { key: 'amazonProvider', label: '🟢 Amazon — Provider', placeholder: 'disabled', hint: 'Opções: disabled (default — não fetcha) | paapi (oficial PA-API). Mude pra "paapi" só quando tiver as credenciais.' },
-      { key: 'amazonPaapiAccessKey', label: 'PA-API Access Key', secret: true, type: 'password', hint: 'Liberado em https://webservices.amazon.com/paapi5/documentation/register-for-pa-api.html APÓS 10 vendas qualificadas em 180 dias.' },
-      { key: 'amazonPaapiSecretKey', label: 'PA-API Secret Key', secret: true, type: 'password', hint: 'Vem junto da Access Key.' },
-      { key: 'amazonPaapiPartnerTag', label: 'PA-API Partner Tag', placeholder: 'seunome-20', hint: 'Mesmo do amazonAffiliateTag normalmente.' },
-      { key: 'amazonPaapiHost', label: 'PA-API Host', placeholder: 'webservices.amazon.com.br', hint: 'Default Brasil. Para US: webservices.amazon.com' },
-      { key: 'amazonPaapiRegion', label: 'PA-API Region', placeholder: 'us-east-1', hint: 'Default us-east-1 funciona pra todos os marketplaces.' },
-      { key: 'amazonPaapiBrowseNodes', label: 'BrowseNodes (CSV de IDs)', type: 'textarea', placeholder: '17873924011, 17873925011, 17873929011', hint: 'IDs de categoria pra buscar. Cada node vira 1 chamada SearchItems com SortBy=Featured (proxy bestseller). Achar IDs: navegue na Amazon BR, abra qualquer categoria, ID está na URL (node=NNNN). Vazio = busca por keyword "oferta".' },
-      { key: 'amazonPaapiMinDiscount', label: 'PA-API min desconto %', type: 'number', hint: 'Filtro MinSavingPercent. Default 20 = só produtos com ≥20% off. Reduzir aumenta volume mas qualidade cai.' },
-      // === Shopee Open API ===
-      { key: 'shopeeAppId', label: '🟠 Shopee App ID', placeholder: '15XXXXXXXXX', hint: 'Cadastre-se como afiliado oficial em https://affiliate.shopee.com.br para obter App ID + Secret. Sem isso, fetch Shopee falha gracefully.' },
-      { key: 'shopeeAppSecret', label: 'Shopee App Secret', secret: true, type: 'password', hint: 'Vem junto do App ID. NUNCA commite isso.' },
+      {
+        key: 'mercadoLivreAffiliateTag',
+        label: 'ML affiliate tag',
+        placeholder: 'ofpXXXXX',
+        hint: 'Tag automática vinda do cookie ML — só edite se souber o que está fazendo.',
+      },
+      {
+        key: 'mercadoLivreScraper',
+        label: 'Scraper ML (public-api | apify)',
+        placeholder: 'public-api',
+        hint: 'public-api = API pública grátis. apify = via Apify (paga, requer apifyToken abaixo).',
+      },
+      {
+        key: 'apifyToken',
+        label: 'Apify Token (só se scraper=apify)',
+        secret: true,
+        type: 'password',
+        hint: 'Necessário APENAS quando mercadoLivreScraper=apify. Vazio se usa public-api.',
+      },
+      {
+        key: 'apifyMercadoLivreActor',
+        label: 'Actor Apify ML',
+        placeholder: 'apify~mercadolibre-scraper',
+        hint: 'Default: apify~mercadolibre-scraper.',
+      },
+      {
+        key: 'mercadoLivreApifyStartUrls',
+        label: 'Start URLs Apify ML (CSV)',
+        type: 'textarea',
+        hint: 'URLs do ML pra Apify processar (só se scraper=apify).',
+      },
+    ],
+  },
+  {
+    key: 'marketplaces',
+    title: '🟠 Shopee',
+    description:
+      'Open API GraphQL — credenciais oficiais do programa de afiliados Shopee BR (https://affiliate.shopee.com.br).',
+    icon: Tag,
+    fields: [
+      {
+        key: 'shopeeAppId',
+        label: 'Shopee App ID',
+        placeholder: '15XXXXXXXXX',
+        hint: 'Cadastre-se em https://affiliate.shopee.com.br/open_api pra obter App ID + Secret.',
+      },
+      {
+        key: 'shopeeAppSecret',
+        label: 'Shopee App Secret',
+        secret: true,
+        type: 'password',
+        hint: 'Vem junto do App ID. NUNCA commite. Mascarado após salvar.',
+      },
+    ],
+  },
+  {
+    key: 'marketplaces',
+    title: '🔵 Amazon',
+    description:
+      'PA-API 5.0 oficial. Liberado APÓS 10 vendas qualificadas em 180 dias. Antes disso o provider fica "disabled" e o cron não fetcha.',
+    icon: Tag,
+    fields: [
+      {
+        key: 'amazonProvider',
+        label: 'Provider Amazon (disabled | paapi)',
+        placeholder: 'disabled',
+        hint: 'Default disabled (não fetcha). Mude pra "paapi" só quando tiver as credenciais PA-API.',
+      },
+      {
+        key: 'amazonAffiliateTag',
+        label: 'Amazon affiliate tag (legado)',
+        placeholder: 'seunome-20',
+        hint: 'Tag de afiliado. Usado como fallback se Partner Tag PA-API estiver vazio.',
+      },
+      {
+        key: 'amazonPaapiAccessKey',
+        label: 'PA-API Access Key',
+        secret: true,
+        type: 'password',
+        hint: 'Liberado em https://webservices.amazon.com/paapi5/documentation/register-for-pa-api.html após 10 vendas qualificadas.',
+      },
+      {
+        key: 'amazonPaapiSecretKey',
+        label: 'PA-API Secret Key',
+        secret: true,
+        type: 'password',
+        hint: 'Vem junto da Access Key.',
+      },
+      {
+        key: 'amazonPaapiPartnerTag',
+        label: 'PA-API Partner Tag',
+        placeholder: 'seunome-20',
+        hint: 'Mesmo do amazonAffiliateTag normalmente.',
+      },
+      {
+        key: 'amazonPaapiHost',
+        label: 'PA-API Host',
+        placeholder: 'webservices.amazon.com.br',
+        hint: 'Default Brasil. US: webservices.amazon.com',
+      },
+      {
+        key: 'amazonPaapiRegion',
+        label: 'PA-API Region',
+        placeholder: 'us-east-1',
+        hint: 'Default us-east-1 funciona pra todos os marketplaces.',
+      },
+      {
+        key: 'amazonPaapiBrowseNodes',
+        label: 'BrowseNodes (CSV de IDs)',
+        type: 'textarea',
+        placeholder: '17873924011, 17873925011, 17873929011',
+        hint: 'IDs de categoria. Cada node vira 1 SearchItems com SortBy=Featured (proxy bestseller). Achar IDs: navegue na Amazon BR, ID está na URL (node=NNNN).',
+      },
+      {
+        key: 'amazonPaapiMinDiscount',
+        label: 'PA-API min desconto %',
+        type: 'number',
+        hint: 'Filtro MinSavingPercent. Default 20 = só produtos com ≥20% off.',
+      },
     ],
   },
   {

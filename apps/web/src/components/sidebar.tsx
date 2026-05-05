@@ -59,8 +59,9 @@ const SECTIONS: NavSection[] = [
   {
     label: 'Cookies do painel',
     items: [
-      { href: '/sources/mercadolivre/cookie', label: 'Cookie ML', icon: Cookie },
-      { href: '/sources/shopee/cookie', label: 'Cookie Shopee', icon: Cookie },
+      { href: '/sources/mercadolivre/cookie', label: 'Cookie ML (obrigatório)', icon: Cookie },
+      // Cookie Shopee — descontinuado. Open API GraphQL (App ID + Secret) substitui.
+      // Mantido fallback no código mas não exposto na UI.
     ],
   },
   {
