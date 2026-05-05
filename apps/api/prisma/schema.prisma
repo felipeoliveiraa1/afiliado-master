@@ -192,3 +192,24 @@ model MlCoupon {
 
   @@index([seller, enabled, status])
 }
+
+/// Cupons Shopee cadastrados manualmente. Diferente do MlCoupon porque
+/// Open API Shopee NÃO expõe códigos — afiliado recebe via email/app e
+/// cola aqui. Match automático com offer.raw.seller no dispatcher.
+model ShopeeCoupon {
+  id            String    @id @default(cuid())
+  code          String    @unique  // ex: "M0D4555HP" — único pra evitar duplicatas
+  description   String?   // ex: "20% off + frete grátis em moda"
+  /// Nome da loja Shopee. Quando NULL/vazio, aplica em QUALQUER offer Shopee
+  /// sem outro cupom específico (cupom de plataforma).
+  seller        String?
+  /// % ou R$ — só pra display, não há cálculo automático
+  discountText  String?   // "20% off", "R$30 off", "Frete grátis"
+  validUntil    DateTime?
+  enabled       Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([seller, enabled])
+  @@index([validUntil])
+}

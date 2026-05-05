@@ -48,8 +48,56 @@ export function startWorkers() {
         create: { kind: job.data.sourceKind },
       });
       const raws = await adapter.fetch({ limit: job.data.limit ?? 30 });
+      // Pre-carrega cupons Shopee ativos pra match O(1) por seller name.
+      // Sem ID interno (Open API não expõe), só temos o code + seller.
+      // Match: case-insensitive lookup por seller; fallback pra cupom de
+      // plataforma (seller=null) quando produto não tem cupom específico.
+      let shopeeCouponBySeller = new Map<string, { code: string; description: string | null }>();
+      let shopeePlatformCoupon: { code: string; description: string | null } | null = null;
+      if (job.data.sourceKind === 'SHOPEE') {
+        const norm = (s: string) =>
+          s
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[̀-ͯ]/g, '')
+            .replace(/[^a-z0-9]/g, '');
+        const coupons = await prisma.shopeeCoupon.findMany({
+          where: {
+            enabled: true,
+            OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        for (const c of coupons) {
+          if (c.seller && c.seller.trim()) {
+            shopeeCouponBySeller.set(norm(c.seller), { code: c.code, description: c.description });
+          } else if (!shopeePlatformCoupon) {
+            shopeePlatformCoupon = { code: c.code, description: c.description };
+          }
+        }
+      }
+      const normSeller = (s: string) =>
+        s
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .replace(/[^a-z0-9]/g, '');
       let inserted = 0;
       for (const r of raws) {
+        // Match cupom Shopee por seller. Se não bater seller específico,
+        // usa o cupom de plataforma (se houver). Sem cupom configurado,
+        // offer.coupon fica null (template do WhatsApp omite a linha).
+        let matchedCouponCode: string | null = null;
+        if (job.data.sourceKind === 'SHOPEE') {
+          const sellerName = (r.raw as { seller?: string } | undefined)?.seller;
+          if (sellerName) {
+            const m = shopeeCouponBySeller.get(normSeller(sellerName));
+            if (m) matchedCouponCode = m.code;
+          }
+          if (!matchedCouponCode && shopeePlatformCoupon) {
+            matchedCouponCode = shopeePlatformCoupon.code;
+          }
+        }
         const offer = await prisma.offer.upsert({
           where: { sourceId_externalId: { sourceId: source.id, externalId: r.externalId } },
           create: {
@@ -65,6 +113,7 @@ export function startWorkers() {
             url: r.url,
             affiliateUrl: r.affiliateUrl,
             commissionPct: r.commissionPct,
+            coupon: matchedCouponCode,
             rating: r.rating,
             ratingCount: r.ratingCount,
             salesCount: r.salesCount,
@@ -82,6 +131,7 @@ export function startWorkers() {
             price: r.price,
             originalPrice: r.originalPrice,
             discountPct: r.discountPct,
+            coupon: matchedCouponCode ?? undefined,
             score: scoreOffer({
               discountPct: r.discountPct ?? null,
               rating: r.rating ?? null,

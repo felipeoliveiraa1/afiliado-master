@@ -809,6 +809,70 @@ export async function buildServer() {
     return { total: candidates.length, generated, skipped, failed, errors };
   });
 
+  // ===========================================================================
+  // CUPONS SHOPEE (cadastro manual — Open API não expõe)
+  // ===========================================================================
+  // Doc oficial Shopee: cupons vêm via App/Email/Portal afiliado, não API.
+  // User cola aqui os códigos que recebe. Sistema faz match automático com
+  // offer.raw.seller no momento do fetch SHOPEE.
+  app.get('/sources/SHOPEE/coupons', async () => {
+    return prisma.shopeeCoupon.findMany({ orderBy: [{ enabled: 'desc' }, { createdAt: 'desc' }] });
+  });
+
+  app.post(
+    '/sources/SHOPEE/coupons',
+    {
+      schema: {
+        body: z.object({
+          code: z.string().min(3).max(40),
+          description: z.string().max(200).optional(),
+          seller: z.string().max(100).optional(),
+          discountText: z.string().max(40).optional(),
+          validUntil: z.string().datetime().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      return prisma.shopeeCoupon.upsert({
+        where: { code: req.body.code.toUpperCase() },
+        create: {
+          code: req.body.code.toUpperCase(),
+          description: req.body.description,
+          seller: req.body.seller,
+          discountText: req.body.discountText,
+          validUntil: req.body.validUntil ? new Date(req.body.validUntil) : null,
+        },
+        update: {
+          description: req.body.description,
+          seller: req.body.seller,
+          discountText: req.body.discountText,
+          validUntil: req.body.validUntil ? new Date(req.body.validUntil) : null,
+        },
+      });
+    },
+  );
+
+  app.patch(
+    '/sources/SHOPEE/coupons/:id',
+    {
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: z.object({ enabled: z.boolean() }),
+      },
+    },
+    async (req) =>
+      prisma.shopeeCoupon.update({ where: { id: req.params.id }, data: { enabled: req.body.enabled } }),
+  );
+
+  app.delete(
+    '/sources/SHOPEE/coupons/:id',
+    { schema: { params: z.object({ id: z.string() }) } },
+    async (req) => {
+      await prisma.shopeeCoupon.delete({ where: { id: req.params.id } });
+      return { deleted: true };
+    },
+  );
+
   app.get('/admin/cookie-health', async () => {
     const sources = await prisma.source.findMany({
       where: { kind: { in: ['SHOPEE', 'MERCADOLIVRE'] } },

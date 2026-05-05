@@ -53,6 +53,7 @@ const SECTIONS: NavSection[] = [
       { href: '/sources/PROMOBIT', label: 'Promobit', icon: Tags },
       { href: '/sources/mercadolivre/search', label: 'Busca por categoria ML', icon: BarChart3 },
       { href: '/sources/mercadolivre/coupons', label: 'Cupons ML', icon: Tag },
+      { href: '/sources/shopee/coupons', label: 'Cupons Shopee', icon: Tag },
     ],
   },
   {
