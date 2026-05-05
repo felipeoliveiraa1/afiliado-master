@@ -33,7 +33,7 @@ type CampaignDTO = {
 
 type ChannelDTO = { id: string; name: string };
 
-const SOURCES = ['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT'] as const;
+const SOURCES = ['SHOPEE', 'AMAZON', 'MERCADOLIVRE'] as const;
 
 export default function CampaignsPage(): React.ReactElement {
   const queryClient = useQueryClient();
@@ -47,7 +47,7 @@ export default function CampaignsPage(): React.ReactElement {
     windowEndHour: 22,
     dailyLimit: 0,
     postLoop: false,
-    sources: ['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT'] as string[],
+    sources: ['SHOPEE', 'AMAZON', 'MERCADOLIVRE'] as string[],
     channelIds: [] as string[],
     nicheIds: [] as string[],
   });

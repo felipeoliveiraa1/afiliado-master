@@ -184,7 +184,7 @@ export async function buildServer() {
     '/sources/:kind/fetch',
     {
       schema: {
-        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT']) }),
+        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']) }),
         body: z.object({ limit: z.number().int().min(1).max(200).optional() }).nullish(),
       },
     },
@@ -200,7 +200,7 @@ export async function buildServer() {
     '/sources/:kind',
     {
       schema: {
-        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT']) }),
+        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']) }),
       },
     },
     async (req) => {
@@ -219,7 +219,7 @@ export async function buildServer() {
     '/sources/:kind/config',
     {
       schema: {
-        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT']) }),
+        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']) }),
         body: z.object({
           categoryIds: z.array(z.string()).optional(),
           keywords: z.array(z.string()).optional(),
@@ -246,7 +246,7 @@ export async function buildServer() {
       take: Math.min(100, Number(q.take ?? 20)),
       where: {
         score: q.minScore ? { gte: Number(q.minScore) } : undefined,
-        source: q.source ? { kind: q.source as 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'PROMOBIT' } : undefined,
+        source: q.source ? { kind: q.source as 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' } : undefined,
       },
       orderBy: { score: 'desc' },
       include: { source: { select: { kind: true } } },
@@ -310,7 +310,7 @@ export async function buildServer() {
     {
       schema: {
         body: z.object({
-          source: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT']).optional(),
+          source: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']).optional(),
           olderThanDays: z.number().int().positive().optional(),
         }),
       },

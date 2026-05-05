@@ -35,7 +35,7 @@ type OfferRow = {
   coupon: string | null;
   installments: number | null;
   fetchedAt: string;
-  source: { kind: 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'PROMOBIT' };
+  source: { kind: 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' };
 };
 
 type OfferPatch = {
@@ -126,7 +126,6 @@ export default function OffersPage(): React.ReactElement {
                 <option value="SHOPEE">Shopee</option>
                 <option value="AMAZON">Amazon</option>
                 <option value="MERCADOLIVRE">Mercado Livre</option>
-                <option value="PROMOBIT">Promobit</option>
               </Select>
             </div>
             <div className="space-y-1.5">

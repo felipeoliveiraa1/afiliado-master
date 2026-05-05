@@ -170,7 +170,6 @@ const SOURCE_LABELS: Record<string, string> = {
   MERCADOLIVRE: 'Mercado Livre',
   AMAZON: 'Amazon',
   SHOPEE: 'Shopee',
-  PROMOBIT: 'Promobit',
 };
 
 async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {

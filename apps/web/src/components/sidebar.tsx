@@ -45,40 +45,40 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: 'Sources',
-    items: [
-      { href: '/sources/SHOPEE', label: 'Shopee', icon: Tags },
-      { href: '/sources/AMAZON', label: 'Amazon', icon: Tags },
-      { href: '/sources/MERCADOLIVRE', label: 'Mercado Livre', icon: Tags },
-      { href: '/sources/PROMOBIT', label: 'Promobit', icon: Tags },
-      { href: '/sources/mercadolivre/search', label: 'Busca por categoria ML', icon: BarChart3 },
-      { href: '/sources/mercadolivre/coupons', label: 'Cupons ML', icon: Tag },
-      { href: '/sources/shopee/coupons', label: 'Cupons Shopee', icon: Tag },
-    ],
-  },
-  {
-    label: 'Cookies do painel',
-    items: [
-      { href: '/sources/mercadolivre/cookie', label: 'Cookie ML (obrigatório)', icon: Cookie },
-      // Cookie Shopee — descontinuado. Open API GraphQL (App ID + Secret) substitui.
-      // Mantido fallback no código mas não exposto na UI.
-    ],
-  },
-  {
     label: 'Disparo',
     items: [
       { href: '/disparos/novo', label: '🚀 Novo disparo (wizard)', icon: Zap },
+      { href: '/campaigns', label: 'Campanhas', icon: Megaphone },
+      { href: '/dispatches', label: 'Histórico de disparos', icon: Send },
       { href: '/channels', label: 'Canais (WhatsApp)', icon: Users },
       { href: '/niches', label: 'Nichos', icon: Tag },
-      { href: '/campaigns', label: 'Campanhas', icon: Megaphone },
-      { href: '/dispatches', label: 'Disparos', icon: Send },
+    ],
+  },
+  {
+    label: '🟡 Mercado Livre',
+    items: [
+      { href: '/sources/MERCADOLIVRE', label: 'Visão geral', icon: Tags },
+      { href: '/sources/mercadolivre/cookie', label: 'Cookie (obrigatório)', icon: Cookie },
+      { href: '/sources/mercadolivre/search', label: 'Busca por categoria', icon: BarChart3 },
+      { href: '/sources/mercadolivre/coupons', label: 'Cupons', icon: Tag },
+    ],
+  },
+  {
+    label: '🟠 Shopee',
+    items: [
+      { href: '/sources/SHOPEE', label: 'Visão geral', icon: Tags },
+      { href: '/sources/shopee/coupons', label: 'Cupons', icon: Tag },
+    ],
+  },
+  {
+    label: '🔵 Amazon',
+    items: [
+      { href: '/sources/AMAZON', label: 'Visão geral', icon: Tags },
     ],
   },
   {
     label: 'Sistema',
-    items: [
-      { href: '/settings', label: 'Configurações', icon: Settings },
-    ],
+    items: [{ href: '/settings', label: 'Configurações', icon: Settings }],
   },
 ];
 

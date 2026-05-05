@@ -99,7 +99,7 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
     discountPct: effective.minDiscount ? { gte: effective.minDiscount } : undefined,
     price: effective.maxPrice ? { lte: effective.maxPrice } : undefined,
     source: filters.sources?.length
-      ? { kind: { in: filters.sources as ('SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'PROMOBIT')[] } }
+      ? { kind: { in: filters.sources as ('SHOPEE' | 'AMAZON' | 'MERCADOLIVRE')[] } }
       : undefined,
     // Combinador: se tem categoria E keyword, OR. Se tem só uma, aplica direto.
     ...(categoryFilter && keywordFilter

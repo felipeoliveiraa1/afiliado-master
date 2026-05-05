@@ -3,7 +3,6 @@ import { logger } from '@/lib/logger.js';
 import { getSettingsSection } from '@/lib/settings.js';
 import { shopeeSource } from './shopee.js';
 import { mercadoLivreSource } from './mercadolivre.js';
-import { promobitSource } from './promobit.js';
 import { amazonPaapiSource } from './amazon_paapi.js';
 import type { SourceAdapter } from './types.js';
 
@@ -50,7 +49,9 @@ export async function getAdapter(kind: SourceKind): Promise<SourceAdapter | null
     case 'MERCADOLIVRE':
       return mercadoLivreAdapter;
     case 'PROMOBIT':
-      return promobitSource;
+      // Removido — não usado em prod. Source row pode existir no DB legacy
+      // mas adapter retorna null = cron pula silenciosamente.
+      return null;
     default:
       return null;
   }

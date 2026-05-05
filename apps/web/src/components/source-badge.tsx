@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-type Kind = 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'PROMOBIT' | string;
+type Kind = 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | string;
 
 const STYLES: Record<string, { className: string; label: string; mark: string }> = {
   SHOPEE: {

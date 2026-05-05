@@ -22,7 +22,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { SourceBadge } from '@/components/source-badge';
 import { formatDate } from '@/lib/utils';
 
-type SourceKind = 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'PROMOBIT';
+type SourceKind = 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE';
 
 type RecentOffer = {
   id: string;
@@ -49,11 +49,6 @@ const COPY: Record<SourceKind, { title: string; subtitle: string; hasCookie: boo
     title: 'Mercado Livre',
     subtitle: 'API pública para descoberta + cookie do painel para conversão automática.',
     hasCookie: true,
-  },
-  PROMOBIT: {
-    title: 'Promobit',
-    subtitle: 'Agregador comunitário. Resolve para Amazon/Shopee/ML por trás.',
-    hasCookie: false,
   },
 };
 

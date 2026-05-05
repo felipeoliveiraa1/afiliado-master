@@ -203,7 +203,7 @@ export function startWorkers() {
         await curateQueue.add('curate', { offerId: offer.id, channelKind: 'WHATSAPP_GROUP' });
 
         const isShopeeNeedingLink =
-          (job.data.sourceKind === 'PROMOBIT' || job.data.sourceKind === 'SHOPEE') &&
+          job.data.sourceKind === 'SHOPEE' &&
           !offer.affiliateUrl &&
           /shopee\.com\.br/.test(offer.url) &&
           env.SHOPEE_PANEL_AUTO_ENABLED;
@@ -216,7 +216,7 @@ export function startWorkers() {
         }
 
         const isMercadoLivreNeedingLink =
-          (job.data.sourceKind === 'PROMOBIT' || job.data.sourceKind === 'MERCADOLIVRE') &&
+          job.data.sourceKind === 'MERCADOLIVRE' &&
           !offer.affiliateUrl &&
           /mercadolivre\.com(?:\.br)?/.test(offer.url) &&
           env.MERCADOLIVRE_PANEL_AUTO_ENABLED;
