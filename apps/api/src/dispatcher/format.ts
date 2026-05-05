@@ -94,6 +94,41 @@ function buildInstallmentLine(price: number, installments: number | null | undef
   return `💳 ou ${installments}x de ${formatBRL(value)} sem juros`;
 }
 
+/**
+ * Template de "alerta de cupom" (post dedicado, não produto). Estilo dos
+ * grupos brasileiros tipo achadinhoo_do_bebe:
+ *
+ *   SAIU CUPOM CORREEE 🚨
+ *
+ *   💸 R$5 OFF
+ *   🎯 Em compras a partir de R$20
+ *   🎟️ Código: OLH4CUP0M5AFF
+ *
+ *   Copie e cole aqui:
+ *   https://s.shopee.com.br/5q4m7dNQnW
+ *
+ *   ⚠️ Promoção sujeita a alteração a qualquer momento.
+ */
+export function formatCouponAlert(input: {
+  code: string;
+  discountText?: string | null;
+  description?: string | null;
+  validUntil?: Date | null;
+  shortLink?: string | null;
+}): string {
+  const sections: string[] = ['SAIU CUPOM CORREEE 🚨'];
+  if (input.discountText) sections.push(`💸 ${input.discountText.toUpperCase()}`);
+  if (input.description) sections.push(`🎯 ${input.description}`);
+  sections.push(`🎟️ Código: ${input.code.toUpperCase()}`);
+  if (input.shortLink) sections.push(`Copie e cole aqui:\n${input.shortLink}`);
+  if (input.validUntil) {
+    const formatted = input.validUntil.toLocaleDateString('pt-BR');
+    sections.push(`⏰ Válido até ${formatted}`);
+  }
+  sections.push(DISCLAIMER);
+  return sections.join('\n\n');
+}
+
 function buildCouponLine(coupon: string | null | undefined): string | null {
   const cleaned = coupon?.trim();
   if (!cleaned) return null;

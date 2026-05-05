@@ -809,6 +809,30 @@ export async function buildServer() {
     return { total: candidates.length, generated, skipped, failed, errors };
   });
 
+  // Gerador genérico de shortlink Shopee: pega QUALQUER URL Shopee e devolve
+  // shortlink encurtado com seu affiliate ID. Equivale ao "criador de links"
+  // do painel oficial. Útil pra:
+  //   - Página de cupons: /m/cupom-de-desconto
+  //   - Promo flash específica de loja
+  //   - Coleção/campanha curada manualmente
+  //   - Produto avulso que não tá no catálogo automático
+  app.post(
+    '/sources/SHOPEE/short-link',
+    {
+      schema: {
+        body: z.object({
+          originUrl: z.string().url(),
+          subIds: z.array(z.string().max(50)).max(5).optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const { generateShopeeShortLink } = await import('@/sources/shopee.js');
+      const shortLink = await generateShopeeShortLink(req.body.originUrl, req.body.subIds ?? []);
+      return { shortLink, originUrl: req.body.originUrl, subIds: req.body.subIds ?? [] };
+    },
+  );
+
   // Gera shortlink Shopee da página de cupons já tageado com seu affiliate ID.
   // Equivale ao link "APROVEITA E RESGATA AQUI" que outros grupos divulgam —
   // qualquer cupom que o usuário pegue + use → comissão pra você.
@@ -896,6 +920,53 @@ export async function buildServer() {
     async (req) => {
       await prisma.shopeeCoupon.delete({ where: { id: req.params.id } });
       return { deleted: true };
+    },
+  );
+
+  // Dispara post dedicado de "alerta de cupom" no canal escolhido. Estilo
+  // de grupos brasileiros (achadinhoo_do_bebe). Gera shortlink da página
+  // de cupons + monta template formatCouponAlert + manda via Evolution.
+  app.post(
+    '/sources/SHOPEE/coupons/:id/dispatch',
+    {
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: z.object({ channelId: z.string() }),
+      },
+    },
+    async (req, reply) => {
+      const coupon = await prisma.shopeeCoupon.findUnique({ where: { id: req.params.id } });
+      if (!coupon) return reply.code(404).send({ error: 'cupom não encontrado' });
+      const channel = await prisma.channel.findUnique({ where: { id: req.body.channelId } });
+      if (!channel?.whatsappGroupId) {
+        return reply.code(400).send({ error: 'canal sem whatsappGroupId' });
+      }
+      const { generateShopeeShortLink } = await import('@/sources/shopee.js');
+      const { formatCouponAlert } = await import('@/dispatcher/format.js');
+      const { evolution } = await import('@/lib/evolution.js');
+      let shortLink: string | null = null;
+      try {
+        shortLink = await generateShopeeShortLink('https://shopee.com.br/m/cupom-de-desconto', [
+          coupon.code,
+        ]);
+      } catch (err) {
+        // Sem shortlink não é fatal — manda só o código
+        app.log.warn({ err }, 'failed to generate shortlink for coupon alert');
+      }
+      const text = formatCouponAlert({
+        code: coupon.code,
+        discountText: coupon.discountText,
+        description: coupon.description,
+        validUntil: coupon.validUntil,
+        shortLink,
+      });
+      const result = await evolution.sendText({
+        instance: channel.evolutionInstance ?? undefined,
+        to: channel.whatsappGroupId,
+        text,
+        delayMs: 3000 + Math.floor(Math.random() * 5000), // typing 3-8s
+      });
+      return { sent: true, text, externalMsgId: (result as { key?: { id?: string } })?.key?.id };
     },
   );
 

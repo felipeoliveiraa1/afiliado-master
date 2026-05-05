@@ -30,6 +30,8 @@ type ShopeeCoupon = {
   createdAt: string;
 };
 
+type ChannelDTO = { id: string; name: string };
+
 export default function ShopeeCouponsPage(): React.ReactElement {
   const qc = useQueryClient();
   const [form, setForm] = useState({
@@ -44,6 +46,23 @@ export default function ShopeeCouponsPage(): React.ReactElement {
   const { data: coupons, isLoading } = useQuery<ShopeeCoupon[]>({
     queryKey: ['shopee-coupons'],
     queryFn: () => clientFetch<ShopeeCoupon[]>('/sources/SHOPEE/coupons'),
+  });
+
+  const { data: channels } = useQuery<ChannelDTO[]>({
+    queryKey: ['channels'],
+    queryFn: () => clientFetch<ChannelDTO[]>('/channels'),
+  });
+
+  const [selectedChannelByCoupon, setSelectedChannelByCoupon] = useState<Record<string, string>>({});
+
+  const dispatchAlert = useMutation<unknown, Error, { id: string; channelId: string }>({
+    mutationFn: ({ id, channelId }) =>
+      clientFetch(`/sources/SHOPEE/coupons/${id}/dispatch`, {
+        method: 'POST',
+        body: { channelId },
+      }),
+    onSuccess: () => setErrorMsg('✅ Alerta de cupom enviado pro grupo'),
+    onError: (err) => setErrorMsg(err.message),
   });
 
   const create = useMutation<ShopeeCoupon>({
@@ -93,6 +112,22 @@ export default function ShopeeCouponsPage(): React.ReactElement {
     onError: (err: Error) => setErrorMsg(err.message),
   });
 
+  // Gerador genérico de shortlink — pega qualquer URL Shopee
+  const [shortLinkInput, setShortLinkInput] = useState('');
+  const genericShortLink = useMutation<{ shortLink: string }, Error, string>({
+    mutationFn: (originUrl) =>
+      clientFetch<{ shortLink: string }>('/sources/SHOPEE/short-link', {
+        method: 'POST',
+        body: { originUrl },
+      }),
+    onSuccess: (data) => {
+      navigator.clipboard.writeText(data.shortLink);
+      setErrorMsg(`✅ Copiado: ${data.shortLink}`);
+      setShortLinkInput('');
+    },
+    onError: (err) => setErrorMsg(err.message),
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -108,6 +143,35 @@ export default function ShopeeCouponsPage(): React.ReactElement {
           </Button>
         }
       />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">🔗 Gerador de shortlink Shopee</CardTitle>
+          <CardDescription>
+            Cola qualquer URL Shopee (página de cupom, promo, produto, coleção) e gera shortlink já tageado com seu affiliate ID. Equivale ao "criador de links" do painel oficial.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Input
+              placeholder="https://shopee.com.br/m/promocao-magica"
+              value={shortLinkInput}
+              onChange={(e) => setShortLinkInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && shortLinkInput.trim()) {
+                  genericShortLink.mutate(shortLinkInput.trim());
+                }
+              }}
+            />
+            <Button
+              onClick={() => genericShortLink.mutate(shortLinkInput.trim())}
+              disabled={genericShortLink.isPending || !shortLinkInput.trim()}
+            >
+              {genericShortLink.isPending ? 'Gerando...' : 'Gerar e copiar'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -227,7 +291,37 @@ export default function ShopeeCouponsPage(): React.ReactElement {
                         {c.validUntil ? `Vence ${new Date(c.validUntil).toLocaleDateString('pt-BR')}` : 'Sem validade'}
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <select
+                        className="rounded-md border bg-background px-2 py-1 text-xs"
+                        value={selectedChannelByCoupon[c.id] ?? ''}
+                        onChange={(e) =>
+                          setSelectedChannelByCoupon((s) => ({ ...s, [c.id]: e.target.value }))
+                        }
+                      >
+                        <option value="">Canal pra disparar...</option>
+                        {(channels ?? []).map((ch) => (
+                          <option key={ch.id} value={ch.id}>
+                            {ch.name}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const channelId = selectedChannelByCoupon[c.id];
+                          if (!channelId) {
+                            setErrorMsg('Selecione um canal antes');
+                            return;
+                          }
+                          if (confirm(`Disparar alerta de cupom ${c.code} no canal?`)) {
+                            dispatchAlert.mutate({ id: c.id, channelId });
+                          }
+                        }}
+                        disabled={dispatchAlert.isPending}
+                      >
+                        🚨 Mandar
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
