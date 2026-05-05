@@ -197,6 +197,50 @@ export async function buildServer() {
     },
   );
 
+  app.get(
+    '/sources/:kind',
+    {
+      schema: {
+        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT']) }),
+      },
+    },
+    async (req) => {
+      const source = await prisma.source.upsert({
+        where: { kind: req.params.kind },
+        update: {},
+        create: { kind: req.params.kind },
+      });
+      return source;
+    },
+  );
+
+  // PATCH /sources/:kind — atualiza Source.config (categorias, keywords, filtros)
+  // Esses settings são lidos pelo cron a cada fetch automático.
+  app.patch(
+    '/sources/:kind/config',
+    {
+      schema: {
+        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT']) }),
+        body: z.object({
+          categoryIds: z.array(z.string()).optional(),
+          keywords: z.array(z.string()).optional(),
+          minDiscount: z.number().min(0).max(100).optional(),
+          limitPerCategory: z.number().int().min(1).max(50).optional(),
+          onlyMall: z.boolean().optional(),
+          onlyKeySellers: z.boolean().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const updated = await prisma.source.upsert({
+        where: { kind: req.params.kind },
+        update: { config: req.body as never },
+        create: { kind: req.params.kind, config: req.body as never },
+      });
+      return updated;
+    },
+  );
+
   app.get('/offers', async (req) => {
     const q = req.query as { take?: string; minScore?: string; source?: string };
     return prisma.offer.findMany({

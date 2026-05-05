@@ -3,6 +3,7 @@ import { redisConnection } from '@/lib/redis.js';
 import { prisma } from '@/lib/db.js';
 import { logger } from '@/lib/logger.js';
 import { getAdapter } from '@/sources/index.js';
+import type { RawOffer } from '@/sources/types.js';
 import { describeOffer } from '@/curator/describe.js';
 import { scoreOffer } from '@/curator/score.js';
 import { env } from '@/config/env.js';
@@ -47,7 +48,61 @@ export function startWorkers() {
         update: {},
         create: { kind: job.data.sourceKind },
       });
-      const raws = await adapter.fetch({ limit: job.data.limit ?? 30 });
+      // Source.config define o que puxar — categorias, keywords, filtros.
+      // Cron itera cada combinação. Sem config = comportamento legado (1 fetch genérico).
+      const cfg = (source.config as {
+        categoryIds?: string[];
+        keywords?: string[];
+        minDiscount?: number;
+        limitPerCategory?: number;
+        onlyMall?: boolean;
+        onlyKeySellers?: boolean;
+      }) ?? {};
+      const limitPerCat = cfg.limitPerCategory ?? 10;
+      const totalLimit = job.data.limit ?? 50;
+      const sharedFilters = {
+        minDiscount: cfg.minDiscount,
+        onlyMall: cfg.onlyMall,
+        onlyKeySellers: cfg.onlyKeySellers,
+      };
+      const fetchTasks: Promise<RawOffer[]>[] = [];
+      for (const catId of cfg.categoryIds ?? []) {
+        fetchTasks.push(adapter.fetch({ categoryId: catId, limit: limitPerCat, ...sharedFilters }));
+      }
+      for (const kw of cfg.keywords ?? []) {
+        fetchTasks.push(adapter.fetch({ keyword: kw, limit: limitPerCat, ...sharedFilters }));
+      }
+      // Fallback quando sem config — comportamento legado
+      if (fetchTasks.length === 0) {
+        fetchTasks.push(adapter.fetch({ limit: totalLimit, ...sharedFilters }));
+      }
+      const taskResults = await Promise.allSettled(fetchTasks);
+      const raws: RawOffer[] = [];
+      for (const r of taskResults) {
+        if (r.status === 'fulfilled') {
+          raws.push(...r.value);
+        } else {
+          logger.warn({ err: r.reason, sourceKind: job.data.sourceKind }, 'fetch task failed');
+        }
+      }
+      // Dedup por externalId (categorias podem ter overlap)
+      const seenIds = new Set<string>();
+      const dedupedRaws = raws.filter((r) => {
+        if (seenIds.has(r.externalId)) return false;
+        seenIds.add(r.externalId);
+        return true;
+      });
+      logger.info(
+        {
+          sourceKind: job.data.sourceKind,
+          tasks: fetchTasks.length,
+          totalRaws: raws.length,
+          deduped: dedupedRaws.length,
+        },
+        'fetch tasks completed',
+      );
+      // Daqui pra frente usa raws deduplicados
+      const finalRaws = dedupedRaws;
       // Pre-carrega cupons Shopee ativos pra match O(1) por seller name.
       // Sem ID interno (Open API não expõe), só temos o code + seller.
       // Match: case-insensitive lookup por seller; fallback pra cupom de
@@ -83,7 +138,7 @@ export function startWorkers() {
           .replace(/[̀-ͯ]/g, '')
           .replace(/[^a-z0-9]/g, '');
       let inserted = 0;
-      for (const r of raws) {
+      for (const r of finalRaws) {
         // Match cupom Shopee por seller. Se não bater seller específico,
         // usa o cupom de plataforma (se houver). Sem cupom configurado,
         // offer.coupon fica null (template do WhatsApp omite a linha).

@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import React, { use, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Cookie, Download, ExternalLink, ImageOff, Inbox, Zap } from 'lucide-react';
@@ -78,6 +78,67 @@ export default function SourcePage({ params }: { params: Promise<{ kind: string 
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['source-offers', kind] }),
   });
 
+  // Source.config — define o que o cron puxa por nicho/categoria/keyword
+  type SourceData = {
+    config?: {
+      categoryIds?: string[];
+      keywords?: string[];
+      minDiscount?: number;
+      limitPerCategory?: number;
+      onlyMall?: boolean;
+      onlyKeySellers?: boolean;
+    };
+  };
+  const sourceQuery = useQuery<SourceData>({
+    queryKey: ['source', kind],
+    queryFn: () => clientFetch<SourceData>(`/sources/${kind}`),
+  });
+
+  const [cfgForm, setCfgForm] = useState({
+    categoryIdsCsv: '',
+    keywordsCsv: '',
+    minDiscount: 0,
+    limitPerCategory: 10,
+    onlyMall: false,
+    onlyKeySellers: false,
+  });
+
+  // Hidrata form quando dados chegarem
+  React.useEffect(() => {
+    const c = sourceQuery.data?.config;
+    if (!c) return;
+    setCfgForm({
+      categoryIdsCsv: (c.categoryIds ?? []).join(', '),
+      keywordsCsv: (c.keywords ?? []).join(', '),
+      minDiscount: c.minDiscount ?? 0,
+      limitPerCategory: c.limitPerCategory ?? 10,
+      onlyMall: c.onlyMall ?? false,
+      onlyKeySellers: c.onlyKeySellers ?? false,
+    });
+  }, [sourceQuery.data?.config]);
+
+  const saveConfig = useMutation({
+    mutationFn: () =>
+      clientFetch(`/sources/${kind}/config`, {
+        method: 'PATCH',
+        body: {
+          categoryIds: cfgForm.categoryIdsCsv
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+          keywords: cfgForm.keywordsCsv
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+          minDiscount: cfgForm.minDiscount || undefined,
+          limitPerCategory: cfgForm.limitPerCategory,
+          onlyMall: cfgForm.onlyMall,
+          onlyKeySellers: cfgForm.onlyKeySellers,
+        },
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['source', kind] }),
+  });
+
   if (!copy) {
     return <p className="text-sm text-destructive">Source desconhecida: {kind}</p>;
   }
@@ -89,6 +150,100 @@ export default function SourcePage({ params }: { params: Promise<{ kind: string 
         description={copy.subtitle}
         badge={<SourceBadge kind={kind} />}
       />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">🎯 Configuração de captura (cron)</CardTitle>
+          <CardDescription>
+            Define o que o cron puxa automaticamente a cada 30min. Sem categorias/keywords =
+            comportamento padrão (top trending). Hint: ML usa MLB&lt;num&gt;, Shopee Int (productCatId), Amazon BrowseNodeId.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label>Categorias (CSV)</Label>
+              <Input
+                placeholder={
+                  kind === 'MERCADOLIVRE'
+                    ? 'MLB1276, MLB1574, MLB5726'
+                    : kind === 'SHOPEE'
+                      ? '100012, 100068, 100256'
+                      : '17873924011, 17873925011'
+                }
+                value={cfgForm.categoryIdsCsv}
+                onChange={(e) => setCfgForm({ ...cfgForm, categoryIdsCsv: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Keywords (CSV)</Label>
+              <Input
+                placeholder="smartwatch, fone bluetooth, perfume, suplemento"
+                value={cfgForm.keywordsCsv}
+                onChange={(e) => setCfgForm({ ...cfgForm, keywordsCsv: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Desconto mínimo (%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={cfgForm.minDiscount}
+                onChange={(e) => setCfgForm({ ...cfgForm, minDiscount: Number(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Produtos por categoria/keyword</Label>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={cfgForm.limitPerCategory}
+                onChange={(e) =>
+                  setCfgForm({ ...cfgForm, limitPerCategory: Number(e.target.value) })
+                }
+              />
+            </div>
+            {kind === 'SHOPEE' ? (
+              <>
+                <div className="space-y-1">
+                  <Label>
+                    <input
+                      type="checkbox"
+                      checked={cfgForm.onlyMall}
+                      onChange={(e) => setCfgForm({ ...cfgForm, onlyMall: e.target.checked })}
+                      className="mr-2 size-4"
+                    />
+                    Apenas Shopee Mall (lojas oficiais)
+                  </Label>
+                </div>
+                <div className="space-y-1">
+                  <Label>
+                    <input
+                      type="checkbox"
+                      checked={cfgForm.onlyKeySellers}
+                      onChange={(e) =>
+                        setCfgForm({ ...cfgForm, onlyKeySellers: e.target.checked })
+                      }
+                      className="mr-2 size-4"
+                    />
+                    Apenas key sellers (top vendedores)
+                  </Label>
+                </div>
+              </>
+            ) : null}
+          </div>
+          <Button onClick={() => saveConfig.mutate()} disabled={saveConfig.isPending}>
+            {saveConfig.isPending ? 'Salvando...' : 'Salvar config'}
+          </Button>
+          {saveConfig.isSuccess && (
+            <div className="text-sm text-success">
+              ✅ Salvo. Próximo fetch (cron ou manual) vai usar a nova config.
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_minmax(0,360px)]">
         <Card>

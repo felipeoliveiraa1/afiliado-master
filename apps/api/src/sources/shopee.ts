@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { request } from 'undici';
 import { logger } from '@/lib/logger.js';
 import { getSettingsSection } from '@/lib/settings.js';
-import type { RawOffer, SourceAdapter } from './types.js';
+import type { FetchOpts, RawOffer, SourceAdapter } from './types.js';
 
 const ENDPOINT = 'https://open-api.affiliate.shopee.com.br/graphql';
 
@@ -78,7 +78,15 @@ type ShopeeFetchOpts = {
 export const shopeeSource: SourceAdapter = {
   kind: 'SHOPEE',
   async fetch(opts) {
-    return fetchShopeeProducts(opts as ShopeeFetchOpts);
+    // Mapeia FetchOpts genérico → params Shopee
+    return fetchShopeeProducts({
+      limit: opts?.limit,
+      keyword: opts?.keyword,
+      productCatId: opts?.categoryId ? Number(opts.categoryId) : undefined,
+      sortType: 2, // ITEM_SOLD_DESC = bestseller
+      onlyMall: opts?.onlyMall,
+      onlyKeySellers: opts?.onlyKeySellers,
+    });
   },
 };
 

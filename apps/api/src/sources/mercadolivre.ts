@@ -21,8 +21,14 @@ export function makeMercadoLivreSource(config: Config = {}): SourceAdapter {
     kind: 'MERCADOLIVRE',
     async fetch(opts) {
       const limit = opts?.limit ?? 50;
+      // Se opts trouxer categoryId/keyword (vem do Source.config no worker),
+      // sobrescreve a busca padrão. Senão, usa o default config.searches.
+      const dynamicSearch =
+        opts?.categoryId || opts?.keyword
+          ? [{ q: opts.keyword ?? '', categoryId: opts.categoryId, sort: 'sold_quantity_desc' }]
+          : searches;
       const all: RawOffer[] = [];
-      for (const s of searches) {
+      for (const s of dynamicSearch) {
         const params = new URLSearchParams({ limit: String(limit), sort: s.sort ?? 'sold_quantity_desc' });
         if (s.q) params.set('q', s.q);
         if (s.categoryId) params.set('category', s.categoryId);
