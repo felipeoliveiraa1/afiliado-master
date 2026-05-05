@@ -79,6 +79,18 @@ export default function MlCouponsPage(): React.ReactElement {
     onError: (err: Error) => setErrorMsg(err.message),
   });
 
+  const autoGen = useMutation<{ total: number; generated: number; skipped: number; failed: number }>({
+    mutationFn: () =>
+      clientFetch('/sources/MERCADOLIVRE/coupons/auto-generate', { method: 'POST' }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['ml-coupons'] });
+      setErrorMsg(
+        `${data.generated} gerados, ${data.skipped} pulados (já existiam), ${data.failed} falharam`,
+      );
+    },
+    onError: (err: Error) => setErrorMsg(err.message),
+  });
+
   const generate = useMutation<MlCoupon, Error, { id: string; code: string }>({
     mutationFn: ({ id, code }) =>
       clientFetch<MlCoupon>(`/sources/MERCADOLIVRE/coupons/${id}/generate`, {
@@ -118,10 +130,22 @@ export default function MlCouponsPage(): React.ReactElement {
             : 'Gerencie cupons patrocinados por vendedores do ML. Sincronize pra ver os disponíveis.'
         }
         actions={
-          <Button onClick={() => sync.mutate()} disabled={sync.isPending}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${sync.isPending ? 'animate-spin' : ''}`} />
-            {sync.isPending ? 'Sincronizando...' : 'Sincronizar do ML'}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => sync.mutate()} disabled={sync.isPending}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${sync.isPending ? 'animate-spin' : ''}`} />
+              {sync.isPending ? 'Sincronizando...' : 'Sincronizar do ML'}
+            </Button>
+            <Button
+              onClick={() => {
+                if (confirm('Gerar código RADAR<valor> pra todos os cupons disponíveis? Pode demorar 30-60s (throttle anti-ban).')) {
+                  autoGen.mutate();
+                }
+              }}
+              disabled={autoGen.isPending || sync.isPending}
+            >
+              {autoGen.isPending ? 'Gerando...' : '⚡ Gerar todos automaticamente'}
+            </Button>
+          </div>
         }
       />
 

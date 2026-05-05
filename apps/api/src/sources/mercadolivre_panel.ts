@@ -984,6 +984,17 @@ export function __resetPanelStateForTests(): void {
   cooldownUntil = 0;
 }
 
+/**
+ * Sufixo padrão "RADAR" + valor numérico do título (≤10 chars limite ML).
+ * Ex: "R$ 30 OFF" → RADAR30, "25% OFF" → RADAR25, "R$ 1200 OFF" → RADAR1200.
+ * Pra cupons sem número óbvio, fallback "RADAROFF".
+ */
+export function defaultCouponSuffix(title: string): string {
+  const m = title.match(/(\d{1,5})/);
+  const value = m ? m[1] : 'OFF';
+  return `RADAR${value}`.slice(0, 10);
+}
+
 // =============================================================================
 // CUPONS DO PROGRAMA DE AFILIADOS ML
 // =============================================================================

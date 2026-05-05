@@ -9,6 +9,7 @@ import { evolution } from '@/lib/evolution.js';
 import { fetchQueue, dispatchQueue } from '@/queue/queues.js';
 import { validateShopeeCookie } from '@/sources/shopee_panel.js';
 import {
+  defaultCouponSuffix,
   generateMlCouponCode,
   listAvailableCoupons,
   listGeneratedCoupons,
@@ -752,6 +753,56 @@ export async function buildServer() {
       });
     },
   );
+
+  // Gera AUTOMATICAMENTE códigos pra todos os cupons disponíveis sem alias.
+  // Sufixo padrão = defaultCouponSuffix(title) = "RADAR" + valor numérico.
+  // Throttle 2-4s entre chamadas pra parecer humano. Skipa silenciosamente:
+  //   - Conflict (409 — sufixo duplicado pra esse cupom)
+  //   - Auth fail no meio → para tudo (cookie expirou)
+  app.post('/sources/MERCADOLIVRE/coupons/auto-generate', async (_req, reply) => {
+    const candidates = await prisma.mlCoupon.findMany({
+      where: { alias: null, status: 'AVAILABLE', enabled: true },
+      orderBy: { remainingBudget: 'desc' },
+    });
+    let generated = 0;
+    let skipped = 0;
+    let failed = 0;
+    const errors: { title: string; reason: string }[] = [];
+    for (const c of candidates) {
+      const code = defaultCouponSuffix(c.title);
+      try {
+        const { alias } = await generateMlCouponCode({ couponId: c.mlCouponId, code });
+        await prisma.mlCoupon.update({
+          where: { id: c.id },
+          data: { alias, code, status: 'ACTIVE' },
+        });
+        generated++;
+        await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 2000)));
+      } catch (err) {
+        if (err instanceof MercadoLivrePanelError) {
+          if (err.kind === 'auth') {
+            return reply.code(503).send({
+              error: 'Cookie ML expirou — re-valide em /sources/mercadolivre/cookie',
+              generated,
+              skipped,
+              failed,
+              errors,
+            });
+          }
+          if (err.kind === 'conflict') {
+            skipped++;
+            continue;
+          }
+        }
+        failed++;
+        errors.push({
+          title: c.title,
+          reason: err instanceof Error ? err.message.slice(0, 100) : String(err),
+        });
+      }
+    }
+    return { total: candidates.length, generated, skipped, failed, errors };
+  });
 
   app.get('/admin/cookie-health', async () => {
     const sources = await prisma.source.findMany({
