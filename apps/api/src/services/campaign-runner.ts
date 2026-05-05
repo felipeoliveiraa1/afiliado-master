@@ -74,7 +74,11 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
     keywords: nicheKeywords,
   };
 
-  const schedule = (campaign.schedule as { postLoop?: boolean }) ?? {};
+  const schedule = (campaign.schedule as {
+    postLoop?: boolean;
+    burstSpreadMinSec?: number;
+    burstSpreadMaxSec?: number;
+  }) ?? {};
 
   // Sub-query: IDs de offers que JÁ têm dispatch criado pra essa campanha.
   // Usa `none` (Prisma) — equivalente a NOT EXISTS no SQL. Garante que cada
@@ -188,7 +192,13 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
     return { campaignId, queued: 0, dispatchIds: [], reason: 'no-offers' };
   }
 
+  // Spread de burst: dentro do mesmo lote, espaça mensagens 30-120s por padrão
+  // pra parecer humano postando uma achadinho de cada vez (não tudo de vez).
+  // Configurável por campanha via schedule.burstSpreadMin/MaxSec.
+  const spreadMin = Math.max(0, schedule.burstSpreadMinSec ?? 30);
+  const spreadMax = Math.max(spreadMin, schedule.burstSpreadMaxSec ?? 120);
   const dispatchIds: string[] = [];
+  let cumulativeDelayMs = 0;
   for (const offer of offers) {
     for (const channel of campaign.channels) {
       // Como filtramos NOT-dispatched no findMany, esses CREATEs são novos.
@@ -205,15 +215,22 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
           campaignId: campaign.id,
           offerId: offer.id,
           channelId: channel.id,
-          scheduledFor: new Date(),
+          scheduledFor: new Date(Date.now() + cumulativeDelayMs),
         },
         update: {},
       });
       if (d.status === 'PENDING') {
-        await dispatchQueue.add('dispatch', { dispatchId: d.id });
+        await dispatchQueue.add(
+          'dispatch',
+          { dispatchId: d.id },
+          { delay: cumulativeDelayMs },
+        );
         dispatchIds.push(d.id);
       }
     }
+    // Próxima oferta do burst: agenda spreadMin~spreadMax segundos depois
+    const nextGapSec = Math.floor(spreadMin + Math.random() * (spreadMax - spreadMin));
+    cumulativeDelayMs += nextGapSec * 1000;
   }
   if (dispatchIds.length === 0) {
     return { campaignId, queued: 0, dispatchIds, reason: 'all-already-dispatched' };
@@ -234,15 +251,25 @@ export async function runDueCampaigns(): Promise<void> {
   });
   const now = Date.now();
   for (const c of campaigns) {
-    const intervalMin = ((c.schedule as { intervalMinutes?: number })?.intervalMinutes ?? 60);
+    const sched = (c.schedule as {
+      intervalMinutes?: number;
+      burstSizeMin?: number;
+      burstSizeMax?: number;
+    }) ?? {};
+    const intervalMin = sched.intervalMinutes ?? 60;
     const last = c.dispatches[0]?.createdAt;
     const isDue = !last || now - last.getTime() >= intervalMin * 60_000;
     if (!isDue) continue;
+    // Burst variável: cada disparo de campanha manda N mensagens (5-12 default).
+    // Imita curador humano que junta achadinhos e posta em onda, depois pausa.
+    const burstMin = Math.max(1, sched.burstSizeMin ?? 5);
+    const burstMax = Math.max(burstMin, sched.burstSizeMax ?? 12);
+    const burstSize = Math.floor(burstMin + Math.random() * (burstMax - burstMin + 1));
     try {
-      const result = await runCampaign(c.id);
+      const result = await runCampaign(c.id, burstSize);
       logger.info(
-        { campaign: c.name, ...result },
-        result.queued > 0 ? 'cron campaign dispatched' : 'cron campaign skip',
+        { campaign: c.name, burstSize, ...result },
+        result.queued > 0 ? 'cron campaign burst dispatched' : 'cron campaign skip',
       );
     } catch (err) {
       logger.error({ err, campaign: c.name }, 'cron campaign error');

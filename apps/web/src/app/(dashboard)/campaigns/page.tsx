@@ -41,6 +41,10 @@ type CampaignDTO = {
     windowEndHour?: number;
     dailyLimit?: number;
     postLoop?: boolean;
+    burstSizeMin?: number;
+    burstSizeMax?: number;
+    burstSpreadMinSec?: number;
+    burstSpreadMaxSec?: number;
   };
   createdAt: string;
   channels: { id: string; name: string }[];
@@ -85,6 +89,10 @@ export default function DisparosPage(): React.ReactElement {
     windowEndHour: 22,
     dailyLimit: 0,
     postLoop: false,
+    burstSizeMin: 5,
+    burstSizeMax: 12,
+    burstSpreadMinSec: 30,
+    burstSpreadMaxSec: 120,
     minScore: 0.4,
     minDiscount: 0,
     maxPrice: 0,
@@ -109,6 +117,10 @@ export default function DisparosPage(): React.ReactElement {
             windowEndHour: form.windowEndHour,
             dailyLimit: form.dailyLimit > 0 ? form.dailyLimit : undefined,
             postLoop: form.postLoop,
+            burstSizeMin: form.burstSizeMin,
+            burstSizeMax: form.burstSizeMax,
+            burstSpreadMinSec: form.burstSpreadMinSec,
+            burstSpreadMaxSec: form.burstSpreadMaxSec,
           },
           channelIds: [form.channelId],
           nicheIds: form.nicheIds,
@@ -127,6 +139,10 @@ export default function DisparosPage(): React.ReactElement {
         windowEndHour: 22,
         dailyLimit: 0,
         postLoop: false,
+        burstSizeMin: 5,
+        burstSizeMax: 12,
+        burstSpreadMinSec: 30,
+        burstSpreadMaxSec: 120,
         minScore: 0.4,
         minDiscount: 0,
         maxPrice: 0,
@@ -272,7 +288,7 @@ export default function DisparosPage(): React.ReactElement {
               <Label className="text-sm font-medium">4. Cadência</Label>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Intervalo entre msgs</Label>
+                  <Label className="text-xs">Intervalo entre bursts</Label>
                   <select
                     className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     value={form.intervalMinutes}
@@ -280,11 +296,12 @@ export default function DisparosPage(): React.ReactElement {
                       setForm({ ...form, intervalMinutes: Number(e.target.value) })
                     }
                   >
-                    <option value="5">5 min (alta freq)</option>
                     <option value="15">15 min</option>
                     <option value="30">30 min</option>
-                    <option value="60">60 min (recomendado)</option>
+                    <option value="60">60 min</option>
+                    <option value="90">90 min (recomendado)</option>
                     <option value="120">2 horas</option>
+                    <option value="180">3 horas</option>
                     <option value="240">4 horas</option>
                   </select>
                 </div>
@@ -320,6 +337,64 @@ export default function DisparosPage(): React.ReactElement {
                 />
                 <span>♻️ Loop — quando esgotar produtos novos, recomeça do top score</span>
               </label>
+
+              {/* Burst variável — imita curador humano postando "5 em 5", "8 em 8" */}
+              <div className="mt-3 rounded-lg border border-dashed border-accent/30 bg-accent/5 p-3 space-y-2">
+                <Label className="text-xs font-medium">
+                  🌊 Burst — quantas msgs por onda + intervalo entre elas
+                </Label>
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Mín msgs/burst</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={form.burstSizeMin}
+                      onChange={(e) => setForm({ ...form, burstSizeMin: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Máx msgs/burst</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={form.burstSizeMax}
+                      onChange={(e) => setForm({ ...form, burstSizeMax: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Gap mín (s)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={600}
+                      value={form.burstSpreadMinSec}
+                      onChange={(e) =>
+                        setForm({ ...form, burstSpreadMinSec: Number(e.target.value) })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Gap máx (s)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={600}
+                      value={form.burstSpreadMaxSec}
+                      onChange={(e) =>
+                        setForm({ ...form, burstSpreadMaxSec: Number(e.target.value) })
+                      }
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Cada onda manda N mensagens (random entre mín/máx) com gap variável entre elas. Ex:
+                  5-12 msgs com gap 30-120s = curador humano postando achadinhos em rajada, depois
+                  pausa pelo &quot;Intervalo entre msgs&quot; acima até a próxima onda.
+                </p>
+              </div>
             </div>
 
             {/* 5. Filtros (opcional, recolhível) */}
