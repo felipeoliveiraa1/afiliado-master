@@ -809,6 +809,32 @@ export async function buildServer() {
     return { total: candidates.length, generated, skipped, failed, errors };
   });
 
+  // Gera shortlink Shopee da página de cupons já tageado com seu affiliate ID.
+  // Equivale ao link "APROVEITA E RESGATA AQUI" que outros grupos divulgam —
+  // qualquer cupom que o usuário pegue + use → comissão pra você.
+  //
+  // Uso típico: divulga 1-2x/dia no grupo (manual ou via post recorrente).
+  // Body opcional `{ subIds: ["grupo1"] }` permite tracking por canal.
+  app.post(
+    '/sources/SHOPEE/coupon-page-shortlink',
+    {
+      schema: {
+        body: z
+          .object({
+            subIds: z.array(z.string().max(50)).max(5).optional(),
+          })
+          .optional(),
+      },
+    },
+    async (req) => {
+      const { generateShopeeShortLink } = await import('@/sources/shopee.js');
+      const subIds = (req.body as { subIds?: string[] } | undefined)?.subIds ?? [];
+      const COUPON_PAGE = 'https://shopee.com.br/m/cupom-de-desconto';
+      const shortLink = await generateShopeeShortLink(COUPON_PAGE, subIds);
+      return { shortLink, originUrl: COUPON_PAGE, subIds };
+    },
+  );
+
   // ===========================================================================
   // CUPONS SHOPEE (cadastro manual — Open API não expõe)
   // ===========================================================================

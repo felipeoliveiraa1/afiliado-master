@@ -80,11 +80,33 @@ export default function ShopeeCouponsPage(): React.ReactElement {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['shopee-coupons'] }),
   });
 
+  const couponPageLink = useMutation<{ shortLink: string }>({
+    mutationFn: () =>
+      clientFetch<{ shortLink: string }>('/sources/SHOPEE/coupon-page-shortlink', {
+        method: 'POST',
+        body: { subIds: [] },
+      }),
+    onSuccess: (data) => {
+      navigator.clipboard.writeText(data.shortLink);
+      setErrorMsg(`✅ Copiado: ${data.shortLink} — divulgue no grupo. Qualquer cupom usado = comissão pra você.`);
+    },
+    onError: (err: Error) => setErrorMsg(err.message),
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Cupons Shopee"
         description='Open API Shopee NÃO expõe cupons. Cole aqui códigos que recebe via App/Email/Portal afiliado. Quando seller bater com produto Shopee, código vai automático no caption do WhatsApp. Sem seller = "cupom de plataforma" (aplica em qualquer produto Shopee sem cupom específico).'
+        actions={
+          <Button
+            onClick={() => couponPageLink.mutate()}
+            disabled={couponPageLink.isPending}
+            variant="outline"
+          >
+            {couponPageLink.isPending ? 'Gerando...' : '🎁 Copiar link da página de cupons'}
+          </Button>
+        }
       />
 
       <Card>
