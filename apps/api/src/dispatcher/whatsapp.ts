@@ -3,7 +3,31 @@ import { prisma } from '@/lib/db.js';
 import { logger } from '@/lib/logger.js';
 import { evolution } from '@/lib/evolution.js';
 import { formatOfferMessage } from '@/dispatcher/format.js';
+import { getSettingsSection } from '@/lib/settings.js';
 import type { Channel, Dispatch, Offer } from '@prisma/client';
+
+type AntibanCfg = {
+  windowStartHour?: number;
+  windowEndHour?: number;
+  dailyLimitPerInstance?: number;
+  minIntervalSec?: number;
+  maxIntervalSec?: number;
+};
+
+/**
+ * Lê janela horária + limites do `settings.antiban` (não do env). Settings
+ * são editáveis via UI sem restart. Fallback pro env se setting ausente.
+ */
+async function getAntibanCfg(): Promise<Required<AntibanCfg>> {
+  const cfg = await getSettingsSection<AntibanCfg>('antiban').catch(() => ({}) as AntibanCfg);
+  return {
+    windowStartHour: cfg.windowStartHour ?? env.DISPATCH_WINDOW_START,
+    windowEndHour: cfg.windowEndHour ?? env.DISPATCH_WINDOW_END,
+    dailyLimitPerInstance: cfg.dailyLimitPerInstance ?? env.DISPATCH_DAILY_LIMIT_PER_INSTANCE,
+    minIntervalSec: cfg.minIntervalSec ?? env.DISPATCH_MIN_INTERVAL,
+    maxIntervalSec: cfg.maxIntervalSec ?? env.DISPATCH_MAX_INTERVAL,
+  };
+}
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -36,12 +60,23 @@ export async function executeWhatsappDispatch(dispatchId: string): Promise<Dispa
     return { kind: 'SKIPPED', dispatchId, reason: `status=${dispatch.status}` };
   }
 
-  const window = checkDispatchWindow();
+  const antiban = await getAntibanCfg();
+  const window = checkDispatchWindow(new Date(), antiban.windowStartHour, antiban.windowEndHour);
   if (!window.open) {
+    logger.info(
+      {
+        dispatchId,
+        nowHour: new Date().getHours(),
+        windowStart: antiban.windowStartHour,
+        windowEnd: antiban.windowEndHour,
+        nextOpenAt: window.nextOpenAt,
+      },
+      'dispatch RESCHEDULED — fora da janela',
+    );
     return { kind: 'RESCHEDULED', dispatchId, runAt: window.nextOpenAt };
   }
 
-  const dailyLimitHit = await applyDailyLimit(dispatch);
+  const dailyLimitHit = await applyDailyLimit(dispatch, antiban.dailyLimitPerInstance);
   if (dailyLimitHit) {
     return { kind: 'SKIPPED', dispatchId, reason: 'daily limit' };
   }
@@ -53,7 +88,7 @@ export async function executeWhatsappDispatch(dispatchId: string): Promise<Dispa
 
   const fullText = await buildMessageText(dispatch);
 
-  return await sendAndPersist(dispatch, fullText);
+  return await sendAndPersist(dispatch, fullText, antiban);
 }
 
 export function checkDispatchWindow(
@@ -71,7 +106,7 @@ export function checkDispatchWindow(
   return { open: false, nextOpenAt: next };
 }
 
-async function applyDailyLimit(dispatch: LoadedDispatch): Promise<boolean> {
+async function applyDailyLimit(dispatch: LoadedDispatch, dailyLimit: number): Promise<boolean> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   if (dispatch.channel.lastResetAt < today) {
@@ -82,7 +117,7 @@ async function applyDailyLimit(dispatch: LoadedDispatch): Promise<boolean> {
     dispatch.channel.dailySent = 0;
     dispatch.channel.lastResetAt = today;
   }
-  if (dispatch.channel.dailySent >= env.DISPATCH_DAILY_LIMIT_PER_INSTANCE) {
+  if (dispatch.channel.dailySent >= dailyLimit) {
     await prisma.dispatch.update({
       where: { id: dispatch.id },
       data: { status: 'SKIPPED', errorMessage: 'daily limit' },
@@ -128,6 +163,7 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
 async function sendAndPersist(
   dispatch: LoadedDispatch,
   fullText: string,
+  antiban: { minIntervalSec: number; maxIntervalSec: number },
 ): Promise<DispatchExecutionResult> {
   if (!dispatch.channel.whatsappGroupId) {
     await prisma.dispatch.update({
@@ -144,13 +180,13 @@ async function sendAndPersist(
           mediaUrl: dispatch.offer.imageUrl,
           mediaType: 'image',
           caption: fullText,
-          delayMs: jitter(env.DISPATCH_MIN_INTERVAL, env.DISPATCH_MAX_INTERVAL),
+          delayMs: jitter(antiban.minIntervalSec, antiban.maxIntervalSec),
         })
       : await evolution.sendText({
           instance: dispatch.channel.evolutionInstance ?? undefined,
           to: dispatch.channel.whatsappGroupId,
           text: fullText,
-          delayMs: jitter(env.DISPATCH_MIN_INTERVAL, env.DISPATCH_MAX_INTERVAL),
+          delayMs: jitter(antiban.minIntervalSec, antiban.maxIntervalSec),
         });
     const externalMsgId = (result as { key?: { id?: string } } | undefined)?.key?.id;
     await prisma.dispatch.update({
