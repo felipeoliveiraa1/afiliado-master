@@ -25,6 +25,7 @@ type ShopeeCoupon = {
   description: string | null;
   seller: string | null;
   discountText: string | null;
+  imageUrl: string | null;
   validUntil: string | null;
   enabled: boolean;
   createdAt: string;
@@ -39,6 +40,7 @@ export default function ShopeeCouponsPage(): React.ReactElement {
     description: '',
     seller: '',
     discountText: '',
+    imageUrl: '',
     validUntil: '',
   });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -74,12 +76,13 @@ export default function ShopeeCouponsPage(): React.ReactElement {
           description: form.description || undefined,
           seller: form.seller || undefined,
           discountText: form.discountText || undefined,
+          imageUrl: form.imageUrl || undefined,
           validUntil: form.validUntil ? new Date(form.validUntil).toISOString() : undefined,
         },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['shopee-coupons'] });
-      setForm({ code: '', description: '', seller: '', discountText: '', validUntil: '' });
+      setForm({ code: '', description: '', seller: '', discountText: '', imageUrl: '', validUntil: '' });
       setErrorMsg(null);
     },
     onError: (err: Error) => setErrorMsg(err.message),
@@ -228,6 +231,28 @@ export default function ShopeeCouponsPage(): React.ReactElement {
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
               />
             </div>
+            <div className="space-y-1 md:col-span-2">
+              <Label>📷 URL da imagem (opcional — banner/arte do cupom)</Label>
+              <Input
+                type="url"
+                placeholder="https://..."
+                value={form.imageUrl}
+                onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+              />
+              {form.imageUrl ? (
+                <div className="mt-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={form.imageUrl}
+                    alt="Preview"
+                    className="h-32 rounded-md border object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
           <Button
             onClick={() => create.mutate()}
@@ -270,7 +295,18 @@ export default function ShopeeCouponsPage(): React.ReactElement {
               return (
                 <div key={c.id} className="rounded-lg border bg-card/50 p-3">
                   <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="space-y-1">
+                    {c.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={c.imageUrl}
+                        alt=""
+                        className="size-16 rounded-md border object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : null}
+                    <div className="space-y-1 flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="default" className="font-mono">
                           {c.code}

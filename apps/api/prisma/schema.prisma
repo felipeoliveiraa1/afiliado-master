@@ -205,6 +205,9 @@ model ShopeeCoupon {
   seller        String?
   /// % ou R$ — só pra display, não há cálculo automático
   discountText  String?   // "20% off", "R$30 off", "Frete grátis"
+  /// URL externa de imagem pra enviar junto no alerta (banner do cupom).
+  /// Quando presente, dispatch usa sendMedia em vez de sendText.
+  imageUrl      String?
   validUntil    DateTime?
   enabled       Boolean   @default(true)
   createdAt     DateTime  @default(now())

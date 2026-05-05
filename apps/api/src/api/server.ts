@@ -878,6 +878,7 @@ export async function buildServer() {
           description: z.string().max(200).optional(),
           seller: z.string().max(100).optional(),
           discountText: z.string().max(40).optional(),
+          imageUrl: z.string().url().optional(),
           validUntil: z.string().datetime().optional(),
         }),
       },
@@ -890,12 +891,14 @@ export async function buildServer() {
           description: req.body.description,
           seller: req.body.seller,
           discountText: req.body.discountText,
+          imageUrl: req.body.imageUrl,
           validUntil: req.body.validUntil ? new Date(req.body.validUntil) : null,
         },
         update: {
           description: req.body.description,
           seller: req.body.seller,
           discountText: req.body.discountText,
+          imageUrl: req.body.imageUrl,
           validUntil: req.body.validUntil ? new Date(req.body.validUntil) : null,
         },
       });
@@ -960,13 +963,30 @@ export async function buildServer() {
         validUntil: coupon.validUntil,
         shortLink,
       });
-      const result = await evolution.sendText({
-        instance: channel.evolutionInstance ?? undefined,
-        to: channel.whatsappGroupId,
+      const delayMs = 3000 + Math.floor(Math.random() * 5000); // typing 3-8s
+      // Se tem imagem cadastrada, manda como mídia (caption) — mais visual.
+      // Senão, texto puro. Evolution já cuida do typing presence durante delay.
+      const result = coupon.imageUrl
+        ? await evolution.sendMedia({
+            instance: channel.evolutionInstance ?? undefined,
+            to: channel.whatsappGroupId,
+            mediaUrl: coupon.imageUrl,
+            mediaType: 'image',
+            caption: text,
+            delayMs,
+          })
+        : await evolution.sendText({
+            instance: channel.evolutionInstance ?? undefined,
+            to: channel.whatsappGroupId,
+            text,
+            delayMs,
+          });
+      return {
+        sent: true,
         text,
-        delayMs: 3000 + Math.floor(Math.random() * 5000), // typing 3-8s
-      });
-      return { sent: true, text, externalMsgId: (result as { key?: { id?: string } })?.key?.id };
+        withImage: Boolean(coupon.imageUrl),
+        externalMsgId: (result as { key?: { id?: string } })?.key?.id,
+      };
     },
   );
 
