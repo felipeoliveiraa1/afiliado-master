@@ -1,3 +1,4 @@
+import type { Offer } from '@prisma/client';
 import { prisma } from '@/lib/db.js';
 import { dispatchQueue } from '@/queue/queues.js';
 import { logger } from '@/lib/logger.js';
@@ -110,24 +111,78 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
           ? keywordFilter
           : {}),
   };
-  let offers = await prisma.offer.findMany({
-    where: {
-      ...baseWhere,
-      dispatches: { none: { campaignId: campaign.id } },
-    },
-    orderBy: { score: 'desc' },
-    take: takeOffers,
-  });
+  // Rotação round-robin entre sources quando há múltiplas configuradas.
+  // Para takeOffers=1 (cron normal): pega oferta da source DIFERENTE da última disparada.
+  // Para takeOffers>1 (run-now manual): intercala ofertas top-score de cada source.
+  // Sem isso, se Shopee tem ofertas com score maior, ela monopoliza o grupo.
+  const sources = (filters.sources ?? []) as ('SHOPEE' | 'AMAZON' | 'MERCADOLIVRE')[];
+  const shouldRotate = sources.length > 1;
+
+  async function pickOffersWithRotation(): Promise<Offer[]> {
+    if (!shouldRotate) {
+      return prisma.offer.findMany({
+        where: { ...baseWhere, dispatches: { none: { campaignId: campaign.id } } },
+        orderBy: { score: 'desc' },
+        take: takeOffers,
+      });
+    }
+    if (takeOffers === 1) {
+      // Próxima oferta = source DIFERENTE da última disparada
+      const last = await prisma.dispatch.findFirst({
+        where: { campaignId },
+        orderBy: { createdAt: 'desc' },
+        include: { offer: { include: { source: { select: { kind: true } } } } },
+      });
+      const lastKind = last?.offer.source.kind;
+      const others = lastKind ? sources.filter((s) => s !== lastKind) : sources;
+      // Tenta source diferente primeiro
+      for (const src of others.length > 0 ? others : sources) {
+        const found = await prisma.offer.findMany({
+          where: {
+            ...baseWhere,
+            source: { kind: src },
+            dispatches: { none: { campaignId: campaign.id } },
+          },
+          orderBy: { score: 'desc' },
+          take: 1,
+        });
+        if (found.length > 0) return found;
+      }
+      return [];
+    }
+    // takeOffers>1: pega top-N de cada source e intercala
+    const perSource = await Promise.all(
+      sources.map((src) =>
+        prisma.offer.findMany({
+          where: {
+            ...baseWhere,
+            source: { kind: src },
+            dispatches: { none: { campaignId: campaign.id } },
+          },
+          orderBy: { score: 'desc' },
+          take: takeOffers,
+        }),
+      ),
+    );
+    const interleaved: Offer[] = [];
+    let idx = 0;
+    while (interleaved.length < takeOffers && perSource.some((arr) => arr.length > idx)) {
+      for (const arr of perSource) {
+        if (interleaved.length >= takeOffers) break;
+        if (arr[idx]) interleaved.push(arr[idx]);
+      }
+      idx++;
+    }
+    return interleaved;
+  }
+
+  let offers = await pickOffersWithRotation();
   // postLoop=true: quando esgotou as offers novas, deleta dispatches dessa
   // campanha pra recomeçar o ciclo desde a oferta de maior score.
   if (offers.length === 0 && schedule.postLoop) {
     const deleted = await prisma.dispatch.deleteMany({ where: { campaignId: campaign.id } });
     logger.info({ campaignId, deleted: deleted.count }, 'postLoop: ciclo reiniciado');
-    offers = await prisma.offer.findMany({
-      where: { ...baseWhere, dispatches: { none: { campaignId: campaign.id } } },
-      orderBy: { score: 'desc' },
-      take: takeOffers,
-    });
+    offers = await pickOffersWithRotation();
   }
   if (offers.length === 0) {
     return { campaignId, queued: 0, dispatchIds: [], reason: 'no-offers' };
