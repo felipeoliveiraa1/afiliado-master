@@ -12,6 +12,12 @@ type AntibanCfg = {
   dailyLimitPerInstance?: number;
   minIntervalSec?: number;
   maxIntervalSec?: number;
+  /** Tempo do efeito "digitando..." no WhatsApp antes de aparecer a mensagem.
+   * Default 3-8s (humano digitando uma frase curta). Não confundir com
+   * intervalo entre mensagens (esse é controlado pelo cron via intervalMinutes
+   * da campanha — gap REAL entre 2 envios). */
+  typingMinSec?: number;
+  typingMaxSec?: number;
 };
 
 type CampaignSchedule = {
@@ -41,6 +47,8 @@ async function getAntibanCfg(
       env.DISPATCH_DAILY_LIMIT_PER_INSTANCE,
     minIntervalSec: global.minIntervalSec ?? env.DISPATCH_MIN_INTERVAL,
     maxIntervalSec: global.maxIntervalSec ?? env.DISPATCH_MAX_INTERVAL,
+    typingMinSec: global.typingMinSec ?? 3,
+    typingMaxSec: global.typingMaxSec ?? 8,
   };
 }
 
@@ -180,7 +188,7 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
 async function sendAndPersist(
   dispatch: LoadedDispatch,
   fullText: string,
-  antiban: { minIntervalSec: number; maxIntervalSec: number },
+  antiban: { typingMinSec: number; typingMaxSec: number },
 ): Promise<DispatchExecutionResult> {
   if (!dispatch.channel.whatsappGroupId) {
     await prisma.dispatch.update({
@@ -197,13 +205,13 @@ async function sendAndPersist(
           mediaUrl: dispatch.offer.imageUrl,
           mediaType: 'image',
           caption: fullText,
-          delayMs: jitter(antiban.minIntervalSec, antiban.maxIntervalSec),
+          delayMs: jitter(antiban.typingMinSec, antiban.typingMaxSec),
         })
       : await evolution.sendText({
           instance: dispatch.channel.evolutionInstance ?? undefined,
           to: dispatch.channel.whatsappGroupId,
           text: fullText,
-          delayMs: jitter(antiban.minIntervalSec, antiban.maxIntervalSec),
+          delayMs: jitter(antiban.typingMinSec, antiban.typingMaxSec),
         });
     const externalMsgId = (result as { key?: { id?: string } } | undefined)?.key?.id;
     await prisma.dispatch.update({

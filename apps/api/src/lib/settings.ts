@@ -83,6 +83,11 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     dailyLimitPerInstance: env.DISPATCH_DAILY_LIMIT_PER_INSTANCE,
     windowStartHour: env.DISPATCH_WINDOW_START,
     windowEndHour: env.DISPATCH_WINDOW_END,
+    // Tempo do efeito "digitando..." antes da mensagem aparecer no WhatsApp.
+    // Default 3-8s — humano digitando uma frase. NÃO confundir com intervalo
+    // entre mensagens (gap REAL entre 2 envios = intervalMinutes da campanha).
+    typingMinSec: 3,
+    typingMaxSec: 8,
   },
   automation: {
     fetchEnabled: true,

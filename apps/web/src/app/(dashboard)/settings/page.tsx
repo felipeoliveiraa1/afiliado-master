@@ -131,11 +131,13 @@ const SECTIONS: SectionMeta[] = [
     description: 'Janela de horário, jitter e limite por instância pra parecer humano.',
     icon: Shield,
     fields: [
-      { key: 'minIntervalSec', label: 'Intervalo mín. entre msgs (s)', type: 'number' },
-      { key: 'maxIntervalSec', label: 'Intervalo máx. entre msgs (s)', type: 'number' },
-      { key: 'dailyLimitPerInstance', label: 'Limite diário por instância', type: 'number' },
-      { key: 'windowStartHour', label: 'Janela início (hora 0-23)', type: 'number' },
-      { key: 'windowEndHour', label: 'Janela fim (hora 0-23)', type: 'number' },
+      { key: 'typingMinSec', label: '⌨️ "Digitando..." mín (s)', type: 'number', hint: 'Tempo MÍNIMO do efeito "digitando..." antes da mensagem aparecer no grupo. Default 3s. Humano digita uma frase em ~3-5s.' },
+      { key: 'typingMaxSec', label: '⌨️ "Digitando..." máx (s)', type: 'number', hint: 'Tempo MÁXIMO. Default 8s. Sistema escolhe valor aleatório entre min e max pra parecer natural.' },
+      { key: 'minIntervalSec', label: 'Jitter intervalo mín (s) — legado', type: 'number', hint: 'Não usado mais pelo dispatcher (substituído por intervalMinutes da campanha). Mantido pra compat.' },
+      { key: 'maxIntervalSec', label: 'Jitter intervalo máx (s) — legado', type: 'number', hint: 'Idem.' },
+      { key: 'dailyLimitPerInstance', label: 'Limite diário por instância', type: 'number', hint: 'Máx mensagens por canal/dia (FALLBACK quando campanha não define). Default 300.' },
+      { key: 'windowStartHour', label: 'Janela início BRT (FALLBACK)', type: 'number', hint: 'Default 8. Override por campanha em /campaigns.' },
+      { key: 'windowEndHour', label: 'Janela fim BRT (FALLBACK)', type: 'number', hint: 'Default 22. Override por campanha em /campaigns.' },
     ],
   },
   {
