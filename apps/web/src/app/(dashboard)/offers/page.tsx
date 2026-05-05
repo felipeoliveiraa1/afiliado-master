@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, ExternalLink, Filter, ImageOff, Pencil, Search, X } from 'lucide-react';
+import { Check, Copy, ExternalLink, Filter, ImageOff, Pencil, Search, Trash2, X } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
 import {
   Card,
@@ -67,6 +67,17 @@ export default function OffersPage(): React.ReactElement {
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['offers'] }),
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => clientFetch(`/offers/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['offers'] }),
+  });
+
+  const handleDelete = (id: string, title: string): void => {
+    if (confirm(`Excluir "${title.slice(0, 60)}"? Vai apagar todos os dispatches dessa oferta também.`)) {
+      deleteMutation.mutate(id);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -190,6 +201,7 @@ export default function OffersPage(): React.ReactElement {
                 key={o.id}
                 offer={o}
                 onSave={(patch) => updateMutation.mutate({ id: o.id, patch })}
+                onDelete={() => handleDelete(o.id, o.title)}
               />
             ))}
           </div>
@@ -209,6 +221,7 @@ export default function OffersPage(): React.ReactElement {
                     <th className="px-4 py-3 text-left font-medium">Afiliado</th>
                     <th className="px-4 py-3 text-left font-medium">Cupom / Parc.</th>
                     <th className="px-4 py-3 text-left font-medium">Captado</th>
+                    <th className="px-4 py-3 text-right font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -218,6 +231,7 @@ export default function OffersPage(): React.ReactElement {
                       offer={o}
                       odd={i % 2 === 1}
                       onSave={(patch) => updateMutation.mutate({ id: o.id, patch })}
+                      onDelete={() => handleDelete(o.id, o.title)}
                     />
                   ))}
                 </tbody>
@@ -234,10 +248,12 @@ function OfferEditableRow({
   offer,
   odd,
   onSave,
+  onDelete,
 }: {
   offer: OfferRow;
   odd: boolean;
   onSave: (patch: OfferPatch) => void;
+  onDelete: () => void;
 }): React.ReactElement {
   const [editingLink, setEditingLink] = useState(false);
   const [editingPromo, setEditingPromo] = useState(false);
@@ -412,6 +428,18 @@ function OfferEditableRow({
       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
         {formatDate(offer.fetchedAt)}
       </td>
+      <td className="px-4 py-3 text-right">
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Excluir"
+          onClick={onDelete}
+          className="text-destructive hover:bg-destructive/10"
+          title="Excluir oferta"
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </td>
     </tr>
   );
 }
@@ -433,9 +461,11 @@ function SkeletonOfferCard(): React.ReactElement {
 function OfferGridCard({
   offer,
   onSave,
+  onDelete,
 }: {
   offer: OfferRow;
   onSave: (patch: OfferPatch) => void;
+  onDelete: () => void;
 }): React.ReactElement {
   const [editingLink, setEditingLink] = useState(false);
   const [linkValue, setLinkValue] = useState(offer.affiliateUrl ?? '');
@@ -492,6 +522,16 @@ function OfferGridCard({
         <div className="flex items-center gap-2 mt-auto">
           <ScorePill value={offer.score} />
           {offer.coupon ? <Badge variant="accent">🎟 {offer.coupon}</Badge> : null}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Excluir oferta"
+            onClick={onDelete}
+            className="ml-auto text-destructive hover:bg-destructive/10"
+            title="Excluir oferta"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
         </div>
         {editingLink ? (
           <div className="flex items-center gap-1.5">

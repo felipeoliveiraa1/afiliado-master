@@ -245,6 +245,49 @@ export async function buildServer() {
     async (req) => prisma.offer.update({ where: { id: req.params.id }, data: req.body }),
   );
 
+  app.delete(
+    '/offers/:id',
+    {
+      schema: { params: z.object({ id: z.string() }) },
+    },
+    async (req) => {
+      // FK Dispatch.offerId não tem cascade — limpa primeiro pra evitar P2003.
+      // Variants também tem FK pra Offer, idem.
+      await prisma.dispatch.deleteMany({ where: { offerId: req.params.id } });
+      await prisma.variant.deleteMany({ where: { offerId: req.params.id } });
+      await prisma.offer.delete({ where: { id: req.params.id } });
+      return { deleted: true };
+    },
+  );
+
+  app.post(
+    '/offers/bulk-delete',
+    {
+      schema: {
+        body: z.object({
+          source: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'PROMOBIT']).optional(),
+          olderThanDays: z.number().int().positive().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      // Limpeza em massa: por source ou por idade. Útil quando rodou um
+      // fetch ruim e quer recomeçar limpo.
+      const where = {
+        source: req.body.source ? { kind: req.body.source } : undefined,
+        fetchedAt: req.body.olderThanDays
+          ? { lt: new Date(Date.now() - req.body.olderThanDays * 86_400_000) }
+          : undefined,
+      };
+      const offers = await prisma.offer.findMany({ where, select: { id: true } });
+      const ids = offers.map((o) => o.id);
+      await prisma.dispatch.deleteMany({ where: { offerId: { in: ids } } });
+      await prisma.variant.deleteMany({ where: { offerId: { in: ids } } });
+      await prisma.offer.deleteMany({ where: { id: { in: ids } } });
+      return { deleted: ids.length };
+    },
+  );
+
   // Import manual de ofertas (útil enquanto Shopee Open API não libera, ou pra
   // curadoria hand-picked de qualquer marketplace). User cola affiliateUrl pronto.
   app.post(
