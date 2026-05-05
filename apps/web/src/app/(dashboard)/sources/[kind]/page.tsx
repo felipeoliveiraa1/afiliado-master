@@ -29,7 +29,7 @@ type CategoryOption = { id: string; name: string; emoji?: string };
 
 function getCategoriesForKind(kind: SourceKind): CategoryOption[] {
   if (kind === 'MERCADOLIVRE') {
-    return ML_CATEGORIES.map((c) => ({ id: c.id, name: c.name }));
+    return ML_CATEGORIES.map((c) => ({ id: c.id, name: c.name, emoji: c.emoji }));
   }
   if (kind === 'SHOPEE') return SHOPEE_CATEGORIES;
   if (kind === 'AMAZON') return AMAZON_CATEGORIES;

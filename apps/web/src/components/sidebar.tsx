@@ -47,9 +47,8 @@ const SECTIONS: NavSection[] = [
   {
     label: 'Disparo',
     items: [
-      { href: '/disparos/novo', label: '🚀 Novo disparo (wizard)', icon: Zap },
-      { href: '/campaigns', label: 'Campanhas', icon: Megaphone },
-      { href: '/dispatches', label: 'Histórico de disparos', icon: Send },
+      { href: '/campaigns', label: '🚀 Disparos', icon: Megaphone },
+      { href: '/dispatches', label: 'Histórico', icon: Send },
       { href: '/channels', label: 'Canais (WhatsApp)', icon: Users },
       { href: '/niches', label: 'Nichos', icon: Tag },
     ],

@@ -3,7 +3,17 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Megaphone, Play, RefreshCw } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Megaphone,
+  Play,
+  Plus,
+  Trash2,
+  Users,
+  Tag as TagIcon,
+} from 'lucide-react';
 import { clientFetch } from '@/lib/api';
 import {
   Card,
@@ -18,64 +28,77 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
-import { Spinner } from '@/components/ui/spinner';
 import { formatDate } from '@/lib/utils';
-import { MessagePreviewCard } from '@/components/message-preview-card';
 
 type CampaignDTO = {
   id: string;
   name: string;
   enabled: boolean;
   filters: { sources?: string[]; minDiscount?: number; minScore?: number; maxPrice?: number };
-  schedule: { intervalMinutes?: number };
+  schedule: {
+    intervalMinutes?: number;
+    windowStartHour?: number;
+    windowEndHour?: number;
+    dailyLimit?: number;
+    postLoop?: boolean;
+  };
   createdAt: string;
+  channels: { id: string; name: string }[];
+  niches?: { id: string; name: string; icon: string | null }[];
 };
 
-type ChannelDTO = { id: string; name: string };
+type ChannelDTO = {
+  id: string;
+  name: string;
+  whatsappGroupId: string | null;
+  evolutionInstance: string | null;
+};
+type NicheDTO = { id: string; name: string; icon: string | null; enabled: boolean };
 
-const SOURCES = ['SHOPEE', 'AMAZON', 'MERCADOLIVRE'] as const;
+export default function DisparosPage(): React.ReactElement {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-export default function CampaignsPage(): React.ReactElement {
-  const queryClient = useQueryClient();
+  const campaigns = useQuery<CampaignDTO[]>({
+    queryKey: ['campaigns'],
+    queryFn: () =>
+      clientFetch<CampaignDTO[]>('/campaigns?include=channels,niches').catch(() =>
+        clientFetch<CampaignDTO[]>('/campaigns'),
+      ),
+  });
+  const channels = useQuery<ChannelDTO[]>({
+    queryKey: ['channels'],
+    queryFn: () => clientFetch<ChannelDTO[]>('/channels'),
+  });
+  const niches = useQuery<NicheDTO[]>({
+    queryKey: ['niches'],
+    queryFn: () => clientFetch<NicheDTO[]>('/niches'),
+  });
+
   const [form, setForm] = useState({
     name: '',
-    minScore: 0.4,
-    minDiscount: 0,
-    maxPrice: 0,
+    channelId: '',
+    nicheIds: [] as string[],
     intervalMinutes: 60,
     windowStartHour: 8,
     windowEndHour: 22,
     dailyLimit: 0,
     postLoop: false,
-    sources: ['SHOPEE', 'AMAZON', 'MERCADOLIVRE'] as string[],
-    channelIds: [] as string[],
-    nicheIds: [] as string[],
+    minScore: 0.4,
+    minDiscount: 0,
+    maxPrice: 0,
   });
 
-  const niches = useQuery<{ id: string; name: string; icon: string | null; enabled: boolean }[]>({
-    queryKey: ['niches'],
-    queryFn: () =>
-      clientFetch<{ id: string; name: string; icon: string | null; enabled: boolean }[]>('/niches'),
-  });
-
-  const campaigns = useQuery<CampaignDTO[]>({
-    queryKey: ['campaigns'],
-    queryFn: () => clientFetch<CampaignDTO[]>('/campaigns'),
-  });
-
-  const channels = useQuery<ChannelDTO[]>({
-    queryKey: ['channels'],
-    queryFn: () => clientFetch<ChannelDTO[]>('/channels'),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: () =>
-      clientFetch('/campaigns', {
+  const create = useMutation({
+    mutationFn: () => {
+      if (!form.name.trim()) throw new Error('Dá um nome pro disparo');
+      if (!form.channelId) throw new Error('Selecione um canal');
+      return clientFetch('/campaigns', {
         method: 'POST',
         body: {
           name: form.name,
           filters: {
-            sources: form.sources,
             minScore: form.minScore || undefined,
             minDiscount: form.minDiscount || undefined,
             maxPrice: form.maxPrice || undefined,
@@ -87,160 +110,134 @@ export default function CampaignsPage(): React.ReactElement {
             dailyLimit: form.dailyLimit > 0 ? form.dailyLimit : undefined,
             postLoop: form.postLoop,
           },
-          channelIds: form.channelIds,
+          channelIds: [form.channelId],
           nicheIds: form.nicheIds,
         },
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-      campaigns.refetch();
-      setForm((f) => ({ ...f, name: '' }));
+      });
     },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+      setShowForm(false);
+      setForm({
+        name: '',
+        channelId: '',
+        nicheIds: [],
+        intervalMinutes: 60,
+        windowStartHour: 8,
+        windowEndHour: 22,
+        dailyLimit: 0,
+        postLoop: false,
+        minScore: 0.4,
+        minDiscount: 0,
+        maxPrice: 0,
+      });
+      setError(null);
+    },
+    onError: (err: Error) => setError(err.message),
   });
 
-  const runNowMutation = useMutation({
+  const runNow = useMutation({
     mutationFn: (id: string) => clientFetch(`/campaigns/${id}/run-now`, { method: 'POST' }),
-    onSuccess: () => campaigns.refetch(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['campaigns'] }),
   });
 
-  const toggleEnabledMutation = useMutation({
+  const toggleEnabled = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       clientFetch(`/campaigns/${id}`, { method: 'PATCH', body: { enabled } }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-      campaigns.refetch();
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['campaigns'] }),
   });
 
-  const deleteMutation = useMutation({
+  const del = useMutation({
     mutationFn: (id: string) => clientFetch(`/campaigns/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-      campaigns.refetch();
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['campaigns'] }),
   });
 
-  const toggleSource = (kind: string): void => {
+  const toggleNiche = (id: string): void =>
     setForm((f) => ({
       ...f,
-      sources: f.sources.includes(kind) ? f.sources.filter((s) => s !== kind) : [...f.sources, kind],
+      nicheIds: f.nicheIds.includes(id) ? f.nicheIds.filter((x) => x !== id) : [...f.nicheIds, id],
     }));
-  };
-
-  const toggleNiche = (id: string): void => {
-    setForm((f) => ({
-      ...f,
-      nicheIds: f.nicheIds.includes(id) ? f.nicheIds.filter((n) => n !== id) : [...f.nicheIds, id],
-    }));
-  };
-
-  const toggleChannel = (id: string): void => {
-    setForm((f) => ({
-      ...f,
-      channelIds: f.channelIds.includes(id) ? f.channelIds.filter((c) => c !== id) : [...f.channelIds, id],
-    }));
-  };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Campanhas"
-        description="Configure quais ofertas vão para quais canais, com filtros e intervalos."
+        title="Disparos"
+        description="Cada disparo = canal WhatsApp + nicho(s) + cadência. Crie quantos quiser pra atender públicos diferentes."
+        actions={
+          <Button size="lg" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? (
+              <>
+                <ChevronUp className="mr-2 size-4" />
+                Fechar formulário
+              </>
+            ) : (
+              <>
+                <Plus className="mr-2 size-4" />
+                Novo disparo
+              </>
+            )}
+          </Button>
+        }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_minmax(0,360px)]">
-        <Card>
+      {/* Form inline colapsável */}
+      {showForm && (
+        <Card className="border-accent/40">
           <CardHeader>
-            <CardTitle>Nova campanha</CardTitle>
-            <CardDescription>Filtros são aplicados sobre as ofertas já captadas.</CardDescription>
+            <CardTitle className="text-base">🚀 Configurar novo disparo</CardTitle>
+            <CardDescription>Tudo numa página. Salvar = disparo ativo no próximo tick.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Nome">
-                <Input
-                  value={form.name}
-                  placeholder="Ex: Eletrônicos premium"
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                />
-              </Field>
-              <Field label="Intervalo (min)">
-                <Input
-                  type="number"
-                  min={5}
-                  value={form.intervalMinutes}
-                  onChange={(e) => setForm((f) => ({ ...f, intervalMinutes: Number(e.target.value) }))}
-                />
-              </Field>
-              <Field label="Score mínimo (0–1)">
-                <Input
-                  type="number"
-                  step="0.05"
-                  min={0}
-                  max={1}
-                  value={form.minScore}
-                  onChange={(e) => setForm((f) => ({ ...f, minScore: Number(e.target.value) }))}
-                />
-              </Field>
-              <Field label="Desconto mínimo (%)">
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={form.minDiscount}
-                  onChange={(e) => setForm((f) => ({ ...f, minDiscount: Number(e.target.value) }))}
-                />
-              </Field>
-              <Field label="Preço máximo (R$)" className="md:col-span-2">
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.maxPrice}
-                  onChange={(e) => setForm((f) => ({ ...f, maxPrice: Number(e.target.value) }))}
-                />
-              </Field>
-              <Field label="Hora início (BRT, 0–23)">
-                <Input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={form.windowStartHour}
-                  onChange={(e) => setForm((f) => ({ ...f, windowStartHour: Number(e.target.value) }))}
-                />
-              </Field>
-              <Field label="Hora fim (BRT, 0–24)">
-                <Input
-                  type="number"
-                  min={0}
-                  max={24}
-                  value={form.windowEndHour}
-                  onChange={(e) => setForm((f) => ({ ...f, windowEndHour: Number(e.target.value) }))}
-                />
-              </Field>
-              <Field label="Limite diário/canal (0=usa global)">
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.dailyLimit}
-                  onChange={(e) => setForm((f) => ({ ...f, dailyLimit: Number(e.target.value) }))}
-                />
-              </Field>
-              <Field label="Loop (repete ao chegar no fim)">
-                <label className="flex items-center gap-2 h-10">
-                  <input
-                    type="checkbox"
-                    checked={form.postLoop}
-                    onChange={(e) => setForm((f) => ({ ...f, postLoop: e.target.checked }))}
-                    className="size-4"
-                  />
-                  <span className="text-sm text-muted-foreground">
-                    {form.postLoop ? 'Sim — recomeça do produto de maior score' : 'Não — para quando esgotar'}
-                  </span>
-                </label>
-              </Field>
+            {error ? (
+              <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            ) : null}
+
+            {/* 1. Nome */}
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">1. Nome do disparo *</Label>
+              <Input
+                placeholder="Ex: Promos Mães diárias"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
             </div>
 
+            {/* 2. Canal */}
             <div className="space-y-2">
-              <Label>Nichos (escolha 1+ pra direcionar — sem nicho = todas as ofertas)</Label>
+              <Label className="text-sm font-medium">2. Canal (grupo WhatsApp) *</Label>
+              {channels.data && channels.data.length === 0 ? (
+                <div className="rounded-md bg-muted/40 p-3 text-sm">
+                  Nenhum canal cadastrado.{' '}
+                  <Link href="/channels" className="text-accent underline">
+                    Criar canal →
+                  </Link>
+                </div>
+              ) : (
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={form.channelId}
+                  onChange={(e) => setForm({ ...form, channelId: e.target.value })}
+                >
+                  <option value="">Selecione um canal...</option>
+                  {(channels.data ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.evolutionInstance ? `(${c.evolutionInstance})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* 3. Nichos */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">3. Nichos (1 ou vários)</Label>
+                <Link href="/niches" className="text-xs text-accent hover:underline">
+                  + criar nicho
+                </Link>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {(niches.data ?? [])
                   .filter((n) => n.enabled)
@@ -251,10 +248,10 @@ export default function CampaignsPage(): React.ReactElement {
                         key={n.id}
                         type="button"
                         onClick={() => toggleNiche(n.id)}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                        className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
                           active
                             ? 'border-accent bg-accent text-accent-foreground'
-                            : 'border-border bg-background text-muted-foreground hover:border-accent/50 hover:text-foreground'
+                            : 'border-border bg-background text-muted-foreground hover:border-accent/50'
                         }`}
                       >
                         {n.icon ? `${n.icon} ` : ''}
@@ -264,164 +261,147 @@ export default function CampaignsPage(): React.ReactElement {
                   })}
                 {(niches.data ?? []).filter((n) => n.enabled).length === 0 ? (
                   <span className="text-xs text-muted-foreground">
-                    Nenhum nicho cadastrado. Crie em <a href="/niches" className="underline">/niches</a>
+                    Sem nichos ativos. Sem nicho = pega ofertas de qualquer categoria.
                   </span>
                 ) : null}
               </div>
             </div>
 
+            {/* 4. Cadência */}
             <div className="space-y-2">
-              <Label>Sources</Label>
-              <div className="flex flex-wrap gap-2">
-                {SOURCES.map((s) => {
-                  const active = form.sources.includes(s);
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => toggleSource(s)}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                        active
-                          ? 'border-accent bg-accent text-accent-foreground'
-                          : 'border-border bg-background text-muted-foreground hover:border-accent/50 hover:text-foreground'
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  );
-                })}
+              <Label className="text-sm font-medium">4. Cadência</Label>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Intervalo entre msgs</Label>
+                  <select
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={form.intervalMinutes}
+                    onChange={(e) =>
+                      setForm({ ...form, intervalMinutes: Number(e.target.value) })
+                    }
+                  >
+                    <option value="5">5 min (alta freq)</option>
+                    <option value="15">15 min</option>
+                    <option value="30">30 min</option>
+                    <option value="60">60 min (recomendado)</option>
+                    <option value="120">2 horas</option>
+                    <option value="240">4 horas</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Hora início (BRT)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={form.windowStartHour}
+                    onChange={(e) =>
+                      setForm({ ...form, windowStartHour: Number(e.target.value) })
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Hora fim (BRT)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={24}
+                    value={form.windowEndHour}
+                    onChange={(e) => setForm({ ...form, windowEndHour: Number(e.target.value) })}
+                  />
+                </div>
               </div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm pt-1">
+                <input
+                  type="checkbox"
+                  checked={form.postLoop}
+                  onChange={(e) => setForm({ ...form, postLoop: e.target.checked })}
+                  className="size-4"
+                />
+                <span>♻️ Loop — quando esgotar produtos novos, recomeça do top score</span>
+              </label>
             </div>
 
-            <div className="space-y-2">
-              <Label>Canais</Label>
-              <div className="flex flex-wrap gap-2">
-                {(channels.data ?? []).map((c) => {
-                  const active = form.channelIds.includes(c.id);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => toggleChannel(c.id)}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                        active
-                          ? 'border-accent bg-accent text-accent-foreground'
-                          : 'border-border bg-background text-muted-foreground hover:border-accent/50 hover:text-foreground'
-                      }`}
-                    >
-                      {c.name}
-                    </button>
-                  );
-                })}
-                {(channels.data ?? []).length === 0 ? (
-                  <span className="text-sm text-muted-foreground">
-                    Nenhum canal cadastrado.{' '}
-                    <Link href="/channels" className="text-accent hover:underline">
-                      Cadastrar
-                    </Link>
-                  </span>
-                ) : null}
+            {/* 5. Filtros (opcional, recolhível) */}
+            <details className="rounded-lg border border-dashed p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                🎚️ Filtros de qualidade (opcional)
+              </summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Score mínimo (0–1)</Label>
+                  <Input
+                    type="number"
+                    step="0.05"
+                    min={0}
+                    max={1}
+                    value={form.minScore}
+                    onChange={(e) => setForm({ ...form, minScore: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Desconto mínimo (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={form.minDiscount}
+                    onChange={(e) => setForm({ ...form, minDiscount: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Preço máximo (R$)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.maxPrice}
+                    onChange={(e) => setForm({ ...form, maxPrice: Number(e.target.value) })}
+                  />
+                </div>
               </div>
-            </div>
+            </details>
 
-            <div className="flex items-center justify-between gap-3 border-t pt-4">
-              {createMutation.error ? (
-                <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  A campanha começa a rodar no próximo ciclo do scheduler.
-                </p>
-              )}
-              <Button
-                variant="accent"
-                onClick={() => createMutation.mutate()}
-                disabled={!form.name || form.channelIds.length === 0}
-                loading={createMutation.isPending}
-              >
-                Criar campanha
+            <div className="flex gap-2 pt-2">
+              <Button onClick={() => create.mutate()} disabled={create.isPending} size="lg">
+                {create.isPending ? 'Criando...' : '🚀 Criar e ativar disparo'}
+              </Button>
+              <Button variant="outline" onClick={() => setShowForm(false)}>
+                Cancelar
               </Button>
             </div>
           </CardContent>
         </Card>
+      )}
 
-        <MessagePreviewCard title="Preview do template" />
-      </div>
-
+      {/* Lista de disparos */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
-          <div>
-            <CardTitle>Campanhas existentes</CardTitle>
-            <CardDescription>Use “Run now” para forçar um ciclo imediato.</CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => campaigns.refetch()}>
-            <RefreshCw className="size-3.5" /> Recarregar
-          </Button>
+        <CardHeader>
+          <CardTitle className="text-base">Disparos ativos ({campaigns.data?.length ?? 0})</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           {campaigns.isLoading ? (
-            <div className="flex justify-center py-6">
-              <Spinner label="Carregando campanhas…" />
-            </div>
-          ) : campaigns.data && campaigns.data.length > 0 ? (
-            <div className="divide-y">
-              {campaigns.data.map((c) => (
-                <div key={c.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                  <div className="min-w-0">
-                    <Link href={`/campaigns/${c.id}`} className="block font-medium hover:text-accent">
-                      {c.name}
-                    </Link>
-                    <div className="mt-0.5 text-xs text-muted-foreground">
-                      criada {formatDate(c.createdAt)} · score≥{c.filters.minScore ?? 0} ·{' '}
-                      {c.schedule?.intervalMinutes ?? '?'}min
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {c.enabled ? (
-                      <Badge variant="success" dot>
-                        ativa
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" dot>
-                        pausada
-                      </Badge>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="accent"
-                      onClick={() => runNowMutation.mutate(c.id)}
-                      loading={runNowMutation.isPending && runNowMutation.variables === c.id}
-                    >
-                      <Play className="size-3.5" /> Run now
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => toggleEnabledMutation.mutate({ id: c.id, enabled: !c.enabled })}
-                    >
-                      {c.enabled ? 'Pausar' : 'Ativar'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        if (confirm(`Excluir campanha "${c.name}"? Vai deletar todos os dispatches dela.`)) {
-                          deleteMutation.mutate(c.id);
-                        }
-                      }}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      Excluir
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
+            <p className="text-sm text-muted-foreground">Carregando...</p>
+          ) : !campaigns.data?.length ? (
             <EmptyState
               icon={Megaphone}
-              title="Nenhuma campanha ainda"
-              description="Crie a primeira no formulário acima — ela vai entrar no ciclo de disparo automaticamente."
+              title="Nenhum disparo ainda"
+              description='Clica em "Novo disparo" pra criar o primeiro.'
             />
+          ) : (
+            campaigns.data.map((c) => (
+              <CampaignCard
+                key={c.id}
+                campaign={c}
+                onRunNow={() => runNow.mutate(c.id)}
+                onToggle={() => toggleEnabled.mutate({ id: c.id, enabled: !c.enabled })}
+                onDelete={() => {
+                  if (confirm(`Excluir disparo "${c.name}"? Vai apagar todos os dispatches dele.`)) {
+                    del.mutate(c.id);
+                  }
+                }}
+                runPending={runNow.isPending && runNow.variables === c.id}
+              />
+            ))
           )}
         </CardContent>
       </Card>
@@ -429,19 +409,83 @@ export default function CampaignsPage(): React.ReactElement {
   );
 }
 
-function Field({
-  label,
-  children,
-  className,
+function CampaignCard({
+  campaign,
+  onRunNow,
+  onToggle,
+  onDelete,
+  runPending,
 }: {
-  label: string;
-  children: React.ReactNode;
-  className?: string;
+  campaign: CampaignDTO;
+  onRunNow: () => void;
+  onToggle: () => void;
+  onDelete: () => void;
+  runPending: boolean;
 }): React.ReactElement {
+  const interval = campaign.schedule?.intervalMinutes ?? 60;
+  const windowStart = campaign.schedule?.windowStartHour ?? 8;
+  const windowEnd = campaign.schedule?.windowEndHour ?? 22;
   return (
-    <div className={`space-y-1.5 ${className ?? ''}`}>
-      <Label>{label}</Label>
-      {children}
+    <div className="rounded-lg border bg-card/50 p-4 transition-shadow hover:shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/campaigns/${campaign.id}`}
+              className="text-base font-semibold hover:text-accent"
+            >
+              {campaign.name}
+            </Link>
+            {campaign.enabled ? (
+              <Badge variant="success" dot>
+                ativo
+              </Badge>
+            ) : (
+              <Badge variant="secondary" dot>
+                pausado
+              </Badge>
+            )}
+            {campaign.schedule?.postLoop ? <Badge variant="accent">♻️ loop</Badge> : null}
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {campaign.channels?.length ? (
+              <span className="inline-flex items-center gap-1">
+                <Users className="size-3" />
+                {campaign.channels.map((c) => c.name).join(', ')}
+              </span>
+            ) : null}
+            {campaign.niches?.length ? (
+              <span className="inline-flex items-center gap-1">
+                <TagIcon className="size-3" />
+                {campaign.niches.map((n) => `${n.icon ?? ''} ${n.name}`).join(' · ')}
+              </span>
+            ) : null}
+            <span className="inline-flex items-center gap-1">
+              <Clock className="size-3" />
+              {interval}min · {windowStart}h–{windowEnd}h BRT
+            </span>
+            <span>criado {formatDate(campaign.createdAt)}</span>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <Button size="sm" variant="accent" onClick={onRunNow} loading={runPending}>
+            <Play className="size-3.5" />
+            Run now
+          </Button>
+          <Button size="sm" variant="outline" onClick={onToggle}>
+            {campaign.enabled ? 'Pausar' : 'Ativar'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onDelete}
+            className="text-destructive hover:bg-destructive/10"
+            aria-label="Excluir"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
