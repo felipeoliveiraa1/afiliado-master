@@ -40,6 +40,8 @@ type CampaignDTO = {
   filters: { sources?: string[]; minDiscount?: number; minScore?: number; maxPrice?: number };
   schedule: {
     intervalMinutes?: number;
+    intervalMinutesMin?: number;
+    intervalMinutesMax?: number;
     windowStartHour?: number;
     windowEndHour?: number;
     dailyLimit?: number;
@@ -530,12 +532,15 @@ function CampaignCard({
     channelId: campaign.channels?.[0]?.id ?? '',
     nicheIds: campaign.niches?.map((n) => n.id) ?? [],
     sources: (campaign.filters?.sources ?? ['SHOPEE', 'MERCADOLIVRE']) as string[],
-    intervalMinutes: campaign.schedule?.intervalMinutes ?? 90,
+    intervalMinutes:
+      campaign.schedule?.intervalMinutesMin ?? campaign.schedule?.intervalMinutes ?? 12,
+    intervalMinutesMax:
+      campaign.schedule?.intervalMinutesMax ?? campaign.schedule?.intervalMinutes ?? 0,
     windowStartHour: campaign.schedule?.windowStartHour ?? 8,
     windowEndHour: campaign.schedule?.windowEndHour ?? 22,
     postLoop: campaign.schedule?.postLoop ?? true,
-    burstSizeMin: campaign.schedule?.burstSizeMin ?? 5,
-    burstSizeMax: campaign.schedule?.burstSizeMax ?? 12,
+    burstSizeMin: campaign.schedule?.burstSizeMin ?? 1,
+    burstSizeMax: campaign.schedule?.burstSizeMax ?? 1,
     burstSpreadMinSec: campaign.schedule?.burstSpreadMinSec ?? 30,
     burstSpreadMaxSec: campaign.schedule?.burstSpreadMaxSec ?? 120,
     minScore: campaign.filters?.minScore ?? 0.4,
@@ -549,12 +554,15 @@ function CampaignCard({
       channelId: campaign.channels?.[0]?.id ?? '',
       nicheIds: campaign.niches?.map((n) => n.id) ?? [],
       sources: (campaign.filters?.sources ?? ['SHOPEE', 'MERCADOLIVRE']) as string[],
-      intervalMinutes: campaign.schedule?.intervalMinutes ?? 90,
+      intervalMinutes:
+        campaign.schedule?.intervalMinutesMin ?? campaign.schedule?.intervalMinutes ?? 12,
+      intervalMinutesMax:
+        campaign.schedule?.intervalMinutesMax ?? campaign.schedule?.intervalMinutes ?? 0,
       windowStartHour: campaign.schedule?.windowStartHour ?? 8,
       windowEndHour: campaign.schedule?.windowEndHour ?? 22,
       postLoop: campaign.schedule?.postLoop ?? true,
-      burstSizeMin: campaign.schedule?.burstSizeMin ?? 5,
-      burstSizeMax: campaign.schedule?.burstSizeMax ?? 12,
+      burstSizeMin: campaign.schedule?.burstSizeMin ?? 1,
+      burstSizeMax: campaign.schedule?.burstSizeMax ?? 1,
       burstSpreadMinSec: campaign.schedule?.burstSpreadMinSec ?? 30,
       burstSpreadMaxSec: campaign.schedule?.burstSpreadMaxSec ?? 120,
       minScore: campaign.filters?.minScore ?? 0.4,
@@ -577,6 +585,11 @@ function CampaignCard({
       },
       schedule: {
         intervalMinutes: editForm.intervalMinutes,
+        intervalMinutesMin: editForm.intervalMinutes,
+        intervalMinutesMax:
+          editForm.intervalMinutesMax > 0
+            ? Math.max(editForm.intervalMinutes, editForm.intervalMinutesMax)
+            : editForm.intervalMinutes,
         windowStartHour: editForm.windowStartHour,
         windowEndHour: editForm.windowEndHour,
         postLoop: editForm.postLoop,
@@ -755,24 +768,36 @@ function CampaignCard({
           {/* Cadência */}
           <div className="space-y-2">
             <Label className="text-xs font-medium">Cadência</Label>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Intervalo entre bursts</Label>
-                <select
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                <Label className="text-[10px] text-muted-foreground">Intervalo MÍN (min)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={600}
                   value={editForm.intervalMinutes}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setEditForm({
+                      ...editForm,
+                      intervalMinutes: v,
+                      // intervalMinutesMin/Max aparecem só no editor avançado abaixo
+                    });
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Intervalo MÁX (min)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={600}
+                  value={editForm.intervalMinutesMax || editForm.intervalMinutes}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, intervalMinutes: Number(e.target.value) })
+                    setEditForm({ ...editForm, intervalMinutesMax: Number(e.target.value) })
                   }
-                >
-                  <option value="15">15 min</option>
-                  <option value="30">30 min</option>
-                  <option value="60">60 min</option>
-                  <option value="90">90 min</option>
-                  <option value="120">2h</option>
-                  <option value="180">3h</option>
-                  <option value="240">4h</option>
-                </select>
+                />
+                <p className="text-[9px] text-muted-foreground">Vazio = fixo no MÍN</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground">Hora início (BRT)</Label>

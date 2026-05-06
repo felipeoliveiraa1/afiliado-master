@@ -246,18 +246,31 @@ export async function runDueCampaigns(): Promise<void> {
   const campaigns = await prisma.campaign.findMany({
     where: { enabled: true },
     include: {
-      dispatches: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true } },
+      dispatches: {
+        take: 1,
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true, scheduledFor: true },
+      },
     },
   });
   const now = Date.now();
   for (const c of campaigns) {
     const sched = (c.schedule as {
       intervalMinutes?: number;
+      intervalMinutesMin?: number;
+      intervalMinutesMax?: number;
       burstSizeMin?: number;
       burstSizeMax?: number;
     }) ?? {};
-    const intervalMin = sched.intervalMinutes ?? 60;
-    const last = c.dispatches[0]?.createdAt;
+    // Intervalo randomizado: usa Min/Max se setados, senão fallback pro fixo legacy.
+    // A cada tick do cron escolhe um valor random no range — gera sensação suave
+    // (ex: 10-15min varia em vez de exato 12min sempre).
+    const iMin = sched.intervalMinutesMin ?? sched.intervalMinutes ?? 60;
+    const iMax = sched.intervalMinutesMax ?? sched.intervalMinutes ?? 60;
+    const intervalMin = iMin + Math.random() * Math.max(0, iMax - iMin);
+    // Usa scheduledFor (não createdAt) — assim bursts longos (10-15min entre msgs)
+    // não disparam novo burst antes do anterior terminar.
+    const last = c.dispatches[0]?.scheduledFor ?? c.dispatches[0]?.createdAt;
     const isDue = !last || now - last.getTime() >= intervalMin * 60_000;
     if (!isDue) continue;
     // Burst variável: cada disparo de campanha manda N mensagens (5-12 default).

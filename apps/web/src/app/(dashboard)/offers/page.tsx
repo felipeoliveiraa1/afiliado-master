@@ -44,8 +44,11 @@ type OfferPatch = {
   installments?: number | null;
 };
 
+type OffersResponse = { items: OfferRow[]; total: number; take: number; skip: number };
+type OffersStats = { total: number; byKind: Record<string, number> };
+
 export default function OffersPage(): React.ReactElement {
-  const [filters, setFilters] = useState({ source: '', minScore: '', take: '100' });
+  const [filters, setFilters] = useState({ source: '', minScore: '', take: '50', page: 1 });
   const [view, setView] = useState<'table' | 'grid'>('grid');
   const queryClient = useQueryClient();
 
@@ -53,10 +56,21 @@ export default function OffersPage(): React.ReactElement {
   if (filters.source) params.set('source', filters.source);
   if (filters.minScore) params.set('minScore', filters.minScore);
   if (filters.take) params.set('take', filters.take);
+  const skip = (filters.page - 1) * Number(filters.take);
+  if (skip > 0) params.set('skip', String(skip));
 
-  const { data, isLoading, error } = useQuery<OfferRow[]>({
+  const { data: page, isLoading, error } = useQuery<OffersResponse>({
     queryKey: ['offers', filters],
-    queryFn: () => clientFetch<OfferRow[]>(`/offers?${params.toString()}`),
+    queryFn: () => clientFetch<OffersResponse>(`/offers?${params.toString()}`),
+  });
+  const data = page?.items ?? [];
+  const total = page?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / Number(filters.take)));
+
+  const { data: stats } = useQuery<OffersStats>({
+    queryKey: ['offers-stats'],
+    queryFn: () => clientFetch<OffersStats>('/offers/stats'),
+    staleTime: 30_000,
   });
 
   const updateMutation = useMutation({
@@ -102,7 +116,7 @@ export default function OffersPage(): React.ReactElement {
     });
   };
   const selectAll = (): void => {
-    const allIds = (data ?? []).map((o) => o.id);
+    const allIds = data.map((o) => o.id);
     setSelected(
       selected.size === allIds.length ? new Set() : new Set(allIds),
     );
@@ -123,6 +137,18 @@ export default function OffersPage(): React.ReactElement {
       <PageHeader
         title="Ofertas"
         description="Tudo que entrou nas Sources. Edite o link de afiliado quando faltar."
+        badge={
+          stats ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge variant="default">Total {stats.total}</Badge>
+              <Badge variant="accent">🟠 Shopee {stats.byKind.SHOPEE ?? 0}</Badge>
+              <Badge variant="secondary">🟡 ML {stats.byKind.MERCADOLIVRE ?? 0}</Badge>
+              {(stats.byKind.AMAZON ?? 0) > 0 ? (
+                <Badge variant="secondary">🔵 Amazon {stats.byKind.AMAZON}</Badge>
+              ) : null}
+            </div>
+          ) : undefined
+        }
         actions={
           <div className="inline-flex rounded-lg border bg-muted/30 p-1">
             <button
@@ -159,7 +185,7 @@ export default function OffersPage(): React.ReactElement {
               <Label>Source</Label>
               <Select
                 value={filters.source}
-                onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))}
+                onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value, page: 1 }))}
               >
                 <option value="">Todas</option>
                 <option value="SHOPEE">Shopee</option>
@@ -175,7 +201,7 @@ export default function OffersPage(): React.ReactElement {
                 min="0"
                 max="1"
                 value={filters.minScore}
-                onChange={(e) => setFilters((f) => ({ ...f, minScore: e.target.value }))}
+                onChange={(e) => setFilters((f) => ({ ...f, minScore: e.target.value, page: 1 }))}
                 placeholder="0.0 – 1.0"
               />
             </div>
@@ -186,14 +212,16 @@ export default function OffersPage(): React.ReactElement {
                 min="5"
                 max="100"
                 value={filters.take}
-                onChange={(e) => setFilters((f) => ({ ...f, take: e.target.value }))}
+                onChange={(e) => setFilters((f) => ({ ...f, take: e.target.value, page: 1 }))}
               />
             </div>
             <div className="flex items-end">
               <Button
                 variant="ghost"
-                onClick={() => setFilters({ source: '', minScore: '', take: '30' })}
-                disabled={!filters.source && !filters.minScore && filters.take === '30'}
+                onClick={() => setFilters({ source: '', minScore: '', take: '50', page: 1 })}
+                disabled={
+                  !filters.source && !filters.minScore && filters.take === '50' && filters.page === 1
+                }
               >
                 Limpar filtros
               </Button>
@@ -220,7 +248,7 @@ export default function OffersPage(): React.ReactElement {
             </CardContent>
           </Card>
         )
-      ) : (data ?? []).length === 0 ? (
+      ) : data.length === 0 ? (
         <Card>
           <EmptyState
             icon={Search}
@@ -232,10 +260,11 @@ export default function OffersPage(): React.ReactElement {
         <>
           <div className="flex items-center justify-between">
             <div className="text-xs text-muted-foreground">
-              Mostrando {(data ?? []).length} oferta{(data ?? []).length !== 1 ? 's' : ''} (ordenadas por score)
+              Mostrando <strong>{data.length}</strong> de <strong>{total}</strong> · página{' '}
+              {filters.page}/{totalPages}
             </div>
             <Button size="sm" variant="ghost" onClick={selectAll}>
-              {selected.size === (data ?? []).length && (data ?? []).length > 0
+              {selected.size === data.length && data.length > 0
                 ? 'Desmarcar todos'
                 : 'Selecionar todos'}
             </Button>
@@ -266,7 +295,7 @@ export default function OffersPage(): React.ReactElement {
             </div>
           )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {(data ?? []).map((o) => (
+            {data.map((o) => (
               <OfferGridCard
                 key={o.id}
                 offer={o}
@@ -277,6 +306,11 @@ export default function OffersPage(): React.ReactElement {
               />
             ))}
           </div>
+          <Pagination
+            page={filters.page}
+            totalPages={totalPages}
+            onChange={(p) => setFilters((f) => ({ ...f, page: p }))}
+          />
         </>
       ) : (
         <>
@@ -315,7 +349,7 @@ export default function OffersPage(): React.ReactElement {
                       <input
                         type="checkbox"
                         checked={
-                          selected.size === (data ?? []).length && (data ?? []).length > 0
+                          selected.size === data.length && data.length > 0
                         }
                         onChange={selectAll}
                         className="size-4 cursor-pointer"
@@ -334,7 +368,7 @@ export default function OffersPage(): React.ReactElement {
                   </tr>
                 </thead>
                 <tbody>
-                  {(data ?? []).map((o, i) => (
+                  {data.map((o, i) => (
                     <OfferEditableRow
                       key={o.id}
                       offer={o}
@@ -350,8 +384,48 @@ export default function OffersPage(): React.ReactElement {
             </div>
           </CardContent>
         </Card>
+        <Pagination
+          page={filters.page}
+          totalPages={totalPages}
+          onChange={(p) => setFilters((f) => ({ ...f, page: p }))}
+        />
         </>
       )}
+    </div>
+  );
+}
+
+function Pagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (p: number) => void;
+}): React.ReactElement | null {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 pt-2">
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => onChange(Math.max(1, page - 1))}
+        disabled={page === 1}
+      >
+        ← Anterior
+      </Button>
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {page} / {totalPages}
+      </span>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => onChange(Math.min(totalPages, page + 1))}
+        disabled={page === totalPages}
+      >
+        Próxima →
+      </Button>
     </div>
   );
 }

@@ -267,16 +267,48 @@ export async function buildServer() {
   );
 
   app.get('/offers', async (req) => {
-    const q = req.query as { take?: string; minScore?: string; source?: string };
-    return prisma.offer.findMany({
-      take: Math.min(100, Number(q.take ?? 20)),
-      where: {
-        score: q.minScore ? { gte: Number(q.minScore) } : undefined,
-        source: q.source ? { kind: q.source as 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' } : undefined,
-      },
-      orderBy: { score: 'desc' },
-      include: { source: { select: { kind: true } } },
+    const q = req.query as {
+      take?: string;
+      skip?: string;
+      minScore?: string;
+      source?: string;
+    };
+    const take = Math.min(100, Number(q.take ?? 20));
+    const skip = Math.max(0, Number(q.skip ?? 0));
+    const where = {
+      score: q.minScore ? { gte: Number(q.minScore) } : undefined,
+      source: q.source ? { kind: q.source as 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' } : undefined,
+    };
+    const [items, total] = await Promise.all([
+      prisma.offer.findMany({
+        take,
+        skip,
+        where,
+        orderBy: { score: 'desc' },
+        include: { source: { select: { kind: true } } },
+      }),
+      prisma.offer.count({ where }),
+    ]);
+    return { items, total, take, skip };
+  });
+
+  // Contagem agregada por plataforma — usado pelo dashboard pra mostrar
+  // "X Shopee · Y ML" sem precisar paginar tudo.
+  app.get('/offers/stats', async () => {
+    const grouped = await prisma.offer.groupBy({
+      by: ['sourceId'],
+      _count: { _all: true },
     });
+    const sources = await prisma.source.findMany({
+      select: { id: true, kind: true },
+    });
+    const byKind: Record<string, number> = { SHOPEE: 0, MERCADOLIVRE: 0, AMAZON: 0 };
+    for (const g of grouped) {
+      const src = sources.find((s) => s.id === g.sourceId);
+      if (src) byKind[src.kind] = (byKind[src.kind] ?? 0) + g._count._all;
+    }
+    const total = Object.values(byKind).reduce((a, b) => a + b, 0);
+    return { total, byKind };
   });
 
   // Lista ofertas que precisam do seu input (link tageado manual).
@@ -560,14 +592,16 @@ export async function buildServer() {
           schedule: z
             .object({
               intervalMinutes: z.number().int().min(1).optional(),
+              intervalMinutesMin: z.number().int().min(1).optional(),
+              intervalMinutesMax: z.number().int().min(1).optional(),
               windowStartHour: z.number().int().min(0).max(23).optional(),
               windowEndHour: z.number().int().min(0).max(24).optional(),
               dailyLimit: z.number().int().min(1).optional(),
               postLoop: z.boolean().optional(),
               burstSizeMin: z.number().int().min(1).max(30).optional(),
               burstSizeMax: z.number().int().min(1).max(30).optional(),
-              burstSpreadMinSec: z.number().int().min(0).max(600).optional(),
-              burstSpreadMaxSec: z.number().int().min(0).max(600).optional(),
+              burstSpreadMinSec: z.number().int().min(0).max(1800).optional(),
+              burstSpreadMaxSec: z.number().int().min(0).max(1800).optional(),
             })
             .optional(),
           channelIds: z.array(z.string()).optional(),
