@@ -75,7 +75,13 @@ export default function SourcePage({ params }: { params: Promise<{ kind: string 
 
   const offers = useQuery<RecentOffer[]>({
     queryKey: ['source-offers', kind],
-    queryFn: () => clientFetch<RecentOffer[]>(`/offers?source=${kind}&take=10`),
+    queryFn: async () => {
+      const res = await clientFetch<{ items: RecentOffer[] } | RecentOffer[]>(
+        `/offers?source=${kind}&take=10`,
+      );
+      // /offers agora retorna {items,total,take,skip} — antigo retornava array.
+      return Array.isArray(res) ? res : res.items;
+    },
   });
 
   const fetchMutation = useMutation({
