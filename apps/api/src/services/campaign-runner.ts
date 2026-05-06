@@ -131,16 +131,21 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
       });
     }
     if (takeOffers === 1) {
-      // Próxima oferta = source DIFERENTE da última disparada
+      // Rotação preferencial: tenta source DIFERENTE da última, FALLBACK pra
+      // qualquer source que ainda tenha oferta nova. Sem fallback, quando uma
+      // source esgota a outra fica esperando o postLoop reciclar TUDO — e a
+      // que esgotou se repetia logo. Com fallback: ML vazio → só Shopee até
+      // que TODAS esgotem (aí postLoop recicla globalmente, se ligado).
       const last = await prisma.dispatch.findFirst({
         where: { campaignId },
         orderBy: { createdAt: 'desc' },
         include: { offer: { include: { source: { select: { kind: true } } } } },
       });
       const lastKind = last?.offer.source.kind;
-      const others = lastKind ? sources.filter((s) => s !== lastKind) : sources;
-      // Tenta source diferente primeiro
-      for (const src of others.length > 0 ? others : sources) {
+      const ordered = lastKind
+        ? [...sources.filter((s) => s !== lastKind), lastKind as typeof sources[number]]
+        : sources;
+      for (const src of ordered) {
         const found = await prisma.offer.findMany({
           where: {
             ...baseWhere,
