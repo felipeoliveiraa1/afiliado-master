@@ -718,9 +718,13 @@ export async function buildServer() {
               affiliateUrl,
               raw: { importedFrom: 'manual-url-list', shopName: shopName ?? '' } as object,
               fetchedAt: new Date(),
-              score: 0.75,
+              score: 0.95, // PRIORIDADE MÁXIMA — manual de loja parceira sempre vence
             },
-            update: { affiliateUrl, fetchedAt: new Date() },
+            update: {
+              affiliateUrl,
+              fetchedAt: new Date(),
+              score: 0.95, // bump existing também (idempotente: re-import = update score)
+            },
           });
           inserted++;
           results.push({ url, ok: true });
