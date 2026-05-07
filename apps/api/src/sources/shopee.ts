@@ -207,6 +207,113 @@ export async function fetchShopeeProducts(opts?: ShopeeFetchOpts): Promise<RawOf
 }
 
 /**
+ * Importa produtos de uma LOJA específica via API V1 (productOffer aceita shopName).
+ * V2 não aceita shopName como filtro — só V1.
+ *
+ * Ex: fetchShopeeProductsByShop("Mundo Kids") → produtos da loja mundo.kidssc
+ *
+ * Pagina automaticamente até atingir maxPages (default 5 = ~100 produtos).
+ * Cada page: 20 produtos. Cuidado com TPS (1 req/sec inicial).
+ */
+export async function fetchShopeeProductsByShop(
+  shopName: string,
+  opts: { maxPages?: number; perPage?: number } = {},
+): Promise<RawOffer[]> {
+  const maxPages = opts.maxPages ?? 5;
+  const perPage = opts.perPage ?? 20;
+  const query = `
+    query ProductOfferV1(
+      $shopName: String
+      $page: Int
+      $limit: Int
+    ) {
+      productOffer(
+        shopName: $shopName
+        page: $page
+        limit: $limit
+      ) {
+        nodes {
+          commissionRate
+          commission
+          price
+          sales
+          imageUrl
+          productName
+          shopName
+          shopId
+          itemLink
+          shopLink
+          isBrandProduct
+          periodStartTime
+          periodEndTime
+          offerStatus
+        }
+        pageInfo { page limit hasNextPage }
+      }
+    }
+  `;
+  type Node = {
+    commissionRate?: string;
+    commission?: string;
+    price?: string;
+    sales?: number;
+    imageUrl?: string;
+    productName?: string;
+    shopName?: string;
+    shopId?: number;
+    itemLink?: string;
+    shopLink?: string;
+    isBrandProduct?: boolean;
+    offerStatus?: string;
+  };
+  type Resp = {
+    productOffer: { nodes: Node[]; pageInfo: { hasNextPage: boolean } };
+  };
+  const all: RawOffer[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const data = await gql<Resp>(query, { shopName, page, limit: perPage });
+    const nodes = data.productOffer?.nodes ?? [];
+    for (const n of nodes) {
+      if (!n.itemLink || !n.productName) continue;
+      // Extrai itemId do itemLink (formato shopee.com.br/product/SHOPID/ITEMID)
+      const match = n.itemLink.match(/\/product\/(\d+)\/(\d+)/);
+      const itemId = match?.[2] ?? '';
+      if (!itemId) continue;
+      const price = Number(n.price ?? '0');
+      const commissionPct = n.commissionRate ? Number(n.commissionRate) * 100 : undefined;
+      // V1 não retorna offerLink — gera via generateShortLink
+      let affiliateUrl: string | undefined;
+      try {
+        affiliateUrl = await generateShopeeShortLink(n.itemLink);
+      } catch (err) {
+        logger.warn({ err, itemId }, 'shop import: shortlink falhou — pula offer');
+        continue;
+      }
+      all.push({
+        externalId: itemId,
+        title: n.productName,
+        imageUrl: n.imageUrl,
+        price,
+        url: n.itemLink,
+        affiliateUrl,
+        commissionPct,
+        salesCount: n.sales,
+        raw: {
+          ...n,
+          seller: n.shopName,
+          importedFromShop: shopName,
+        },
+      });
+    }
+    if (!data.productOffer?.pageInfo?.hasNextPage) break;
+    // Throttle anti-rate limit
+    await new Promise((r) => setTimeout(r, 1100));
+  }
+  logger.info({ shopName, imported: all.length }, 'shop import done');
+  return all;
+}
+
+/**
  * Encurta link Shopee com subIDs (UTM tracking). Útil pra:
  *   - Identificar qual grupo WhatsApp clicou (subId = group_id)
  *   - Métricas de conversão por canal via /conversionReport

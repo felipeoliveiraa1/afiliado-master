@@ -8,7 +8,8 @@ import { prisma } from '@/lib/db.js';
 import { evolution } from '@/lib/evolution.js';
 import { fetchQueue, dispatchQueue } from '@/queue/queues.js';
 import { validateShopeeCookie } from '@/sources/shopee_panel.js';
-import { introspectShopeeSchema } from '@/sources/shopee.js';
+import { fetchShopeeProductsByShop, introspectShopeeSchema } from '@/sources/shopee.js';
+import { logger } from '@/lib/logger.js';
 import {
   defaultCouponSuffix,
   generateMlCouponCode,
@@ -665,6 +666,71 @@ export async function buildServer() {
   // Introspection do schema GraphQL Shopee — útil pra descobrir queries
   // como couponOffer, shopOfferV2 etc sem precisar da doc oficial.
   app.get('/sources/SHOPEE/introspect', async () => introspectShopeeSchema());
+
+  // Importa produtos de uma LOJA específica (via API V1 — productOffer aceita
+  // shopName). V2 não permite filtro por loja. Cada chamada importa até
+  // maxPages × perPage produtos, gera shortlinks afiliados, salva como Offers.
+  // Útil pra cadastrar lojas-parceiras (ex: Mundo Kids com 624 itens Carter's).
+  app.post(
+    '/sources/SHOPEE/import-shop',
+    {
+      schema: {
+        body: z.object({
+          shopName: z.string().min(2),
+          maxPages: z.number().int().min(1).max(50).optional(),
+          perPage: z.number().int().min(5).max(50).optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const { shopName, maxPages = 5, perPage = 20 } = req.body;
+      const offers = await fetchShopeeProductsByShop(shopName, { maxPages, perPage });
+      // Acha source SHOPEE pra associar
+      const source = await prisma.source.findUnique({ where: { kind: 'SHOPEE' } });
+      if (!source) return { imported: 0, error: 'Source SHOPEE não cadastrada' };
+      let inserted = 0;
+      for (const o of offers) {
+        try {
+          await prisma.offer.upsert({
+            where: {
+              sourceId_externalId: { sourceId: source.id, externalId: o.externalId },
+            },
+            create: {
+              sourceId: source.id,
+              externalId: o.externalId,
+              title: o.title,
+              description: null,
+              imageUrl: o.imageUrl,
+              price: o.price,
+              originalPrice: o.originalPrice,
+              discountPct: o.discountPct,
+              category: o.category,
+              url: o.url,
+              affiliateUrl: o.affiliateUrl,
+              commissionPct: o.commissionPct,
+              rating: o.rating,
+              ratingCount: o.ratingCount,
+              salesCount: o.salesCount,
+              raw: (o.raw ?? {}) as object,
+              fetchedAt: new Date(),
+              score: 0.7, // score default p/ produtos curados de loja parceira
+            },
+            update: {
+              title: o.title,
+              imageUrl: o.imageUrl,
+              price: o.price,
+              affiliateUrl: o.affiliateUrl,
+              fetchedAt: new Date(),
+            },
+          });
+          inserted++;
+        } catch (err) {
+          logger.warn({ err, externalId: o.externalId }, 'shop import: upsert falhou');
+        }
+      }
+      return { imported: inserted, totalFromApi: offers.length, shopName };
+    },
+  );
 
   // Busca ad-hoc Shopee — análogo ao ML search-by-category. Retorna lista
   // de produtos pra preview na UI; quando autoImport=true, cria offers no DB.

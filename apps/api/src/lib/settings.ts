@@ -84,6 +84,11 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     // compra dele sai com sua comissão (mesmo sem ser o produto exato do post).
     // Gera 1x via /sources/SHOPEE/coupon-page-shortlink ou cole manualmente.
     shopeeCouponRedeemShortlink: '',
+    // Cookie do shopee.com.br (logado) — usado pra scraping de páginas de loja
+    // específica (endpoint /api/v4/search/search_items por shopId). Sem cookie
+    // a Shopee bloqueia com 403. Pegue do DevTools Network, header Cookie.
+    // Validade típica: 7-14 dias antes de expirar.
+    shopeeCookie: '',
   },
   antiban: {
     minIntervalSec: env.DISPATCH_MIN_INTERVAL,
