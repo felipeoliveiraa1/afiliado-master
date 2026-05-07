@@ -248,12 +248,15 @@ export async function fetchShopeeShopViaApify(
     discount?: number | string;
     raw_discount?: number;
   };
+  // Modo "shop" do actor xtracto/shopee-scraper só faz 1 request e retorna ~41 items.
+  // Modo "url" pagina melhor — passamos URL pública da loja.
+  const shopUrl = `https://shopee.com.br/${shop}`;
   const items = await runApifyActor<ApifyShopeeItem>(
     'cZrxaxPbcqHwGwSlm',
     {
       country: 'br',
-      mode: 'shop',
-      shop,
+      mode: 'url',
+      url: shopUrl,
       maxProducts: maxItems,
       fetchDetail: false,
       delay: 1.5,
