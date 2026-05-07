@@ -251,7 +251,7 @@ export async function fetchShopeeShopViaApify(
   const items = await runApifyActor<ApifyShopeeItem>(
     'cZrxaxPbcqHwGwSlm',
     {
-      country: 'BR',
+      country: 'br',
       mode: 'shop',
       shop,
       maxProducts: maxItems,
