@@ -101,8 +101,12 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
   const baseWhere = {
     affiliateUrl: { not: null },
     score: { gte: effective.minScore },
+    // SEMPRE exige preço > 0 — manuais sem dados não devem postar
+    // (campanha pode override com maxPrice via filters.maxPrice)
+    price: effective.maxPrice
+      ? { gt: 0, lte: effective.maxPrice }
+      : { gt: 0 },
     discountPct: effective.minDiscount ? { gte: effective.minDiscount } : undefined,
-    price: effective.maxPrice ? { lte: effective.maxPrice } : undefined,
     source: filters.sources?.length
       ? { kind: { in: filters.sources as ('SHOPEE' | 'AMAZON' | 'MERCADOLIVRE')[] } }
       : undefined,

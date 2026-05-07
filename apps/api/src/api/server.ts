@@ -705,7 +705,13 @@ export async function buildServer() {
         try {
           const affiliateUrl = await generateShopeeShortLink(url);
           // Cria offer minimalista — title vem da URL ou genérico
-          const titleSlug = url.match(/shopee\.com\.br\/([^?]+?)-i\./)?.[1]?.replace(/-/g, ' ') ?? itemId;
+          // decodeURIComponent fixa %C3%A3o → ão, %20 → espaço etc
+          let titleSlug = url.match(/shopee\.com\.br\/([^?]+?)-i\./)?.[1]?.replace(/-/g, ' ') ?? itemId;
+          try {
+            titleSlug = decodeURIComponent(titleSlug);
+          } catch {
+            // ignora se URL malformada
+          }
           await prisma.offer.upsert({
             where: { sourceId_externalId: { sourceId: source.id, externalId: itemId } },
             create: {
