@@ -132,7 +132,10 @@ export function formatOfferMessage(input: FormatOfferInput): string {
   if (installmentLine) priceLines.push(installmentLine);
   sections.push(priceLines.join('\n'));
 
-  // 4. Cupom — 2 modos baseado no tipo:
+  // 4. Link de COMPRA primeiro (foco principal — cliente decide rápido)
+  sections.push(`🔗 Link para comprar:\n\n${input.link}`);
+
+  // 5. Cupom DEPOIS do link — 2 modos:
   //   - Digitável (com code): "🎟️ Use o cupom XXX onde tem cupom Shopee"
   //   - Automático (sem code, com redeemLink): padrão @achadinhoo_do_bebe
   //     "🎟️ USE O CUPOM R$X OFF| 𝐫𝐞𝐬𝐠𝐚𝐭𝐞 𝐨 𝐜𝐮𝐩𝐨𝐦 𝐚𝐪𝐮𝐢 ⤵️ <shortlink>"
@@ -145,9 +148,6 @@ export function formatOfferMessage(input: FormatOfferInput): string {
       `🎟️ USE O CUPOM ${input.couponDiscountLabel}| ${redeem} ⤵️\n${input.couponRedeemLink.trim()}`,
     );
   }
-
-  // 5. Link com label
-  sections.push(`🔗 Link para comprar:\n\n${input.link}`);
 
   // 6. Footer Instagram
   if (input.instagramHandle?.trim()) {

@@ -273,19 +273,36 @@ export async function buildServer() {
       skip?: string;
       minScore?: string;
       source?: string;
+      // Busca por título (case-insensitive)
+      search?: string;
+      // Ordenação: 'score' (default), 'recent' (fetchedAt desc), 'oldest', 'price-asc', 'price-desc'
+      sort?: string;
     };
     const take = Math.min(100, Number(q.take ?? 20));
     const skip = Math.max(0, Number(q.skip ?? 0));
-    const where = {
+    const where: Record<string, unknown> = {
       score: q.minScore ? { gte: Number(q.minScore) } : undefined,
       source: q.source ? { kind: q.source as 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' } : undefined,
     };
+    if (q.search?.trim()) {
+      where.title = { contains: q.search.trim(), mode: 'insensitive' };
+    }
+    const orderBy =
+      q.sort === 'recent'
+        ? { fetchedAt: 'desc' as const }
+        : q.sort === 'oldest'
+          ? { fetchedAt: 'asc' as const }
+          : q.sort === 'price-asc'
+            ? { price: 'asc' as const }
+            : q.sort === 'price-desc'
+              ? { price: 'desc' as const }
+              : { score: 'desc' as const };
     const [items, total] = await Promise.all([
       prisma.offer.findMany({
         take,
         skip,
         where,
-        orderBy: { score: 'desc' },
+        orderBy,
         include: { source: { select: { kind: true } } },
       }),
       prisma.offer.count({ where }),

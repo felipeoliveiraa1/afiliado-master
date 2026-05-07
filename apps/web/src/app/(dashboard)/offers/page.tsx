@@ -48,7 +48,14 @@ type OffersResponse = { items: OfferRow[]; total: number; take: number; skip: nu
 type OffersStats = { total: number; byKind: Record<string, number> };
 
 export default function OffersPage(): React.ReactElement {
-  const [filters, setFilters] = useState({ source: '', minScore: '', take: '50', page: 1 });
+  const [filters, setFilters] = useState({
+    source: '',
+    minScore: '',
+    take: '50',
+    page: 1,
+    search: '',
+    sort: 'score',
+  });
   const [view, setView] = useState<'table' | 'grid'>('grid');
   const queryClient = useQueryClient();
 
@@ -56,6 +63,8 @@ export default function OffersPage(): React.ReactElement {
   if (filters.source) params.set('source', filters.source);
   if (filters.minScore) params.set('minScore', filters.minScore);
   if (filters.take) params.set('take', filters.take);
+  if (filters.search.trim()) params.set('search', filters.search.trim());
+  if (filters.sort && filters.sort !== 'score') params.set('sort', filters.sort);
   const skip = (filters.page - 1) * Number(filters.take);
   if (skip > 0) params.set('skip', String(skip));
 
@@ -180,6 +189,30 @@ export default function OffersPage(): React.ReactElement {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="grid gap-3 md:grid-cols-2 mb-3">
+            <div className="space-y-1.5 md:col-span-1">
+              <Label>🔍 Buscar por nome</Label>
+              <Input
+                type="text"
+                value={filters.search}
+                placeholder="Ex: fralda pampers, body carters, mamadeira..."
+                onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>📅 Ordenar por</Label>
+              <Select
+                value={filters.sort}
+                onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value, page: 1 }))}
+              >
+                <option value="score">Score (melhor)</option>
+                <option value="recent">Mais recente</option>
+                <option value="oldest">Mais antiga</option>
+                <option value="price-asc">Preço: menor → maior</option>
+                <option value="price-desc">Preço: maior → menor</option>
+              </Select>
+            </div>
+          </div>
           <div className="grid gap-3 md:grid-cols-4">
             <div className="space-y-1.5">
               <Label>Source</Label>
@@ -218,9 +251,16 @@ export default function OffersPage(): React.ReactElement {
             <div className="flex items-end">
               <Button
                 variant="ghost"
-                onClick={() => setFilters({ source: '', minScore: '', take: '50', page: 1 })}
+                onClick={() =>
+                  setFilters({ source: '', minScore: '', take: '50', page: 1, search: '', sort: 'score' })
+                }
                 disabled={
-                  !filters.source && !filters.minScore && filters.take === '50' && filters.page === 1
+                  !filters.source &&
+                  !filters.minScore &&
+                  filters.take === '50' &&
+                  filters.page === 1 &&
+                  !filters.search &&
+                  filters.sort === 'score'
                 }
               >
                 Limpar filtros
