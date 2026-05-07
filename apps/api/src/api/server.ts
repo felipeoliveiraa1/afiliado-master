@@ -667,6 +667,72 @@ export async function buildServer() {
   // como couponOffer, shopOfferV2 etc sem precisar da doc oficial.
   app.get('/sources/SHOPEE/introspect', async () => introspectShopeeSchema());
 
+  // Importa produtos via LISTA DE URLs colada manualmente.
+  // Mais confiável que scraping (Shopee bloqueia Apify/Puppeteer). User abre
+  // loja, copia 30-50 URLs dos produtos top, cola num textarea — sistema
+  // processa cada uma: gera shortlink afiliado, busca dados via productOfferV2
+  // ou scrape leve, cria Offer no DB.
+  app.post(
+    '/sources/SHOPEE/import-urls',
+    {
+      schema: {
+        body: z.object({
+          urls: z.array(z.string().url()).min(1).max(200),
+          shopName: z.string().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const { urls, shopName } = req.body;
+      const source = await prisma.source.findUnique({ where: { kind: 'SHOPEE' } });
+      if (!source) return { imported: 0, error: 'Source SHOPEE não cadastrada' };
+
+      const { generateShopeeShortLink } = await import('@/sources/shopee.js');
+      let inserted = 0;
+      let failed = 0;
+      const results: Array<{ url: string; ok: boolean; reason?: string }> = [];
+
+      for (const url of urls) {
+        // Extrai shopId/itemId da URL Shopee
+        const m =
+          url.match(/\/product\/(\d+)\/(\d+)/) || url.match(/[.\-]i\.(\d+)\.(\d+)/);
+        if (!m) {
+          failed++;
+          results.push({ url, ok: false, reason: 'URL fora do formato shopee' });
+          continue;
+        }
+        const itemId = m[2];
+        try {
+          const affiliateUrl = await generateShopeeShortLink(url);
+          // Cria offer minimalista — title vem da URL ou genérico
+          const titleSlug = url.match(/shopee\.com\.br\/([^?]+?)-i\./)?.[1]?.replace(/-/g, ' ') ?? itemId;
+          await prisma.offer.upsert({
+            where: { sourceId_externalId: { sourceId: source.id, externalId: itemId } },
+            create: {
+              sourceId: source.id,
+              externalId: itemId,
+              title: titleSlug.slice(0, 200),
+              imageUrl: null,
+              price: 0,
+              url,
+              affiliateUrl,
+              raw: { importedFrom: 'manual-url-list', shopName: shopName ?? '' } as object,
+              fetchedAt: new Date(),
+              score: 0.75,
+            },
+            update: { affiliateUrl, fetchedAt: new Date() },
+          });
+          inserted++;
+          results.push({ url, ok: true });
+        } catch (err) {
+          failed++;
+          results.push({ url, ok: false, reason: (err as Error).message });
+        }
+      }
+      return { imported: inserted, failed, total: urls.length, results: results.slice(0, 20) };
+    },
+  );
+
   // Importa produtos de uma LOJA específica via Apify (renderiza JS do SPA Shopee).
   // V1 da API afiliada foi deprecada e V2 não filtra por loja, então scraping é
   // a única opção. Apify usa Chrome headless + proxy pra evitar bot detection.
