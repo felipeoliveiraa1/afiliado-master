@@ -248,22 +248,42 @@ export async function fetchShopeeShopViaApify(
     discount?: number | string;
     raw_discount?: number;
   };
-  // Modo "shop" do actor xtracto/shopee-scraper só faz 1 request e retorna ~41 items.
-  // Modo "url" pagina melhor — passamos URL pública da loja.
-  const shopUrl = `https://shopee.com.br/${shop}`;
-  const items = await runApifyActor<ApifyShopeeItem>(
-    'cZrxaxPbcqHwGwSlm',
-    {
-      country: 'br',
-      mode: 'url',
-      url: shopUrl,
-      maxProducts: maxItems,
-      fetchDetail: false,
-      delay: 1.5,
-    },
-    apifyToken,
-  );
-  logger.info({ shop, returned: items.length }, 'apify xtracto/shopee-scraper done');
+  // Actor xtracto/shopee-scraper retorna ~42 items por request.
+  // Pra puxar uma loja inteira (~600 produtos), iteramos por ?page=1,2,3...
+  // até ficar vazio ou atingir maxItems.
+  const baseUrl = `https://shopee.com.br/${shop}`;
+  const items: ApifyShopeeItem[] = [];
+  const maxPages = Math.ceil(maxItems / 40); // 40 items/page conservador
+  const seenIds = new Set<string>();
+  for (let pg = 1; pg <= maxPages; pg++) {
+    if (items.length >= maxItems) break;
+    const pageUrl = pg === 1 ? baseUrl : `${baseUrl}?page=${pg}`;
+    let pageItems: ApifyShopeeItem[] = [];
+    try {
+      pageItems = await runApifyActor<ApifyShopeeItem>(
+        'cZrxaxPbcqHwGwSlm',
+        { country: 'br', mode: 'url', url: pageUrl, maxProducts: 50, fetchDetail: false, delay: 1.5 },
+        apifyToken,
+      );
+    } catch (err) {
+      logger.warn({ err, pg }, 'apify shop pagination: page failed');
+      break;
+    }
+    let added = 0;
+    for (const i of pageItems) {
+      const id = String(i.item_id ?? i.itemId ?? '');
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
+      items.push(i);
+      added++;
+    }
+    logger.info({ shop, pg, returned: pageItems.length, added, total: items.length }, 'apify shop page');
+    if (added === 0 && pg > 1) {
+      logger.info({ shop, pg }, 'apify shop pagination: sem novos — para');
+      break;
+    }
+  }
+  logger.info({ shop, total: items.length }, 'apify xtracto/shopee-scraper done');
 
   const result: RawOffer[] = [];
   const seen = new Set<string>();
