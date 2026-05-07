@@ -598,6 +598,50 @@ export async function buildServer() {
     async (req) => runCampaign(req.params.id, 1),
   );
 
+  // Dispara uma OFERTA ESPECÍFICA agora (bypass score/random pick).
+  // Útil pra mandar produto curado manualmente sem mexer em score.
+  app.post(
+    '/campaigns/:id/dispatch-offer',
+    {
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: z.object({ offerId: z.string() }),
+      },
+    },
+    async (req) => {
+      const { dispatchQueue } = await import('@/queue/queues.js');
+      const campaign = await prisma.campaign.findUniqueOrThrow({
+        where: { id: req.params.id },
+        include: { channels: true },
+      });
+      if (campaign.channels.length === 0) return { dispatched: 0, error: 'no channels' };
+      const dispatchIds: string[] = [];
+      for (const channel of campaign.channels) {
+        const d = await prisma.dispatch.upsert({
+          where: {
+            campaignId_offerId_channelId: {
+              campaignId: campaign.id,
+              offerId: req.body.offerId,
+              channelId: channel.id,
+            },
+          },
+          create: {
+            campaignId: campaign.id,
+            offerId: req.body.offerId,
+            channelId: channel.id,
+            scheduledFor: new Date(),
+          },
+          update: {},
+        });
+        if (d.status === 'PENDING') {
+          await dispatchQueue.add('dispatch', { dispatchId: d.id });
+          dispatchIds.push(d.id);
+        }
+      }
+      return { dispatched: dispatchIds.length, dispatchIds };
+    },
+  );
+
   app.patch(
     '/campaigns/:id',
     {
