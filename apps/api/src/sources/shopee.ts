@@ -207,6 +207,109 @@ export async function fetchShopeeProducts(opts?: ShopeeFetchOpts): Promise<RawOf
 }
 
 /**
+ * Importa produtos de uma loja via Apify web-scraper (renderiza JS — Shopee é SPA).
+ *
+ * Como funciona:
+ *   1. Apify abre Chrome headless na URL da loja
+ *   2. Scrolla a página pra carregar produtos (lazy-loaded)
+ *   3. Extrai dados via DOM (productLink, productName, price, image)
+ *   4. Devolve lista pra gente processar
+ *
+ * Pra cada produto retornado, geramos shortlink afiliado via productOffer V2.
+ * Cobra ~$0.001 por loja importada (free tier 5USD = ~5000 lojas).
+ */
+export async function fetchShopeeShopViaApify(
+  shopUrl: string,
+  apifyToken: string,
+  maxItems = 200,
+): Promise<RawOffer[]> {
+  const { runApifyActor } = await import('./apify-client.js');
+  // pageFunction roda dentro do Chrome headless e extrai dados do DOM
+  const pageFunction = `async function pageFunction(context) {
+    const { page, request } = context;
+    // Aguarda os produtos renderizarem (lazy load)
+    await page.waitForSelector('a[href*="-i."]', { timeout: 30000 }).catch(() => {});
+    // Scrolla pra carregar mais
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate(() => window.scrollBy(0, 1000));
+      await new Promise(r => setTimeout(r, 700));
+    }
+    // Extrai produtos via DOM
+    const products = await page.evaluate(() => {
+      const items = [];
+      document.querySelectorAll('a[href*="-i."]').forEach((a) => {
+        const href = a.href;
+        const match = href.match(/\\/product\\/(\\d+)\\/(\\d+)|-i\\.(\\d+)\\.(\\d+)/);
+        if (!match) return;
+        const shopId = match[1] || match[3];
+        const itemId = match[2] || match[4];
+        const name = a.querySelector('div[class*="name"], div[class*="title"], div')?.textContent?.trim() || '';
+        const priceEl = a.querySelector('span[class*="price"]');
+        const price = priceEl?.textContent?.replace(/[^0-9,.]/g, '').replace(',', '.') || '';
+        const img = a.querySelector('img')?.src || '';
+        if (itemId && name && name.length > 5) {
+          items.push({ shopId, itemId, name, price, img, url: href });
+        }
+      });
+      return items;
+    });
+    return products;
+  }`;
+
+  const items = await runApifyActor<{
+    shopId: string;
+    itemId: string;
+    name: string;
+    price: string;
+    img: string;
+    url: string;
+  }>(
+    'apify~web-scraper',
+    {
+      startUrls: [{ url: shopUrl }],
+      pageFunction,
+      maxRequestsPerCrawl: 1,
+      proxyConfiguration: { useApifyProxy: true },
+      runMode: 'PRODUCTION',
+    },
+    apifyToken,
+  );
+  // De-dupe by itemId (same product can appear multiple times)
+  const seen = new Set<string>();
+  const unique = items.filter((i) => {
+    if (!i.itemId || seen.has(i.itemId)) return false;
+    seen.add(i.itemId);
+    return true;
+  }).slice(0, maxItems);
+  // Pra cada produto, gera shortlink afiliado
+  const result: RawOffer[] = [];
+  for (const i of unique) {
+    let affiliateUrl: string | undefined;
+    try {
+      affiliateUrl = await generateShopeeShortLink(i.url);
+    } catch (err) {
+      logger.warn({ err, itemId: i.itemId }, 'apify shop: shortlink falhou — pula');
+      continue;
+    }
+    result.push({
+      externalId: i.itemId,
+      title: i.name,
+      imageUrl: i.img,
+      price: Number(i.price) || 0,
+      url: i.url,
+      affiliateUrl,
+      raw: {
+        shopId: i.shopId,
+        importedFrom: 'apify-shop',
+        source: shopUrl,
+      },
+    });
+  }
+  logger.info({ shopUrl, found: items.length, imported: result.length }, 'apify shop import');
+  return result;
+}
+
+/**
  * Importa produtos de uma LOJA específica via API V1 (productOffer aceita shopName).
  * V2 não aceita shopName como filtro — só V1.
  *
@@ -214,6 +317,8 @@ export async function fetchShopeeProducts(opts?: ShopeeFetchOpts): Promise<RawOf
  *
  * Pagina automaticamente até atingir maxPages (default 5 = ~100 produtos).
  * Cada page: 20 produtos. Cuidado com TPS (1 req/sec inicial).
+ *
+ * @deprecated V1 foi descontinuada pela Shopee em 2025 — use fetchShopeeShopViaApify
  */
 export async function fetchShopeeProductsByShop(
   shopName: string,

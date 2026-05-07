@@ -8,7 +8,7 @@ import { prisma } from '@/lib/db.js';
 import { evolution } from '@/lib/evolution.js';
 import { fetchQueue, dispatchQueue } from '@/queue/queues.js';
 import { validateShopeeCookie } from '@/sources/shopee_panel.js';
-import { fetchShopeeProductsByShop, introspectShopeeSchema } from '@/sources/shopee.js';
+import { fetchShopeeShopViaApify, introspectShopeeSchema } from '@/sources/shopee.js';
 import { logger } from '@/lib/logger.js';
 import {
   defaultCouponSuffix,
@@ -667,24 +667,31 @@ export async function buildServer() {
   // como couponOffer, shopOfferV2 etc sem precisar da doc oficial.
   app.get('/sources/SHOPEE/introspect', async () => introspectShopeeSchema());
 
-  // Importa produtos de uma LOJA específica (via API V1 — productOffer aceita
-  // shopName). V2 não permite filtro por loja. Cada chamada importa até
-  // maxPages × perPage produtos, gera shortlinks afiliados, salva como Offers.
-  // Útil pra cadastrar lojas-parceiras (ex: Mundo Kids com 624 itens Carter's).
+  // Importa produtos de uma LOJA específica via Apify (renderiza JS do SPA Shopee).
+  // V1 da API afiliada foi deprecada e V2 não filtra por loja, então scraping é
+  // a única opção. Apify usa Chrome headless + proxy pra evitar bot detection.
+  // Pra cada produto encontrado: gera shortlink afiliado e cria Offer no DB.
   app.post(
     '/sources/SHOPEE/import-shop',
     {
       schema: {
         body: z.object({
-          shopName: z.string().min(2),
-          maxPages: z.number().int().min(1).max(50).optional(),
-          perPage: z.number().int().min(5).max(50).optional(),
+          shopUrl: z.string().url(),
+          maxItems: z.number().int().min(10).max(1000).optional(),
         }),
       },
     },
-    async (req) => {
-      const { shopName, maxPages = 5, perPage = 20 } = req.body;
-      const offers = await fetchShopeeProductsByShop(shopName, { maxPages, perPage });
+    async (req, reply) => {
+      const { shopUrl, maxItems = 200 } = req.body;
+      // Pega o token do settings/marketplaces
+      const cfg = await getSettingsSection<{ apifyToken?: string }>('marketplaces');
+      const token = cfg.apifyToken?.trim();
+      if (!token) {
+        return reply.code(400).send({
+          error: 'Apify token não configurado. Vá em /settings → Marketplaces → Apify Token',
+        });
+      }
+      const offers = await fetchShopeeShopViaApify(shopUrl, token, maxItems);
       // Acha source SHOPEE pra associar
       const source = await prisma.source.findUnique({ where: { kind: 'SHOPEE' } });
       if (!source) return { imported: 0, error: 'Source SHOPEE não cadastrada' };
@@ -728,7 +735,7 @@ export async function buildServer() {
           logger.warn({ err, externalId: o.externalId }, 'shop import: upsert falhou');
         }
       }
-      return { imported: inserted, totalFromApi: offers.length, shopName };
+      return { imported: inserted, totalFromApi: offers.length, shopUrl };
     },
   );
 
