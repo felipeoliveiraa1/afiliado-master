@@ -216,6 +216,26 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     couponCode = dispatch.offer.coupon;
   }
 
+  // PIX — se admin configurou desconto > 0 no /settings pra essa source,
+  // calcula e mostra "OU R$ X no PIX". Default 0 = desligado (Open API
+  // Shopee não expõe campo PIX, então é só estimativa).
+  const mkt = (await getSettingsSection<{
+    shopeePixDiscountPct?: number;
+    mercadoLivrePixDiscountPct?: number;
+    amazonPixDiscountPct?: number;
+  }>('marketplaces')) ?? {};
+  const pixPctByKind: Record<string, number> = {
+    SHOPEE: Number(mkt.shopeePixDiscountPct) || 0,
+    MERCADOLIVRE: Number(mkt.mercadoLivrePixDiscountPct) || 0,
+    AMAZON: Number(mkt.amazonPixDiscountPct) || 0,
+  };
+  const pixPct = source?.kind ? pixPctByKind[source.kind] ?? 0 : 0;
+  let pricePix: number | null = null;
+  if (pixPct > 0) {
+    const base = priceWithCoupon ?? price;
+    pricePix = Math.round(base * (1 - pixPct / 100) * 100) / 100;
+  }
+
   const instagramHandle = process.env.INSTAGRAM_HANDLE || 'promodahelena.oficial';
   return formatOfferMessage({
     title: dispatch.offer.title,
@@ -224,6 +244,7 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     installments: dispatch.offer.installments,
     couponCode,
     priceWithCoupon,
+    pricePix,
     hookLine: variant?.caption ?? null,
     link: trackingLink,
     instagramHandle,

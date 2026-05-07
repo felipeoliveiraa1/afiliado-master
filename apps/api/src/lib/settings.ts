@@ -72,6 +72,13 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     // basta preencher credenciais oficiais (https://affiliate.shopee.com.br).
     shopeeAppId: env.SHOPEE_APP_ID,
     shopeeAppSecret: env.SHOPEE_APP_SECRET,
+    // Desconto PIX renderizado no post ("OU R$ X no PIX"). DEFAULTS A 0
+    // porque PIX off na Shopee é POR PRODUTO/SELLER (não universal) e a
+    // Open API não expõe esse campo. Liga aqui (5 = -5%) só se você
+    // souber que TODOS os sellers do seu nicho participam do PIX off.
+    shopeePixDiscountPct: 0,
+    mercadoLivrePixDiscountPct: 0,
+    amazonPixDiscountPct: 0,
   },
   antiban: {
     minIntervalSec: env.DISPATCH_MIN_INTERVAL,

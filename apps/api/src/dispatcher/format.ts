@@ -79,6 +79,8 @@ export type FormatOfferInput = {
   readonly priceWithCoupon?: number | null;
   /** Code do cupom (digitável). null se cupom é automático ou ausente. */
   readonly couponCode?: string | null;
+  /** Preço PIX calculado (preço atual × (1 - pixDiscountPct/100)). Renderiza "OU R$ X no PIX". */
+  readonly pricePix?: number | null;
   readonly installments?: number | null;
   readonly hookLine?: string | null;
   readonly link: string;
@@ -112,6 +114,12 @@ export function formatOfferMessage(input: FormatOfferInput): string {
     priceLines.push(`💸 Por: ${formatBRL(input.priceWithCoupon as number)} com cupom`);
   } else {
     priceLines.push(`💸 Por: ${formatBRL(input.price)}`);
+  }
+  // Linha PIX — só renderiza se for menor que o preço final (com cupom ou normal)
+  // Ex: "OU R$ 179,55 no PIX" abaixo da linha "Por: R$ 189,00"
+  const finalPrice = hasCouponPrice ? (input.priceWithCoupon as number) : input.price;
+  if (typeof input.pricePix === 'number' && input.pricePix > 0 && input.pricePix < finalPrice) {
+    priceLines.push(`💚 OU ${formatBRL(input.pricePix)} no PIX`);
   }
   const installmentLine = buildInstallmentLine(
     hasCouponPrice ? (input.priceWithCoupon as number) : input.price,
