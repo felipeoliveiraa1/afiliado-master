@@ -185,6 +185,8 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
   // Sistema testa todos cupons ativos e escolhe o melhor pra esse produto específico.
   let couponCode: string | null = null;
   let priceWithCoupon: number | null = null;
+  let couponRedeemLink: string | null = null;
+  let couponDiscountLabel: string | null = null;
   if (source?.kind === 'SHOPEE') {
     const activeCoupons = await prisma.shopeeCoupon.findMany({
       where: {
@@ -192,7 +194,8 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
         OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
       },
     });
-    let best: { code: string | null; finalPrice: number; discount: number } | null = null;
+    let bestCoupon: typeof activeCoupons[number] | null = null;
+    let best: { finalPrice: number; discount: number } | null = null;
     for (const c of activeCoupons) {
       const result = applyCoupon(price, {
         code: c.code,
@@ -203,13 +206,31 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
       });
       if (result.applies && result.discountValue > 0) {
         if (!best || result.discountValue > best.discount) {
-          best = { code: c.code, finalPrice: result.finalPrice, discount: result.discountValue };
+          best = { finalPrice: result.finalPrice, discount: result.discountValue };
+          bestCoupon = c;
         }
       }
     }
-    if (best) {
-      couponCode = best.code;
+    if (best && bestCoupon) {
       priceWithCoupon = best.finalPrice;
+      if (bestCoupon.code) {
+        // Cupom DIGITÁVEL — mantém comportamento antigo
+        couponCode = bestCoupon.code;
+      } else {
+        // Cupom AUTOMÁTICO — mostra link de resgate em vez de "use o cupom XYZ"
+        // Usa o shortlink master da settings (gerado 1x via /sources/SHOPEE/coupon-page-shortlink)
+        const shopeeSettings = await getSettingsSection<{ shopeeCouponRedeemShortlink?: string }>(
+          'marketplaces',
+        );
+        const masterLink = shopeeSettings.shopeeCouponRedeemShortlink?.trim();
+        if (masterLink) {
+          couponRedeemLink = masterLink;
+          couponDiscountLabel =
+            bestCoupon.type === 'PERCENT'
+              ? `${bestCoupon.value}% OFF`
+              : `R$${Math.round(bestCoupon.value)} OFF`;
+        }
+      }
     }
   } else if (dispatch.offer.coupon) {
     // ML / outros: cupom já vem como texto no offer.coupon (ex: alias ML)
@@ -243,6 +264,8 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     originalPrice: dispatch.offer.originalPrice ? Number(dispatch.offer.originalPrice) : null,
     installments: dispatch.offer.installments,
     couponCode,
+    couponRedeemLink,
+    couponDiscountLabel,
     priceWithCoupon,
     pricePix,
     hookLine: variant?.caption ?? null,

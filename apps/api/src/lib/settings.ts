@@ -79,6 +79,11 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     shopeePixDiscountPct: 0,
     mercadoLivrePixDiscountPct: 0,
     amazonPixDiscountPct: 0,
+    // Shortlink master da página de cupons Shopee — usado em posts de cupons
+    // AUTOMÁTICOS (sem code). Cliente clica, resgata o cupom, e qualquer
+    // compra dele sai com sua comissão (mesmo sem ser o produto exato do post).
+    // Gera 1x via /sources/SHOPEE/coupon-page-shortlink ou cole manualmente.
+    shopeeCouponRedeemShortlink: '',
   },
   antiban: {
     minIntervalSec: env.DISPATCH_MIN_INTERVAL,

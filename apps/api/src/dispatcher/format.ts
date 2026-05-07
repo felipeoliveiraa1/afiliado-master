@@ -79,6 +79,10 @@ export type FormatOfferInput = {
   readonly priceWithCoupon?: number | null;
   /** Code do cupom (digitável). null se cupom é automático ou ausente. */
   readonly couponCode?: string | null;
+  /** Shortlink do cupom (cupons AUTOMÁTICOS — cliente resgata antes do checkout, sem digitar). */
+  readonly couponRedeemLink?: string | null;
+  /** Label do desconto pro post (ex: "R$90 OFF" ou "15% OFF"). Só exibido junto com redeemLink. */
+  readonly couponDiscountLabel?: string | null;
   /** Preço PIX calculado (preço atual × (1 - pixDiscountPct/100)). Renderiza "OU R$ X no PIX". */
   readonly pricePix?: number | null;
   readonly installments?: number | null;
@@ -128,9 +132,18 @@ export function formatOfferMessage(input: FormatOfferInput): string {
   if (installmentLine) priceLines.push(installmentLine);
   sections.push(priceLines.join('\n'));
 
-  // 4. Cupom digitável (só quando tem code — cupons automáticos não exibem essa linha)
+  // 4. Cupom — 2 modos baseado no tipo:
+  //   - Digitável (com code): "🎟️ Use o cupom XXX onde tem cupom Shopee"
+  //   - Automático (sem code, com redeemLink): padrão @achadinhoo_do_bebe
+  //     "🎟️ USE O CUPOM R$X OFF| 𝐫𝐞𝐬𝐠𝐚𝐭𝐞 𝐨 𝐜𝐮𝐩𝐨𝐦 𝐚𝐪𝐮𝐢 ⤵️ <shortlink>"
   if (input.couponCode?.trim()) {
     sections.push(`🎟️ Use o cupom ${input.couponCode.trim().toUpperCase()} onde tem cupom Shopee`);
+  } else if (input.couponRedeemLink?.trim() && typeof input.couponDiscountLabel === 'string') {
+    // Unicode bold "resgate o cupom aqui"
+    const redeem = '𝐫𝐞𝐬𝐠𝐚𝐭𝐞 𝐨 𝐜𝐮𝐩𝐨𝐦 𝐚𝐪𝐮𝐢';
+    sections.push(
+      `🎟️ USE O CUPOM ${input.couponDiscountLabel}| ${redeem} ⤵️\n${input.couponRedeemLink.trim()}`,
+    );
   }
 
   // 5. Link com label
