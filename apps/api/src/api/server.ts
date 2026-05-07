@@ -742,13 +742,13 @@ export async function buildServer() {
     {
       schema: {
         body: z.object({
-          shopUrl: z.string().url(),
-          maxItems: z.number().int().min(10).max(1000).optional(),
+          shop: z.string().min(2), // username (mundo.kidssc) ou shopId (374807007)
+          maxItems: z.number().int().min(10).max(2000).optional(),
         }),
       },
     },
     async (req, reply) => {
-      const { shopUrl, maxItems = 200 } = req.body;
+      const { shop, maxItems = 200 } = req.body;
       // Pega o token do settings/marketplaces
       const cfg = await getSettingsSection<{ apifyToken?: string }>('marketplaces');
       const token = cfg.apifyToken?.trim();
@@ -757,7 +757,7 @@ export async function buildServer() {
           error: 'Apify token não configurado. Vá em /settings → Marketplaces → Apify Token',
         });
       }
-      const offers = await fetchShopeeShopViaApify(shopUrl, token, maxItems);
+      const offers = await fetchShopeeShopViaApify(shop, token, maxItems);
       // Acha source SHOPEE pra associar
       const source = await prisma.source.findUnique({ where: { kind: 'SHOPEE' } });
       if (!source) return { imported: 0, error: 'Source SHOPEE não cadastrada' };
@@ -801,7 +801,7 @@ export async function buildServer() {
           logger.warn({ err, externalId: o.externalId }, 'shop import: upsert falhou');
         }
       }
-      return { imported: inserted, totalFromApi: offers.length, shopUrl };
+      return { imported: inserted, totalFromApi: offers.length, shop };
     },
   );
 

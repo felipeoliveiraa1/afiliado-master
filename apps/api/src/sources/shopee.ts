@@ -219,114 +219,90 @@ export async function fetchShopeeProducts(opts?: ShopeeFetchOpts): Promise<RawOf
  * Cobra ~$0.001 por loja importada (free tier 5USD = ~5000 lojas).
  */
 export async function fetchShopeeShopViaApify(
-  shopUrl: string,
+  shop: string, // username (ex: "mundo.kidssc") ou shopId numérico
   apifyToken: string,
   maxItems = 200,
 ): Promise<RawOffer[]> {
   const { runApifyActor } = await import('./apify-client.js');
-  // pageFunction roda dentro do Chrome headless e extrai dados do DOM Shopee.
-  // Estratégia: aguarda 15s pra SPA carregar + scroll lento pra trigger lazy
-  // load + extrai TODOS os <a> que apontam pra produto Shopee (tanto formato
-  // /product/SHOPID/ITEMID quanto -i.SHOPID.ITEMID).
-  const pageFunction = `async function pageFunction(context) {
-    const { page, log } = context;
-    // Espera carga inicial
-    await new Promise(r => setTimeout(r, 5000));
-    log.info('Page loaded, scrolling to trigger lazy load');
-    // Scroll lento (Shopee tem virtualização)
-    for (let i = 0; i < 15; i++) {
-      await page.evaluate(() => window.scrollBy(0, 800));
-      await new Promise(r => setTimeout(r, 1200));
-    }
-    // Volta pro topo pra render thumbnails que podem ter sido descartados
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await new Promise(r => setTimeout(r, 2000));
-    log.info('Extracting products');
-    const result = await page.evaluate(() => {
-      const items = [];
-      const seen = new Set();
-      // Pega TODOS os <a> da página, filtra os que parecem produto
-      document.querySelectorAll('a').forEach((a) => {
-        const href = a.href || '';
-        // Match formatos: /product/SHOP/ITEM ou /SLUG-i.SHOP.ITEM ou /...i.SHOP.ITEM
-        const m1 = href.match(/\\/product\\/(\\d+)\\/(\\d+)/);
-        const m2 = href.match(/[\\.\\-]i\\.(\\d+)\\.(\\d+)/);
-        const m = m1 || m2;
-        if (!m) return;
-        const shopId = m[1];
-        const itemId = m[2];
-        const key = shopId + '_' + itemId;
-        if (seen.has(key)) return;
-        seen.add(key);
-        // Nome: texto do <a> ou descendente
-        const text = (a.textContent || '').replace(/\\s+/g, ' ').trim();
-        const img = a.querySelector('img');
-        const imgSrc = img?.src || img?.getAttribute('data-src') || '';
-        items.push({
-          shopId,
-          itemId,
-          name: text.slice(0, 200),
-          img: imgSrc,
-          url: href,
-          price: ''
-        });
-      });
-      return { items, totalLinks: document.querySelectorAll('a').length };
-    });
-    log.info(\`Found \${result.totalLinks} links, \${result.items.length} products\`);
-    return result.items;
-  }`;
-
-  const items = await runApifyActor<{
-    shopId: string;
-    itemId: string;
-    name: string;
-    price: string;
-    img: string;
-    url: string;
-  }>(
-    'apify~web-scraper',
+  // Actor: xtracto/shopee-scraper (id cZrxaxPbcqHwGwSlm) — modo "shop"
+  // aceita shop username ou ID, retorna produtos com nome/preço/imagem.
+  type ApifyShopeeItem = {
+    shop_id?: number | string;
+    shopId?: number | string;
+    item_id?: number | string;
+    itemId?: number | string;
+    name?: string;
+    productName?: string;
+    title?: string;
+    price?: number | string;
+    price_min?: number;
+    price_max?: number;
+    image?: string;
+    images?: string[];
+    image_url?: string;
+    url?: string;
+    productUrl?: string;
+    rating_star?: number;
+    historical_sold?: number;
+    sold?: number;
+    discount?: number | string;
+    raw_discount?: number;
+  };
+  const items = await runApifyActor<ApifyShopeeItem>(
+    'cZrxaxPbcqHwGwSlm',
     {
-      startUrls: [{ url: shopUrl }],
-      pageFunction,
-      maxRequestsPerCrawl: 1,
-      proxyConfiguration: { useApifyProxy: true },
-      runMode: 'PRODUCTION',
+      country: 'BR',
+      mode: 'shop',
+      shop,
+      maxProducts: maxItems,
+      fetchDetail: false,
+      delay: 1.5,
     },
     apifyToken,
   );
-  // De-dupe by itemId (same product can appear multiple times)
-  const seen = new Set<string>();
-  const unique = items.filter((i) => {
-    if (!i.itemId || seen.has(i.itemId)) return false;
-    seen.add(i.itemId);
-    return true;
-  }).slice(0, maxItems);
-  // Pra cada produto, gera shortlink afiliado
+  logger.info({ shop, returned: items.length }, 'apify xtracto/shopee-scraper done');
+
   const result: RawOffer[] = [];
-  for (const i of unique) {
+  const seen = new Set<string>();
+  for (const i of items) {
+    const itemId = String(i.item_id ?? i.itemId ?? '');
+    const shopId = String(i.shop_id ?? i.shopId ?? '');
+    if (!itemId || seen.has(itemId)) continue;
+    seen.add(itemId);
+
+    const title = i.name ?? i.productName ?? i.title ?? '';
+    if (!title) continue;
+    // Shopee retorna preço em "centavos × 1000" (×100000 do reais). Detecta:
+    let price = Number(i.price ?? i.price_min ?? 0);
+    if (price > 100000) price = price / 100000; // normaliza pra reais
+    const url =
+      i.url ?? i.productUrl ?? `https://shopee.com.br/product/${shopId}/${itemId}`;
+
     let affiliateUrl: string | undefined;
     try {
-      affiliateUrl = await generateShopeeShortLink(i.url);
+      affiliateUrl = await generateShopeeShortLink(url);
     } catch (err) {
-      logger.warn({ err, itemId: i.itemId }, 'apify shop: shortlink falhou — pula');
+      logger.warn({ err, itemId }, 'apify shop: shortlink falhou — pula');
       continue;
     }
     result.push({
-      externalId: i.itemId,
-      title: i.name,
-      imageUrl: i.img,
-      price: Number(i.price) || 0,
-      url: i.url,
+      externalId: itemId,
+      title,
+      imageUrl: i.image ?? i.image_url ?? i.images?.[0],
+      price,
+      url,
       affiliateUrl,
+      rating: i.rating_star,
+      salesCount: Number(i.historical_sold ?? i.sold ?? 0) || undefined,
+      discountPct: Number(i.raw_discount ?? i.discount ?? 0) || undefined,
       raw: {
-        shopId: i.shopId,
-        importedFrom: 'apify-shop',
-        source: shopUrl,
-      },
+        shopId,
+        importedFromShop: shop,
+        importedVia: 'apify-xtracto-shopee-scraper',
+      } as Record<string, unknown>,
     });
   }
-  logger.info({ shopUrl, found: items.length, imported: result.length }, 'apify shop import');
+  logger.info({ shop, imported: result.length }, 'apify shop offers ready');
   return result;
 }
 
