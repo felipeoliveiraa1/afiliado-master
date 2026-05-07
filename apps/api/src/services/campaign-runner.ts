@@ -127,19 +127,25 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
   const shouldRotate = sources.length > 1;
 
   async function pickOffersWithRotation(): Promise<Offer[]> {
+    // Pool size: pega TOP 200 por score, depois escolhe RANDOM.
+    // Garante variedade (não posta sempre os mesmos top 5) mas mantém
+    // qualidade (não pega ofertas com score ruim).
+    const POOL_SIZE = 200;
+    const pickRandom = <T>(arr: T[], n = 1): T[] => {
+      const shuffled = arr.slice().sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, n);
+    };
+
     if (!shouldRotate) {
-      return prisma.offer.findMany({
+      const pool = await prisma.offer.findMany({
         where: { ...baseWhere, dispatches: { none: { campaignId: campaign.id } } },
         orderBy: { score: 'desc' },
-        take: takeOffers,
+        take: POOL_SIZE,
       });
+      return pickRandom(pool, takeOffers);
     }
     if (takeOffers === 1) {
-      // Rotação preferencial: tenta source DIFERENTE da última, FALLBACK pra
-      // qualquer source que ainda tenha oferta nova. Sem fallback, quando uma
-      // source esgota a outra fica esperando o postLoop reciclar TUDO — e a
-      // que esgotou se repetia logo. Com fallback: ML vazio → só Shopee até
-      // que TODAS esgotem (aí postLoop recicla globalmente, se ligado).
+      // Rotação: source DIFERENTE da última. FALLBACK pra source que tenha oferta.
       const last = await prisma.dispatch.findFirst({
         where: { campaignId },
         orderBy: { createdAt: 'desc' },
@@ -150,32 +156,33 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
         ? [...sources.filter((s) => s !== lastKind), lastKind as typeof sources[number]]
         : sources;
       for (const src of ordered) {
-        const found = await prisma.offer.findMany({
+        const pool = await prisma.offer.findMany({
           where: {
             ...baseWhere,
             source: { kind: src },
             dispatches: { none: { campaignId: campaign.id } },
           },
           orderBy: { score: 'desc' },
-          take: 1,
+          take: POOL_SIZE,
         });
-        if (found.length > 0) return found;
+        if (pool.length > 0) return pickRandom(pool, 1);
       }
       return [];
     }
-    // takeOffers>1: pega top-N de cada source e intercala
+    // takeOffers>1: pega top-N de cada source random, intercala
     const perSource = await Promise.all(
-      sources.map((src) =>
-        prisma.offer.findMany({
+      sources.map(async (src) => {
+        const pool = await prisma.offer.findMany({
           where: {
             ...baseWhere,
             source: { kind: src },
             dispatches: { none: { campaignId: campaign.id } },
           },
           orderBy: { score: 'desc' },
-          take: takeOffers,
-        }),
-      ),
+          take: POOL_SIZE,
+        });
+        return pickRandom(pool, takeOffers);
+      }),
     );
     const interleaved: Offer[] = [];
     let idx = 0;
