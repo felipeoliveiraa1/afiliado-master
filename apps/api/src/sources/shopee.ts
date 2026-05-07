@@ -224,36 +224,57 @@ export async function fetchShopeeShopViaApify(
   maxItems = 200,
 ): Promise<RawOffer[]> {
   const { runApifyActor } = await import('./apify-client.js');
-  // pageFunction roda dentro do Chrome headless e extrai dados do DOM
+  // pageFunction roda dentro do Chrome headless e extrai dados do DOM Shopee.
+  // Estratégia: aguarda 15s pra SPA carregar + scroll lento pra trigger lazy
+  // load + extrai TODOS os <a> que apontam pra produto Shopee (tanto formato
+  // /product/SHOPID/ITEMID quanto -i.SHOPID.ITEMID).
   const pageFunction = `async function pageFunction(context) {
-    const { page, request } = context;
-    // Aguarda os produtos renderizarem (lazy load)
-    await page.waitForSelector('a[href*="-i."]', { timeout: 30000 }).catch(() => {});
-    // Scrolla pra carregar mais
-    for (let i = 0; i < 8; i++) {
-      await page.evaluate(() => window.scrollBy(0, 1000));
-      await new Promise(r => setTimeout(r, 700));
+    const { page, log } = context;
+    // Espera carga inicial
+    await new Promise(r => setTimeout(r, 5000));
+    log.info('Page loaded, scrolling to trigger lazy load');
+    // Scroll lento (Shopee tem virtualização)
+    for (let i = 0; i < 15; i++) {
+      await page.evaluate(() => window.scrollBy(0, 800));
+      await new Promise(r => setTimeout(r, 1200));
     }
-    // Extrai produtos via DOM
-    const products = await page.evaluate(() => {
+    // Volta pro topo pra render thumbnails que podem ter sido descartados
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await new Promise(r => setTimeout(r, 2000));
+    log.info('Extracting products');
+    const result = await page.evaluate(() => {
       const items = [];
-      document.querySelectorAll('a[href*="-i."]').forEach((a) => {
-        const href = a.href;
-        const match = href.match(/\\/product\\/(\\d+)\\/(\\d+)|-i\\.(\\d+)\\.(\\d+)/);
-        if (!match) return;
-        const shopId = match[1] || match[3];
-        const itemId = match[2] || match[4];
-        const name = a.querySelector('div[class*="name"], div[class*="title"], div')?.textContent?.trim() || '';
-        const priceEl = a.querySelector('span[class*="price"]');
-        const price = priceEl?.textContent?.replace(/[^0-9,.]/g, '').replace(',', '.') || '';
-        const img = a.querySelector('img')?.src || '';
-        if (itemId && name && name.length > 5) {
-          items.push({ shopId, itemId, name, price, img, url: href });
-        }
+      const seen = new Set();
+      // Pega TODOS os <a> da página, filtra os que parecem produto
+      document.querySelectorAll('a').forEach((a) => {
+        const href = a.href || '';
+        // Match formatos: /product/SHOP/ITEM ou /SLUG-i.SHOP.ITEM ou /...i.SHOP.ITEM
+        const m1 = href.match(/\\/product\\/(\\d+)\\/(\\d+)/);
+        const m2 = href.match(/[\\.\\-]i\\.(\\d+)\\.(\\d+)/);
+        const m = m1 || m2;
+        if (!m) return;
+        const shopId = m[1];
+        const itemId = m[2];
+        const key = shopId + '_' + itemId;
+        if (seen.has(key)) return;
+        seen.add(key);
+        // Nome: texto do <a> ou descendente
+        const text = (a.textContent || '').replace(/\\s+/g, ' ').trim();
+        const img = a.querySelector('img');
+        const imgSrc = img?.src || img?.getAttribute('data-src') || '';
+        items.push({
+          shopId,
+          itemId,
+          name: text.slice(0, 200),
+          img: imgSrc,
+          url: href,
+          price: ''
+        });
       });
-      return items;
+      return { items, totalLinks: document.querySelectorAll('a').length };
     });
-    return products;
+    log.info(\`Found \${result.totalLinks} links, \${result.items.length} products\`);
+    return result.items;
   }`;
 
   const items = await runApifyActor<{
