@@ -270,14 +270,32 @@ export async function runDueCampaigns(): Promise<void> {
     },
   });
   const now = Date.now();
+  // Hora atual em BRT (UTC-3) — campanha define janela em hora BRT
+  const brtHour = (new Date().getUTCHours() - 3 + 24) % 24;
   for (const c of campaigns) {
     const sched = (c.schedule as {
       intervalMinutes?: number;
       intervalMinutesMin?: number;
       intervalMinutesMax?: number;
+      windowStartHour?: number;
+      windowEndHour?: number;
       burstSizeMin?: number;
       burstSizeMax?: number;
     }) ?? {};
+    // PULA cron fora da janela horária — evita acumular dispatches de madrugada
+    // que floodavam o grupo às 8h quando janela abria. Bug corrigido aqui
+    // (antes só o worker re-agendava jobs já enfileirados).
+    const wStart = sched.windowStartHour ?? 8;
+    const wEnd = sched.windowEndHour ?? 23;
+    const inWindow =
+      wStart <= wEnd ? brtHour >= wStart && brtHour < wEnd : brtHour >= wStart || brtHour < wEnd;
+    if (!inWindow) {
+      logger.debug(
+        { campaign: c.name, brtHour, wStart, wEnd },
+        'cron campaign skip — fora da janela',
+      );
+      continue;
+    }
     // Intervalo randomizado: usa Min/Max se setados, senão fallback pro fixo legacy.
     // A cada tick do cron escolhe um valor random no range — gera sensação suave
     // (ex: 10-15min varia em vez de exato 12min sempre).

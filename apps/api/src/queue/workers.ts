@@ -226,10 +226,15 @@ export function startWorkers() {
       }
       const result = await executeWhatsappDispatch(job.data.dispatchId);
       if (result.kind === 'RESCHEDULED') {
+        // Adiciona jitter de 0-90min no nextOpenAt — evita que TODOS os jobs
+        // rescheduled (acumulados de madrugada) disparem juntos às 8:00:00.
+        // Espalha entre 8h-9h30 da manhã pra parecer humano.
+        const jitterMs = Math.floor(Math.random() * 90 * 60 * 1000);
+        const delayMs = Math.max(0, result.runAt.getTime() - Date.now() + jitterMs);
         await dispatchQueue.add(
           'dispatch',
           { dispatchId: result.dispatchId },
-          { delay: result.runAt.getTime() - Date.now() },
+          { delay: delayMs },
         );
       }
     },
