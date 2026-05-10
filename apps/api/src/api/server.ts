@@ -600,12 +600,16 @@ export async function buildServer() {
 
   // Dispara uma OFERTA ESPECÍFICA agora (bypass score/random pick).
   // Útil pra mandar produto curado manualmente sem mexer em score.
+  // delaySec: agenda o dispatch pra X segundos no futuro (espaça batches manuais).
   app.post(
     '/campaigns/:id/dispatch-offer',
     {
       schema: {
         params: z.object({ id: z.string() }),
-        body: z.object({ offerId: z.string() }),
+        body: z.object({
+          offerId: z.string(),
+          delaySec: z.number().int().min(0).max(86400).optional(),
+        }),
       },
     },
     async (req) => {
@@ -615,6 +619,8 @@ export async function buildServer() {
         include: { channels: true },
       });
       if (campaign.channels.length === 0) return { dispatched: 0, error: 'no channels' };
+      const delayMs = (req.body.delaySec ?? 0) * 1000;
+      const scheduledFor = new Date(Date.now() + delayMs);
       const dispatchIds: string[] = [];
       for (const channel of campaign.channels) {
         const d = await prisma.dispatch.upsert({
@@ -629,16 +635,16 @@ export async function buildServer() {
             campaignId: campaign.id,
             offerId: req.body.offerId,
             channelId: channel.id,
-            scheduledFor: new Date(),
+            scheduledFor,
           },
           update: {},
         });
         if (d.status === 'PENDING') {
-          await dispatchQueue.add('dispatch', { dispatchId: d.id });
+          await dispatchQueue.add('dispatch', { dispatchId: d.id }, { delay: delayMs });
           dispatchIds.push(d.id);
         }
       }
-      return { dispatched: dispatchIds.length, dispatchIds };
+      return { dispatched: dispatchIds.length, dispatchIds, scheduledFor };
     },
   );
 
