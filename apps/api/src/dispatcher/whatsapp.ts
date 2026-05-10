@@ -121,12 +121,16 @@ export function checkDispatchWindow(
   windowStart: number = env.DISPATCH_WINDOW_START,
   windowEnd: number = env.DISPATCH_WINDOW_END,
 ): { open: true } | { open: false; nextOpenAt: Date } {
-  const hour = now.getHours();
-  if (hour >= windowStart && hour < windowEnd) {
+  // BUGFIX: server roda em UTC mas windowStart/End é configurado em BRT (UTC-3).
+  // Converte hora atual pra BRT antes de comparar com a janela.
+  const brtHour = (now.getUTCHours() - 3 + 24) % 24;
+  if (brtHour >= windowStart && brtHour < windowEnd) {
     return { open: true };
   }
+  // Próxima abertura: hoje BRT às windowStart+jitter, ou amanhã se já passou
   const next = new Date(now);
-  next.setHours(windowStart, Math.floor(Math.random() * 30), 0, 0);
+  // Seta UTC pra "windowStart BRT" = (windowStart + 3) UTC
+  next.setUTCHours((windowStart + 3) % 24, Math.floor(Math.random() * 30), 0, 0);
   if (next.getTime() < now.getTime()) next.setTime(next.getTime() + ONE_DAY_MS);
   return { open: false, nextOpenAt: next };
 }
