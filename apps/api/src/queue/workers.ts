@@ -191,6 +191,54 @@ export function startWorkers() {
         data: { lastFetchAt: new Date() },
       });
       logger.info({ source: job.data.sourceKind, inserted }, 'fetch done');
+
+      // DEDUP AUTO PÓS-FETCH (image match, dentro da mesma source).
+      // SEGURANÇA: nunca deleta mais que 10% do total da source.
+      // Mantém o de MENOR preço por imagem (melhor deal).
+      try {
+        const offers = await prisma.offer.findMany({
+          where: { sourceId: source.id, imageUrl: { not: null } },
+          select: { id: true, imageUrl: true, price: true, fetchedAt: true },
+        });
+        const totalSource = offers.length;
+        const groups = new Map<string, typeof offers>();
+        for (const o of offers) {
+          const img = o.imageUrl || '';
+          if (img.length < 20) continue; // imagem muito curta = não confiável
+          if (!groups.has(img)) groups.set(img, []);
+          groups.get(img)!.push(o);
+        }
+        const toDelete: string[] = [];
+        for (const [, arr] of groups) {
+          if (arr.length < 2) continue;
+          // Mantém o de MENOR preço (melhor deal) e mais novo (fetchedAt desc)
+          const sorted = [...arr].sort((a, b) => {
+            const pa = Number(a.price ?? 999999);
+            const pb = Number(b.price ?? 999999);
+            if (pa !== pb) return pa - pb;
+            return new Date(b.fetchedAt).getTime() - new Date(a.fetchedAt).getTime();
+          });
+          for (const o of sorted.slice(1)) toDelete.push(o.id);
+        }
+        // SAFETY: não deleta mais que 10% da source
+        const maxDelete = Math.floor(totalSource * 0.1);
+        if (toDelete.length > maxDelete) {
+          logger.warn(
+            { source: job.data.sourceKind, wouldDelete: toDelete.length, maxDelete, totalSource },
+            'auto-dedup ABORTED — would delete > 10% (safety guard)',
+          );
+        } else if (toDelete.length > 0) {
+          // Delete dispatches dependentes primeiro (FK)
+          await prisma.dispatch.deleteMany({ where: { offerId: { in: toDelete } } });
+          const result = await prisma.offer.deleteMany({ where: { id: { in: toDelete } } });
+          logger.info(
+            { source: job.data.sourceKind, deleted: result.count, totalSource },
+            'auto-dedup by image done',
+          );
+        }
+      } catch (err) {
+        logger.warn({ err, source: job.data.sourceKind }, 'auto-dedup falhou — sem prejuízo');
+      }
     },
     { connection: redisConnection, concurrency: 2 },
   );
