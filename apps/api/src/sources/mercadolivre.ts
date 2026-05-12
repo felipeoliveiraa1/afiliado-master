@@ -24,21 +24,24 @@ export function makeMercadoLivreSource(config: Config = {}): SourceAdapter {
     kind: 'MERCADOLIVRE',
     async fetch(opts) {
       const limit = opts?.limit ?? 50;
+      // Default categoryId pra MLB1384 (Bebês) quando vem só keyword.
+      // Panel ML sempre precisa de categoryId pra fazer busca.
+      const effectiveCategoryId = opts?.categoryId ?? (opts?.keyword ? 'MLB1384' : undefined);
       // CAMINHO PRIMÁRIO: cookie panel quando há categoria + cookie configurado.
       // Gera shortlinks meli.la oficiais (afiliação real). Public API só serve
       // como fallback porque NÃO retorna products quando a busca é só por
       // category (sem keyword `q`).
-      if (opts?.categoryId && env.MERCADOLIVRE_PANEL_AUTO_ENABLED) {
+      if (effectiveCategoryId && env.MERCADOLIVRE_PANEL_AUTO_ENABLED) {
         try {
           // PASSA keyword pro panel — antes sempre buscava vazio (limit ~18 produtos).
-          // Agora cada keyword (passada pelo cron via opts.keyword) faz uma busca
+          // Agora cada keyword (passada pelo cron via opts?.keyword) faz uma busca
           // específica dentro da categoria → traz produtos diferentes por keyword.
           const products = await searchAndAffiliateByCategory(
             {
-              categoryId: opts.categoryId,
+              categoryId: effectiveCategoryId,
               limit,
               bestSellersOnly: false,
-              keyword: opts.keyword,
+              keyword: opts?.keyword,
             },
             { maxAffiliated: limit },
           );
@@ -53,13 +56,13 @@ export function makeMercadoLivreSource(config: Config = {}): SourceAdapter {
               discountPct: p.discountPct,
               url: p.url,
               affiliateUrl: p.affiliateUrl,
-              category: opts.categoryId,
+              category: effectiveCategoryId,
               salesCount: p.isBestSeller ? 1000 : undefined,
-              raw: { panelSearch: true, isBestSeller: p.isBestSeller, seller: p.seller, keyword: opts.keyword } as Record<string, unknown>,
+              raw: { panelSearch: true, isBestSeller: p.isBestSeller, seller: p.seller, keyword: opts?.keyword } as Record<string, unknown>,
             }));
         } catch (err) {
           logger.warn(
-            { err: (err as Error).message, categoryId: opts.categoryId, keyword: opts.keyword },
+            { err: (err as Error).message, categoryId: effectiveCategoryId, keyword: opts?.keyword },
             'ml panel falhou — tentando public API fallback',
           );
           // continua pro fallback abaixo
@@ -69,7 +72,7 @@ export function makeMercadoLivreSource(config: Config = {}): SourceAdapter {
       // Fallback: public API (precisa keyword `q`, não funciona só com categoria)
       const dynamicSearch =
         opts?.categoryId || opts?.keyword
-          ? [{ q: opts.keyword ?? '', categoryId: opts.categoryId, sort: 'sold_quantity_desc' }]
+          ? [{ q: opts?.keyword ?? '', categoryId: effectiveCategoryId, sort: 'sold_quantity_desc' }]
           : searches;
       const all: RawOffer[] = [];
       for (const s of dynamicSearch) {

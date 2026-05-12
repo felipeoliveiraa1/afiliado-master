@@ -65,18 +65,32 @@ export function startWorkers() {
         onlyMall: cfg.onlyMall,
         onlyKeySellers: cfg.onlyKeySellers,
       };
-      const fetchTasks: Promise<RawOffer[]>[] = [];
+      // ML precisa serializar (panel cookie banido se muitas requests paralelas).
+      // Shopee/Amazon API aguentam paralelismo — usam concurrency normal.
+      const isML = job.data.sourceKind === 'MERCADOLIVRE';
+      const taskBuilders: Array<() => Promise<RawOffer[]>> = [];
       for (const catId of cfg.categoryIds ?? []) {
-        fetchTasks.push(adapter.fetch({ categoryId: catId, limit: limitPerCat, ...sharedFilters }));
+        taskBuilders.push(() => adapter.fetch({ categoryId: catId, limit: limitPerCat, ...sharedFilters }));
       }
       for (const kw of cfg.keywords ?? []) {
-        fetchTasks.push(adapter.fetch({ keyword: kw, limit: limitPerCat, ...sharedFilters }));
+        taskBuilders.push(() => adapter.fetch({ keyword: kw, limit: limitPerCat, ...sharedFilters }));
       }
-      // Fallback quando sem config — comportamento legado
-      if (fetchTasks.length === 0) {
-        fetchTasks.push(adapter.fetch({ limit: totalLimit, ...sharedFilters }));
+      if (taskBuilders.length === 0) {
+        taskBuilders.push(() => adapter.fetch({ limit: totalLimit, ...sharedFilters }));
       }
-      const taskResults = await Promise.allSettled(fetchTasks);
+      // ML serial (1 por vez) + jitter no adapter já protege.
+      // Shopee/Amazon paralelo até 8 simultâneos.
+      const concurrency = isML ? 1 : 8;
+      const taskResults: PromiseSettledResult<RawOffer[]>[] = [];
+      for (let i = 0; i < taskBuilders.length; i += concurrency) {
+        const batch = taskBuilders.slice(i, i + concurrency).map((fn) =>
+          fn().then((v) => ({ status: 'fulfilled' as const, value: v }))
+              .catch((err) => ({ status: 'rejected' as const, reason: err })),
+        );
+        const settled = await Promise.all(batch);
+        taskResults.push(...(settled as PromiseSettledResult<RawOffer[]>[]));
+      }
+      const fetchTasks = taskBuilders;
       const raws: RawOffer[] = [];
       for (const r of taskResults) {
         if (r.status === 'fulfilled') {
