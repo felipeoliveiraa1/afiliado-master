@@ -338,7 +338,7 @@ export function startWorkers() {
               for (const t of a.tokens) if (b.tokens.has(t)) inter++;
               const uni = a.tokens.size + b.tokens.size - inter;
               const jaccard = uni === 0 ? 0 : inter / uni;
-              if (jaccard >= 0.7) union(a.id, b.id);
+              if (jaccard >= 0.75) union(a.id, b.id);
             }
           }
         }
@@ -360,8 +360,8 @@ export function startWorkers() {
           for (const o of sorted.slice(1)) toDelete.add(o.id);
         }
         const toDeleteArr = [...toDelete];
-        // SAFETY: não deleta mais que 10% da source
-        const maxDelete = Math.floor(totalSource * 0.1);
+        // SAFETY: não deleta mais que 15% da source
+        const maxDelete = Math.floor(totalSource * 0.15);
         if (toDeleteArr.length > maxDelete) {
           logger.warn(
             { source: job.data.sourceKind, wouldDelete: toDeleteArr.length, maxDelete, totalSource, fuzzySamples },
