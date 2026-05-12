@@ -105,6 +105,8 @@ export type SearchByCategoryArgs = {
   subCategoryId?: string;
   bestSellersOnly?: boolean;
   limit?: number;
+  /** Termo de busca opcional — quando preenchido, filtra produtos por keyword. */
+  keyword?: string;
 };
 
 export type CreateLinkResponse = {
@@ -440,7 +442,7 @@ export function buildHubSearchPostBody(args: SearchByCategoryArgs): HubSearchPos
     filters.push({ id: 'best_seller', value: true });
   }
   return {
-    search: '',
+    search: args.keyword?.trim() ?? '',
     sort: 'relevance',
     filters,
     offset: 0,

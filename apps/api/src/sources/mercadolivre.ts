@@ -30,8 +30,16 @@ export function makeMercadoLivreSource(config: Config = {}): SourceAdapter {
       // category (sem keyword `q`).
       if (opts?.categoryId && env.MERCADOLIVRE_PANEL_AUTO_ENABLED) {
         try {
+          // PASSA keyword pro panel — antes sempre buscava vazio (limit ~18 produtos).
+          // Agora cada keyword (passada pelo cron via opts.keyword) faz uma busca
+          // específica dentro da categoria → traz produtos diferentes por keyword.
           const products = await searchAndAffiliateByCategory(
-            { categoryId: opts.categoryId, limit, bestSellersOnly: false },
+            {
+              categoryId: opts.categoryId,
+              limit,
+              bestSellersOnly: false,
+              keyword: opts.keyword,
+            },
             { maxAffiliated: limit },
           );
           return products
@@ -47,11 +55,11 @@ export function makeMercadoLivreSource(config: Config = {}): SourceAdapter {
               affiliateUrl: p.affiliateUrl,
               category: opts.categoryId,
               salesCount: p.isBestSeller ? 1000 : undefined,
-              raw: { panelSearch: true, isBestSeller: p.isBestSeller, seller: p.seller } as Record<string, unknown>,
+              raw: { panelSearch: true, isBestSeller: p.isBestSeller, seller: p.seller, keyword: opts.keyword } as Record<string, unknown>,
             }));
         } catch (err) {
           logger.warn(
-            { err: (err as Error).message, categoryId: opts.categoryId },
+            { err: (err as Error).message, categoryId: opts.categoryId, keyword: opts.keyword },
             'ml panel falhou — tentando public API fallback',
           );
           // continua pro fallback abaixo
