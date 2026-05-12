@@ -342,11 +342,10 @@ export function startWorkers() {
             }
           }
         }
-        // Agrupa por root
+        // Agrupa por root — TODOS candidatos entram, filtra depois por size < 2
         const fuzzyGroups = new Map<string, typeof candidates>();
         for (const c of candidates) {
           const root = find(c.id);
-          if (root === c.id && !parent.has(c.id)) continue; // sozinho
           if (!fuzzyGroups.has(root)) fuzzyGroups.set(root, []);
           fuzzyGroups.get(root)!.push(c);
         }
