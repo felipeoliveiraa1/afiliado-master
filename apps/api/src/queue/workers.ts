@@ -115,6 +115,13 @@ export function startWorkers() {
         'roupa para boneca','bonecas acessorios','acessórios de boneca','plush kpop',
         // Datas sazonais não-bebê
         'halloween','abóbora','abobora','dia das bruxas','natal cosplay','fantasia bruxa',
+        // Natal — só os off-niche (NÃO bloquear "pré-natal" que é gestante)
+        'luz natal','luzes natal','luzes de natal','pisca pisca','led piscando',
+        'papai noel','noel','rena natal','renas natal','pinheirinho','arvore natal',
+        'árvore de natal','traje natal','fantasia natal','cosplay natal',
+        'colar led','colar piscando','colar luz','pulseira led','fonte de festa',
+        'adereço festa','adereco festa','luz brilhante','xmas','christmas',
+        'enfeite natal','enfeite de natal','presente natal','floco de neve cosplay',
         // Peças automotivas (já filtrado mas reforço)
         'parafuso','protetor carter','vedação','bujão','anel vedação',
         'fiat','ford','honda','toyota','corsa','palio','strada','siena','ecosport',
