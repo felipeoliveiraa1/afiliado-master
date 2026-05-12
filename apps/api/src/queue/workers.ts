@@ -101,8 +101,40 @@ export function startWorkers() {
         },
         'fetch tasks completed',
       );
-      // Daqui pra frente usa raws deduplicados
-      const finalRaws = dedupedRaws;
+      // BLOCKLIST: rejeita produtos fora do nicho (mãe + bebê) por palavras-chave.
+      // Adicione palavras que NÃO devem entrar via cron — protege grupo de
+      // produtos sem nexo (kpop, halloween, peças automotivas, etc).
+      const BLOCKED = [
+        // Bonecas colecionáveis / brinquedos colecionáveis
+        'labubu','la bu bu','la-bu-bu','kpop','k-pop','exo','bts','blackpink',
+        'boneca de pelucia','boneca de pelúcia','roupa de boneca','roupas de boneca',
+        'roupa para boneca','bonecas acessorios','acessórios de boneca','plush kpop',
+        // Datas sazonais não-bebê
+        'halloween','abóbora','abobora','dia das bruxas',
+        // Peças automotivas (já filtrado mas reforço)
+        'parafuso','protetor carter','vedação','bujão','anel vedação',
+        'fiat','ford','honda','toyota','corsa','palio','strada','siena','ecosport',
+        'outlander','wagon','onix','cruze','astra','tracker','s10','vectra','zafira',
+        // Outros fora nicho
+        'cigarro','vape','arma','airsoft','tabaco','energetico para adulto',
+        'whey protein','suplemento','pre treino','barra proteina',
+      ];
+      const blocked: string[] = [];
+      const finalRaws = dedupedRaws.filter((r) => {
+        const t = (r.title || '').toLowerCase();
+        const hit = BLOCKED.find((b) => t.includes(b));
+        if (hit) {
+          blocked.push(`${hit}: ${(r.title || '').slice(0, 50)}`);
+          return false;
+        }
+        return true;
+      });
+      if (blocked.length > 0) {
+        logger.info(
+          { source: job.data.sourceKind, blocked: blocked.length, samples: blocked.slice(0, 3) },
+          'blocklist: rejected off-niche products',
+        );
+      }
       // Cupom Shopee NÃO é mais setado aqui no fetch — é aplicado em runtime
       // dentro de buildMessageText (whatsapp.ts), que escolhe o cupom de maior
       // desconto válido pra cada produto via applyCoupon() (DivulgaLinks-style).
