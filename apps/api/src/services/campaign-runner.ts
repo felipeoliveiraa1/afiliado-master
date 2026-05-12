@@ -126,6 +126,54 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
   const sources = (filters.sources ?? []) as ('SHOPEE' | 'AMAZON' | 'MERCADOLIVRE')[];
   const shouldRotate = sources.length > 1;
 
+  // Classifica oferta numa categoria pra evitar postar 2-3 produtos da mesma
+  // categoria seguidos (lençol, lençol, lençol → grupo cansa).
+  function inferCategory(title: string | null | undefined): string {
+    const t = (title || '').toLowerCase();
+    if (/fralda/.test(t)) return 'fralda';
+    if (/lenço|lenco umedec|umedecid/.test(t)) return 'lenco_umedecido';
+    if (/pomada|hipoglós|hipoglos|bepantol|desitin/.test(t)) return 'pomada';
+    if (/len[çc]ol|jogo de cama|jogo cama|kit cama/.test(t)) return 'lencol';
+    if (/manta|cobertor|coberta/.test(t)) return 'manta';
+    if (/body /.test(t) || /\bbody\b/.test(t)) return 'body';
+    if (/macac[ãa]o|macaquinho|romper/.test(t)) return 'macacao';
+    if (/pijama/.test(t)) return 'pijama';
+    if (/conjunto|trio.*pecas|moletom/.test(t)) return 'conjunto';
+    if (/mamadeira/.test(t)) return 'mamadeira';
+    if (/chupeta/.test(t)) return 'chupeta';
+    if (/banheira|banheirinha/.test(t)) return 'banheira';
+    if (/carrinho|bebê conforto|bebe conforto/.test(t)) return 'carrinho';
+    if (/ber[çc]o|moises|moisés/.test(t)) return 'berco';
+    if (/bab[áa] eletr[ôo]nica|monitor bebê|monitor bebe/.test(t)) return 'monitor';
+    if (/esterilizador|aquecedor mamadeira/.test(t)) return 'esterilizador';
+    if (/bolsa maternidade|mochila maternidade|frasqueira/.test(t)) return 'bolsa_maternidade';
+    if (/suti[ãa]|amamenta[çc][ãa]o|lanolina|mamilo|bomba tira leite/.test(t)) return 'amamentacao';
+    if (/cinta|p[óo]s parto|gestante|estria/.test(t)) return 'pos_parto';
+    if (/mustela|granado|johnson|huggies cosmetic/.test(t)) return 'cosmetico_bebe';
+    if (/giovanna baby/.test(t)) return 'giovanna_baby';
+    if (/[áa]lcool gel|álcool em gel|alcool em gel/.test(t)) return 'alcool_gel';
+    if (/brinquedo|chocalho|mordedor|tapete atividades/.test(t)) return 'brinquedo';
+    if (/babador/.test(t)) return 'babador';
+    if (/sapatinho|meia bebê|meia bebe|t[êe]nis bebê/.test(t)) return 'calcado';
+    if (/touca|gorro|laço bebê|tiara/.test(t)) return 'touca';
+    if (/cadeir[ãa]o|cadeira aliment|cadeirinha/.test(t)) return 'cadeira';
+    if (/aspirador nasal|termômetro|termometro|nebulizador/.test(t)) return 'saude_bebe';
+    if (/kit body|kit enxoval|enxoval|kit pijama/.test(t)) return 'kit_enxoval';
+    if (/saida de maternidade|saida maternidade/.test(t)) return 'saida_maternidade';
+    return 'outro';
+  }
+
+  // Pega últimas N categorias dispatchadas pra evitar repetir
+  async function getRecentCategories(n = 2): Promise<Set<string>> {
+    const recent = await prisma.dispatch.findMany({
+      where: { campaignId },
+      orderBy: { createdAt: 'desc' },
+      take: n,
+      include: { offer: { select: { title: true } } },
+    });
+    return new Set(recent.map((d) => inferCategory(d.offer.title)));
+  }
+
   async function pickOffersWithRotation(): Promise<Offer[]> {
     // Pool size: pega TOP 200 por score, depois escolhe RANDOM.
     // Garante variedade (não posta sempre os mesmos top 5) mas mantém
@@ -146,6 +194,7 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
     }
     if (takeOffers === 1) {
       // Rotação: source DIFERENTE da última. FALLBACK pra source que tenha oferta.
+      // Anti-categoria: evita 2 produtos da mesma categoria seguidos.
       const last = await prisma.dispatch.findFirst({
         where: { campaignId },
         orderBy: { createdAt: 'desc' },
@@ -155,6 +204,7 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
       const ordered = lastKind
         ? [...sources.filter((s) => s !== lastKind), lastKind as typeof sources[number]]
         : sources;
+      const recentCats = await getRecentCategories(2);
       for (const src of ordered) {
         const pool = await prisma.offer.findMany({
           where: {
@@ -165,7 +215,12 @@ export async function runCampaign(campaignId: string, takeOffers = 1): Promise<C
           orderBy: { score: 'desc' },
           take: POOL_SIZE,
         });
-        if (pool.length > 0) return pickRandom(pool, 1);
+        if (pool.length === 0) continue;
+        // Filtra pool excluindo categorias recentes. Se sobrar, usa filtrado.
+        // Se filtro zerar, usa pool original (fallback — nunca trava).
+        const filteredPool = pool.filter((o) => !recentCats.has(inferCategory(o.title)));
+        const finalPool = filteredPool.length > 0 ? filteredPool : pool;
+        return pickRandom(finalPool, 1);
       }
       return [];
     }
