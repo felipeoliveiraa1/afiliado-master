@@ -105,12 +105,16 @@ export function startWorkers() {
       // Adicione palavras que NÃO devem entrar via cron — protege grupo de
       // produtos sem nexo (kpop, halloween, peças automotivas, etc).
       const BLOCKED = [
-        // Bonecas colecionáveis / brinquedos colecionáveis
+        // Bonecas colecionáveis / brinquedos colecionáveis / pelúcias chinesas
         'labubu','la bu bu','la-bu-bu','kpop','k-pop','exo','bts','blackpink',
+        'boneca','bonequinha','bonequinho','boneco ','baby alive','barbie','reborn',
+        'fofuxa','little baby','my baby','metoo','patrulha canina','chase pelucia',
+        'horse doll','plush doll','fish plush','chinese zodiac','chinese new year',
+        'spring festival','year of the horse','year of the','bercinho','casa de boneca',
         'boneca de pelucia','boneca de pelúcia','roupa de boneca','roupas de boneca',
         'roupa para boneca','bonecas acessorios','acessórios de boneca','plush kpop',
         // Datas sazonais não-bebê
-        'halloween','abóbora','abobora','dia das bruxas',
+        'halloween','abóbora','abobora','dia das bruxas','natal cosplay','fantasia bruxa',
         // Peças automotivas (já filtrado mas reforço)
         'parafuso','protetor carter','vedação','bujão','anel vedação',
         'fiat','ford','honda','toyota','corsa','palio','strada','siena','ecosport',
