@@ -286,6 +286,7 @@ export function startWorkers() {
           'um','uma','uns','umas','por','pra','que','seu','sua','seus','suas',
           'bebe','bebê','infantil','kids','baby','crianca','criança','menino','menina',
           'unissex','novo','nova','original','oficial','luxo','premium','melhor',
+          'ate','tam','tamanho','und','unid','unidade','unidades','pcs','peca','pecas',
         ]);
         const norm = (s: string) =>
           s.toLowerCase()
@@ -293,14 +294,16 @@ export function startWorkers() {
             .replace(/[^a-z0-9\s]/g, ' ')
             .replace(/\s+/g, ' ').trim();
         const getTokens = (title: string): Set<string> => {
+          // length >= 2 preserva tamanhos (M, G, RN, XG) e quantidades (24, 60) —
+          // chave pra NÃO dedupar variantes de tamanho/qty.
           const tokens = norm(title).split(' ')
-            .filter((t) => t.length >= 4 && !STOPWORDS.has(t));
+            .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
           return new Set(tokens);
         };
         const candidates = offers
           .filter((o) => !toDelete.has(o.id) && o.title)
           .map((o) => ({ ...o, tokens: getTokens(o.title) }))
-          .filter((o) => o.tokens.size >= 4);
+          .filter((o) => o.tokens.size >= 5);
         // Bucket por primeiro token alfabético — reduz O(n²) pra O(n²/k buckets).
         const buckets = new Map<string, typeof candidates>();
         for (const c of candidates) {
