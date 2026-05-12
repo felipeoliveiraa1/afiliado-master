@@ -249,48 +249,130 @@ export function startWorkers() {
       });
       logger.info({ source: job.data.sourceKind, inserted }, 'fetch done');
 
-      // DEDUP AUTO PÓS-FETCH (image match, dentro da mesma source).
+      // DEDUP AUTO PÓS-FETCH (image match + fuzzy title), dentro da mesma source.
       // SEGURANÇA: nunca deleta mais que 10% do total da source.
-      // Mantém o de MENOR preço por imagem (melhor deal).
+      // Mantém o de MENOR preço por grupo (melhor deal).
       try {
         const offers = await prisma.offer.findMany({
-          where: { sourceId: source.id, imageUrl: { not: null } },
-          select: { id: true, imageUrl: true, price: true, fetchedAt: true },
+          where: { sourceId: source.id },
+          select: { id: true, imageUrl: true, price: true, fetchedAt: true, title: true },
         });
         const totalSource = offers.length;
-        const groups = new Map<string, typeof offers>();
+        // PASSO 1: dedup por imageUrl
+        const imgGroups = new Map<string, typeof offers>();
         for (const o of offers) {
           const img = o.imageUrl || '';
-          if (img.length < 20) continue; // imagem muito curta = não confiável
-          if (!groups.has(img)) groups.set(img, []);
-          groups.get(img)!.push(o);
+          if (img.length < 20) continue;
+          if (!imgGroups.has(img)) imgGroups.set(img, []);
+          imgGroups.get(img)!.push(o);
         }
-        const toDelete: string[] = [];
-        for (const [, arr] of groups) {
-          if (arr.length < 2) continue;
-          // Mantém o de MENOR preço (melhor deal) e mais novo (fetchedAt desc)
-          const sorted = [...arr].sort((a, b) => {
+        const toDelete = new Set<string>();
+        const pickCheapestFirst = (arr: typeof offers) =>
+          [...arr].sort((a, b) => {
             const pa = Number(a.price ?? 999999);
             const pb = Number(b.price ?? 999999);
             if (pa !== pb) return pa - pb;
             return new Date(b.fetchedAt).getTime() - new Date(a.fetchedAt).getTime();
           });
-          for (const o of sorted.slice(1)) toDelete.push(o.id);
+        for (const [, arr] of imgGroups) {
+          if (arr.length < 2) continue;
+          const sorted = pickCheapestFirst(arr);
+          for (const o of sorted.slice(1)) toDelete.add(o.id);
         }
+        // PASSO 2: fuzzy dedup por título (Jaccard ≥ 0.7 sobre tokens normalizados).
+        // Captura caso vendedores ML diferentes com fotos próprias do mesmo produto.
+        const STOPWORDS = new Set([
+          'de','do','da','dos','das','para','com','sem','em','no','na','nos','nas',
+          'um','uma','uns','umas','por','pra','que','seu','sua','seus','suas',
+          'bebe','bebê','infantil','kids','baby','crianca','criança','menino','menina',
+          'unissex','novo','nova','original','oficial','luxo','premium','melhor',
+        ]);
+        const norm = (s: string) =>
+          s.toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .replace(/\s+/g, ' ').trim();
+        const getTokens = (title: string): Set<string> => {
+          const tokens = norm(title).split(' ')
+            .filter((t) => t.length >= 4 && !STOPWORDS.has(t));
+          return new Set(tokens);
+        };
+        const candidates = offers
+          .filter((o) => !toDelete.has(o.id) && o.title)
+          .map((o) => ({ ...o, tokens: getTokens(o.title) }))
+          .filter((o) => o.tokens.size >= 4);
+        // Bucket por primeiro token alfabético — reduz O(n²) pra O(n²/k buckets).
+        const buckets = new Map<string, typeof candidates>();
+        for (const c of candidates) {
+          const sorted = [...c.tokens].sort();
+          // Entra em buckets dos 2 primeiros tokens — captura quando ordem varia
+          for (const key of sorted.slice(0, 2)) {
+            if (!buckets.has(key)) buckets.set(key, []);
+            buckets.get(key)!.push(c);
+          }
+        }
+        // Union-Find pra grupos transitivos
+        const parent = new Map<string, string>();
+        const find = (x: string): string => {
+          let p = parent.get(x) ?? x;
+          if (p === x) return x;
+          const root = find(p);
+          parent.set(x, root);
+          return root;
+        };
+        const union = (a: string, b: string) => {
+          const ra = find(a), rb = find(b);
+          if (ra !== rb) parent.set(ra, rb);
+        };
+        const seenPairs = new Set<string>();
+        for (const [, bucket] of buckets) {
+          if (bucket.length < 2) continue;
+          for (let i = 0; i < bucket.length; i++) {
+            for (let j = i + 1; j < bucket.length; j++) {
+              const a = bucket[i], b = bucket[j];
+              const pairKey = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
+              if (seenPairs.has(pairKey)) continue;
+              seenPairs.add(pairKey);
+              // Jaccard
+              let inter = 0;
+              for (const t of a.tokens) if (b.tokens.has(t)) inter++;
+              const uni = a.tokens.size + b.tokens.size - inter;
+              const jaccard = uni === 0 ? 0 : inter / uni;
+              if (jaccard >= 0.7) union(a.id, b.id);
+            }
+          }
+        }
+        // Agrupa por root
+        const fuzzyGroups = new Map<string, typeof candidates>();
+        for (const c of candidates) {
+          const root = find(c.id);
+          if (root === c.id && !parent.has(c.id)) continue; // sozinho
+          if (!fuzzyGroups.has(root)) fuzzyGroups.set(root, []);
+          fuzzyGroups.get(root)!.push(c);
+        }
+        const fuzzySamples: string[] = [];
+        for (const [, arr] of fuzzyGroups) {
+          if (arr.length < 2) continue;
+          const sorted = pickCheapestFirst(arr);
+          if (fuzzySamples.length < 3) {
+            fuzzySamples.push(sorted.map((o) => `R$${o.price}: ${o.title?.slice(0, 50)}`).join(' | '));
+          }
+          for (const o of sorted.slice(1)) toDelete.add(o.id);
+        }
+        const toDeleteArr = [...toDelete];
         // SAFETY: não deleta mais que 10% da source
         const maxDelete = Math.floor(totalSource * 0.1);
-        if (toDelete.length > maxDelete) {
+        if (toDeleteArr.length > maxDelete) {
           logger.warn(
-            { source: job.data.sourceKind, wouldDelete: toDelete.length, maxDelete, totalSource },
+            { source: job.data.sourceKind, wouldDelete: toDeleteArr.length, maxDelete, totalSource, fuzzySamples },
             'auto-dedup ABORTED — would delete > 10% (safety guard)',
           );
-        } else if (toDelete.length > 0) {
-          // Delete dispatches dependentes primeiro (FK)
-          await prisma.dispatch.deleteMany({ where: { offerId: { in: toDelete } } });
-          const result = await prisma.offer.deleteMany({ where: { id: { in: toDelete } } });
+        } else if (toDeleteArr.length > 0) {
+          await prisma.dispatch.deleteMany({ where: { offerId: { in: toDeleteArr } } });
+          const result = await prisma.offer.deleteMany({ where: { id: { in: toDeleteArr } } });
           logger.info(
-            { source: job.data.sourceKind, deleted: result.count, totalSource },
-            'auto-dedup by image done',
+            { source: job.data.sourceKind, deleted: result.count, totalSource, fuzzySamples },
+            'auto-dedup (image+fuzzy) done',
           );
         }
       } catch (err) {
