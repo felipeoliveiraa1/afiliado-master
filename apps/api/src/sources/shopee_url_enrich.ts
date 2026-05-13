@@ -51,6 +51,78 @@ function normalizePrice(p: number | string | undefined): number {
   return n > 100000 ? n / 100000 : n;
 }
 
+export type ShopProductPreview = {
+  externalId: string;
+  shopId: string;
+  title: string;
+  imageUrl?: string;
+  price: number;
+  originalPrice?: number;
+  discountPct?: number;
+  rating?: number;
+  salesCount?: number;
+  url: string;
+};
+
+function extractShopFromUrl(input: string): string {
+  // Aceita "https://shopee.com.br/mundo.kidssc", "https://shopee.com.br/shop/12345",
+  // ou só "mundo.kidssc" / "12345"
+  const m = input.match(/shopee\.com\.br\/(?:shop\/)?([^/?#]+)/);
+  if (m) return decodeURIComponent(m[1]);
+  return input.trim();
+}
+
+/**
+ * Preview de loja Shopee — pega N produtos da página inicial SEM gerar shortlinks.
+ * Shortlinks são gerados depois, só pros selecionados (otimização: 1 chamada Apify
+ * lista até 50 produtos, esposa marca 5-10, geramos shortlinks só desses).
+ */
+export async function previewShopeeShop(
+  shopInput: string,
+  maxItems = 50,
+): Promise<ShopProductPreview[]> {
+  if (!env.APIFY_TOKEN) {
+    throw new Error('APIFY_TOKEN não configurado — configure em /settings → Marketplaces');
+  }
+  const shop = extractShopFromUrl(shopInput);
+  const pageUrl = `https://shopee.com.br/${shop}`;
+  const items = await runApifyActor<ApifyShopeeItem & { shop_id?: number | string; item_id?: number | string; price_min?: number | string; productUrl?: string }>(
+    APIFY_SHOPEE_ACTOR,
+    { country: 'br', mode: 'url', url: pageUrl, maxProducts: maxItems, fetchDetail: false, delay: 1.5 },
+    env.APIFY_TOKEN,
+  );
+  const out: ShopProductPreview[] = [];
+  const seen = new Set<string>();
+  for (const i of items) {
+    const itemId = String((i as Record<string, unknown>).item_id ?? i.itemId ?? '');
+    const shopId = String((i as Record<string, unknown>).shop_id ?? i.shopId ?? '');
+    if (!itemId || seen.has(itemId)) continue;
+    seen.add(itemId);
+    const title = i.name ?? i.title ?? '';
+    if (!title) continue;
+    const price = normalizePrice(i.price ?? (i as Record<string, unknown>).price_min as number | string | undefined);
+    const originalPrice = i.price_max ? normalizePrice(i.price_max) : undefined;
+    out.push({
+      externalId: itemId,
+      shopId,
+      title,
+      imageUrl: i.image_url ?? i.image ?? i.images?.[0],
+      price,
+      originalPrice: originalPrice && originalPrice > price ? originalPrice : undefined,
+      discountPct: i.raw_discount
+        ? Number(String(i.raw_discount).replace('%', ''))
+        : originalPrice && originalPrice > price
+          ? Number((((originalPrice - price) / originalPrice) * 100).toFixed(2))
+          : undefined,
+      rating: i.rating_star,
+      salesCount: i.historical_sold ?? i.sold,
+      url: (i as Record<string, unknown>).productUrl as string ?? i.url ?? `https://shopee.com.br/product/${shopId}/${itemId}`,
+    });
+  }
+  logger.info({ shop, requested: maxItems, returned: out.length }, 'preview-shop ready');
+  return out;
+}
+
 export async function enrichShopeeFromUrl(url: string): Promise<EnrichedShopeeProduct> {
   const ids = extractShopAndItemId(url);
   if (!ids) {

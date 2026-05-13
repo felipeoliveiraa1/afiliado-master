@@ -1018,6 +1018,227 @@ export async function buildServer() {
     },
   );
 
+  // Preview de loja Shopee — lista produtos pra esposa selecionar quais quer enviar.
+  app.post(
+    '/import-shop/preview',
+    {
+      schema: {
+        body: z.object({
+          shop: z.string().min(2),
+          maxItems: z.number().int().min(5).max(100).optional(),
+        }),
+      },
+    },
+    async (req) => {
+      try {
+        const { previewShopeeShop } = await import('@/sources/shopee_url_enrich.js');
+        const products = await previewShopeeShop(req.body.shop, req.body.maxItems ?? 50);
+        const coupons = await prisma.shopeeCoupon.findMany({
+          where: {
+            enabled: true,
+            OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
+          },
+          orderBy: { code: 'asc' },
+        });
+        return {
+          ok: true,
+          count: products.length,
+          products,
+          allCoupons: coupons
+            .filter((c) => c.code)
+            .map((c) => ({ code: c.code as string, description: c.description ?? '' })),
+        };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    },
+  );
+
+  // Dispatch sequencial de N produtos selecionados da loja, espaçados por intervalSec.
+  app.post(
+    '/import-shop/dispatch',
+    {
+      schema: {
+        body: z.object({
+          products: z
+            .array(
+              z.object({
+                externalId: z.string(),
+                shopId: z.string().optional(),
+                title: z.string().min(3),
+                imageUrl: z.string().optional(),
+                price: z.number().positive(),
+                originalPrice: z.number().positive().optional(),
+                discountPct: z.number().optional(),
+                rating: z.number().optional(),
+                salesCount: z.number().int().optional(),
+                url: z.string().url(),
+              }),
+            )
+            .min(1)
+            .max(50),
+          intervalSec: z.number().int().min(60).max(600).default(180),
+          couponOverride: z.string().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      try {
+        const source = await prisma.source.upsert({
+          where: { kind: 'SHOPEE' },
+          update: {},
+          create: { kind: 'SHOPEE' },
+        });
+
+        const campaign = await prisma.campaign.findFirst({
+          where: {
+            OR: [
+              { name: { contains: 'Helena', mode: 'insensitive' } },
+              { name: { contains: 'PROMO', mode: 'insensitive' } },
+            ],
+          },
+          include: { channels: true },
+        });
+        if (!campaign || campaign.channels.length === 0) {
+          return { ok: false, error: 'Campanha Promo Helena/PROMO não encontrada ou sem canais' };
+        }
+
+        const { generateShopeeShortLink } = await import('@/sources/shopee.js');
+        const activeCoupons = await prisma.shopeeCoupon.findMany({
+          where: {
+            enabled: true,
+            OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
+          },
+        });
+        const { applyCoupon } = await import('@/dispatcher/format.js');
+
+        const results: Array<{ externalId: string; ok: boolean; reason?: string; dispatchId?: string }> = [];
+        let scheduledOffset = 0;
+        for (let idx = 0; idx < req.body.products.length; idx++) {
+          const p = req.body.products[idx];
+          try {
+            // Cupom: override > melhor automático
+            let couponCode: string | undefined;
+            if (req.body.couponOverride === undefined) {
+              let best: { code: string; discount: number } | null = null;
+              for (const c of activeCoupons) {
+                if (!c.code) continue;
+                const r = applyCoupon(p.price, {
+                  code: c.code,
+                  type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
+                  value: Number(c.value),
+                  minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
+                  maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+                });
+                if (r.applies && (!best || r.discountValue > best.discount)) {
+                  best = { code: c.code, discount: r.discountValue };
+                }
+              }
+              couponCode = best?.code;
+            } else if (req.body.couponOverride !== '') {
+              couponCode = req.body.couponOverride;
+            }
+
+            // Gera shortlink afiliado pra esse produto específico
+            const affiliateUrl = await generateShopeeShortLink(p.url);
+
+            const offer = await prisma.offer.upsert({
+              where: {
+                sourceId_externalId: { sourceId: source.id, externalId: p.externalId },
+              },
+              create: {
+                sourceId: source.id,
+                externalId: p.externalId,
+                title: p.title,
+                imageUrl: p.imageUrl,
+                price: p.price,
+                originalPrice: p.originalPrice,
+                discountPct: p.discountPct,
+                coupon: couponCode,
+                rating: p.rating,
+                salesCount: p.salesCount,
+                url: p.url,
+                affiliateUrl,
+                score: 0.99,
+                raw: {
+                  importedFrom: 'manual-shop-wife',
+                  importedAt: new Date().toISOString(),
+                  shopId: p.shopId,
+                } as object,
+                fetchedAt: new Date(),
+              },
+              update: {
+                title: p.title,
+                imageUrl: p.imageUrl,
+                price: p.price,
+                originalPrice: p.originalPrice,
+                discountPct: p.discountPct,
+                coupon: couponCode,
+                affiliateUrl,
+                score: 0.99,
+                fetchedAt: new Date(),
+              },
+            });
+
+            // Enfileira cada dispatch com delay crescente (idx * intervalSec)
+            const dispatchIds: string[] = [];
+            for (const channel of campaign.channels) {
+              const d = await prisma.dispatch.upsert({
+                where: {
+                  campaignId_offerId_channelId: {
+                    campaignId: campaign.id,
+                    offerId: offer.id,
+                    channelId: channel.id,
+                  },
+                },
+                create: {
+                  campaignId: campaign.id,
+                  offerId: offer.id,
+                  channelId: channel.id,
+                  scheduledFor: new Date(Date.now() + scheduledOffset * 1000),
+                },
+                update: {
+                  status: 'PENDING',
+                  scheduledFor: new Date(Date.now() + scheduledOffset * 1000),
+                },
+              });
+              await dispatchQueue.add(
+                'dispatch',
+                { dispatchId: d.id, bypassWindow: true },
+                { delay: scheduledOffset * 1000 },
+              );
+              dispatchIds.push(d.id);
+            }
+            results.push({
+              externalId: p.externalId,
+              ok: true,
+              dispatchId: dispatchIds[0],
+            });
+            scheduledOffset += req.body.intervalSec;
+          } catch (err) {
+            results.push({
+              externalId: p.externalId,
+              ok: false,
+              reason: (err as Error).message,
+            });
+          }
+        }
+        const okCount = results.filter((r) => r.ok).length;
+        return {
+          ok: okCount > 0,
+          scheduled: okCount,
+          failed: results.length - okCount,
+          intervalSec: req.body.intervalSec,
+          totalSpanSec: scheduledOffset,
+          campaignName: campaign.name,
+          results,
+        };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    },
+  );
+
   // Importa produtos de uma LOJA específica via Apify (renderiza JS do SPA Shopee).
   // V1 da API afiliada foi deprecada e V2 não filtra por loja, então scraping é
   // a única opção. Apify usa Chrome headless + proxy pra evitar bot detection.
