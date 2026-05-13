@@ -48,7 +48,11 @@ function extractKeywordFromSlug(url: string): string {
 
 function normalizePrice(p: number | string | undefined): number {
   const n = Number(p ?? 0);
-  return n > 100000 ? n / 100000 : n;
+  // Apify xtracto retorna preço em centavos × 1000 (×100000 de reais) pra produtos antigos,
+  // ou em centavos (×100) pra produtos novos. Detecta pelo magnitude:
+  if (n > 100000) return n / 100000;
+  if (n > 1000) return n / 100;
+  return n;
 }
 
 export type ShopProductPreview = {
@@ -116,7 +120,9 @@ export async function previewShopeeShop(
           : undefined,
       rating: i.rating_star,
       salesCount: i.historical_sold ?? i.sold,
-      url: (i as Record<string, unknown>).productUrl as string ?? i.url ?? `https://shopee.com.br/product/${shopId}/${itemId}`,
+      // URL canônica baseada em shopId+itemId — evita usar slug do scraper que às vezes
+      // vem do produto adjacente na listagem (bug do actor).
+      url: `https://shopee.com.br/product/${shopId}/${itemId}`,
     });
   }
   logger.info({ shop, requested: maxItems, returned: out.length }, 'preview-shop ready');
