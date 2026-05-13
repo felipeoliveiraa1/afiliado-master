@@ -209,8 +209,16 @@ export function startWorkers() {
           },
         });
         inserted++;
-        // Enfileira curadoria pra WhatsApp por padrão
-        await curateQueue.add('curate', { offerId: offer.id, channelKind: 'WHATSAPP_GROUP' });
+        // Enfileira curadoria pra WhatsApp por padrão — mas só se ainda NÃO tem
+        // Variant pra esse offer (corta gasto OpenAI ~95% em fetches recorrentes,
+        // já que o hook não muda quando só o preço oscila).
+        const existingVariant = await prisma.variant.findFirst({
+          where: { offerId: offer.id, channelKind: 'WHATSAPP_GROUP' },
+          select: { id: true },
+        });
+        if (!existingVariant) {
+          await curateQueue.add('curate', { offerId: offer.id, channelKind: 'WHATSAPP_GROUP' });
+        }
 
         const isShopeeNeedingLink =
           job.data.sourceKind === 'SHOPEE' &&

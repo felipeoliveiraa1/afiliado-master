@@ -60,7 +60,8 @@ type Input = {
 type Output = { caption: string; hashtags: string[]; urgency: 'low' | 'med' | 'high' };
 
 function hashInput(input: Input): string {
-  return createHash('sha256').update(JSON.stringify(input)).digest('hex').slice(0, 16);
+  const stable = { title: input.title, category: input.category ?? '' };
+  return createHash('sha256').update(JSON.stringify(stable)).digest('hex').slice(0, 16);
 }
 
 export async function describeOffer(offerId: string, input: Input, channelKind: 'WHATSAPP_GROUP' | 'TELEGRAM_CHANNEL'): Promise<Output> {
