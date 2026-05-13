@@ -1,4 +1,4 @@
-import { fetchShopeeProducts, fetchShopeeByShopId, generateShopeeShortLink } from './shopee.js';
+import { fetchShopeeProducts, generateShopeeShortLink } from './shopee.js';
 import { runApifyActor } from './apify-client.js';
 import { env } from '@/config/env.js';
 import { logger } from '@/lib/logger.js';
@@ -6,7 +6,7 @@ import type { RawOffer } from './types.js';
 
 const APIFY_SHOPEE_ACTOR = 'cZrxaxPbcqHwGwSlm';
 
-export type EnrichedShopeeProduct = RawOffer & { source: 'graphql' | 'shop-graphql' | 'apify' };
+export type EnrichedShopeeProduct = RawOffer & { source: 'graphql' | 'apify' };
 
 type ApifyShopeeItem = {
   itemId?: string | number;
@@ -59,46 +59,34 @@ export async function enrichShopeeFromUrl(url: string): Promise<EnrichedShopeePr
   const { shopId, itemId } = ids;
   const keyword = extractKeywordFromSlug(url);
 
+  // TENTATIVA 1: productOfferV2 com keyword extraída do slug (limit 100).
+  // Open API Shopee NÃO aceita busca por itemId/shopId direto — só por keyword.
   if (keyword.length >= 6) {
     try {
-      const results = await fetchShopeeProducts({ keyword, limit: 50 });
+      const results = await fetchShopeeProducts({ keyword, limit: 100 });
       const match = results.find((r) => r.externalId === itemId);
       if (match) {
         logger.info({ itemId, keyword, source: 'graphql' }, 'shopee enrich: matched via productOfferV2');
         return { ...match, source: 'graphql' };
       }
+      logger.warn(
+        { itemId, keyword, found: results.length },
+        'shopee enrich: keyword retornou produtos mas nenhum bateu itemId — caindo no Apify',
+      );
     } catch (err) {
       logger.warn(
         { err: (err as Error).message, keyword },
-        'shopee enrich: productOfferV2 falhou — tentando shopOfferV2',
+        'shopee enrich: productOfferV2 falhou — caindo no Apify',
       );
     }
   }
 
-  // TENTATIVA 2: shopOfferV2 com shopId — pega TODOS produtos da loja específica.
-  // Free, via Open API oficial. Cobre long tail que productOfferV2(keyword) perde.
-  try {
-    const shopIdNum = Number(shopId);
-    if (!Number.isNaN(shopIdNum) && shopIdNum > 0) {
-      const shopProducts = await fetchShopeeByShopId(shopIdNum, { limit: 100 });
-      const match = shopProducts.find((r) => r.externalId === itemId);
-      if (match) {
-        logger.info({ itemId, shopId, source: 'shop-graphql' }, 'shopee enrich: matched via shopOfferV2');
-        return { ...match, source: 'shop-graphql' };
-      }
-    }
-  } catch (err) {
-    logger.warn(
-      { err: (err as Error).message, shopId },
-      'shopee enrich: shopOfferV2 falhou — caindo no Apify',
-    );
-  }
-
   if (!env.APIFY_TOKEN) {
     throw new Error(
-      'Produto não encontrado via API Shopee (productOfferV2 + shopOfferV2). ' +
-        'Provavelmente loja não participa do programa de afiliados, ou produto sem oferta ativa. ' +
-        'Verifique o link ou configure APIFY_TOKEN como último fallback.',
+      'Produto não encontrado via API Shopee. ' +
+        'Shopee Open API só permite busca por keyword, não por itemId/shopId direto — ' +
+        'se o produto não está no top 100 da keyword extraída do link, precisamos do Apify pra puxar. ' +
+        'Configure APIFY_TOKEN em /settings → Marketplaces.',
     );
   }
   try {
