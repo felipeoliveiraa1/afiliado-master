@@ -5,7 +5,7 @@ import type { SourceKind } from '@prisma/client';
 
 export type FetchJob = { sourceKind: SourceKind; limit?: number };
 export type CurateJob = { offerId: string; channelKind: 'WHATSAPP_GROUP' | 'TELEGRAM_CHANNEL' };
-export type DispatchJob = { dispatchId: string };
+export type DispatchJob = { dispatchId: string; bypassWindow?: boolean };
 export type ShopeeShortlinkJob = { offerId: string };
 export type MercadoLivreShortlinkJob = { offerId: string };
 

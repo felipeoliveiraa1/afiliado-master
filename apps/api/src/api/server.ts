@@ -810,6 +810,209 @@ export async function buildServer() {
     },
   );
 
+  // Aba "Importar Link" — esposa cola UMA URL Shopee, sistema puxa título/foto/preço
+  // via productOfferV2 (free) ou Apify scraper (fallback), aplica melhor cupom Shopee,
+  // cria Offer com score máximo e dispara dispatch imediato no grupo Promo Helena.
+  // Bypass janela 8-22 BRT via flag bypassWindow:true no job.
+  app.post(
+    '/import-link/preview',
+    { schema: { body: z.object({ url: z.string().url() }) } },
+    async (req) => {
+      try {
+        const { enrichShopeeFromUrl } = await import('@/sources/shopee_url_enrich.js');
+        const enriched = await enrichShopeeFromUrl(req.body.url);
+        const coupons = await prisma.shopeeCoupon.findMany({
+          where: {
+            enabled: true,
+            OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
+          },
+          orderBy: { code: 'asc' },
+        });
+        const { applyCoupon } = await import('@/dispatcher/format.js');
+        let bestCoupon: { code: string; discount: number; finalPrice: number } | null = null;
+        for (const c of coupons) {
+          if (!c.code) continue;
+          const result = applyCoupon(enriched.price ?? 0, {
+            code: c.code,
+            type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
+            value: Number(c.value),
+            minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
+            maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+          });
+          if (result.applies && (!bestCoupon || result.discountValue > bestCoupon.discount)) {
+            bestCoupon = {
+              code: c.code,
+              discount: result.discountValue,
+              finalPrice: result.finalPrice,
+            };
+          }
+        }
+        return {
+          ok: true,
+          product: enriched,
+          bestCoupon,
+          allCoupons: coupons
+            .filter((c) => c.code)
+            .map((c) => ({ code: c.code as string, description: c.description ?? '' })),
+        };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    },
+  );
+
+  app.post(
+    '/import-link/dispatch',
+    {
+      schema: {
+        body: z.object({
+          url: z.string().url(),
+          priceOverride: z.number().positive().optional(),
+          couponOverride: z.string().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      try {
+        const { enrichShopeeFromUrl } = await import('@/sources/shopee_url_enrich.js');
+        const enriched = await enrichShopeeFromUrl(req.body.url);
+        const finalPrice = req.body.priceOverride ?? enriched.price;
+        if (!finalPrice || finalPrice <= 0) {
+          return { ok: false, error: 'Preço inválido (zero ou negativo)' };
+        }
+
+        const source = await prisma.source.upsert({
+          where: { kind: 'SHOPEE' },
+          update: {},
+          create: { kind: 'SHOPEE' },
+        });
+
+        // Cupom: override > melhor automático > nenhum
+        let couponCode: string | undefined;
+        if (req.body.couponOverride === undefined) {
+          const activeCoupons = await prisma.shopeeCoupon.findMany({
+            where: {
+              enabled: true,
+              OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
+            },
+          });
+          const { applyCoupon } = await import('@/dispatcher/format.js');
+          let best: { code: string; discount: number } | null = null;
+          for (const c of activeCoupons) {
+            if (!c.code) continue;
+            const r = applyCoupon(finalPrice, {
+              code: c.code,
+              type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
+              value: Number(c.value),
+              minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
+              maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+            });
+            if (r.applies && (!best || r.discountValue > best.discount)) {
+              best = { code: c.code, discount: r.discountValue };
+            }
+          }
+          couponCode = best?.code;
+        } else if (req.body.couponOverride === '') {
+          couponCode = undefined;
+        } else {
+          couponCode = req.body.couponOverride;
+        }
+
+        const offer = await prisma.offer.upsert({
+          where: {
+            sourceId_externalId: { sourceId: source.id, externalId: enriched.externalId },
+          },
+          create: {
+            sourceId: source.id,
+            externalId: enriched.externalId,
+            title: enriched.title,
+            imageUrl: enriched.imageUrl,
+            price: finalPrice,
+            originalPrice: enriched.originalPrice,
+            discountPct: enriched.discountPct,
+            coupon: couponCode,
+            rating: enriched.rating,
+            ratingCount: enriched.ratingCount,
+            salesCount: enriched.salesCount,
+            commissionPct: enriched.commissionPct,
+            url: enriched.url,
+            affiliateUrl: enriched.affiliateUrl,
+            score: 0.99,
+            raw: {
+              importedFrom: 'manual-link-wife',
+              enrichSource: enriched.source,
+              importedAt: new Date().toISOString(),
+            } as object,
+            fetchedAt: new Date(),
+          },
+          update: {
+            title: enriched.title,
+            imageUrl: enriched.imageUrl,
+            price: finalPrice,
+            originalPrice: enriched.originalPrice,
+            discountPct: enriched.discountPct,
+            coupon: couponCode,
+            affiliateUrl: enriched.affiliateUrl,
+            score: 0.99,
+            fetchedAt: new Date(),
+          },
+        });
+
+        const campaign = await prisma.campaign.findFirst({
+          where: { name: { contains: 'Helena', mode: 'insensitive' } },
+          include: { channels: true },
+        });
+        if (!campaign || campaign.channels.length === 0) {
+          return {
+            ok: false,
+            offer: { id: offer.id },
+            error: 'Campanha "Promo Helena" não encontrada ou sem canais configurados',
+          };
+        }
+
+        const dispatchIds: string[] = [];
+        for (const channel of campaign.channels) {
+          const d = await prisma.dispatch.upsert({
+            where: {
+              campaignId_offerId_channelId: {
+                campaignId: campaign.id,
+                offerId: offer.id,
+                channelId: channel.id,
+              },
+            },
+            create: {
+              campaignId: campaign.id,
+              offerId: offer.id,
+              channelId: channel.id,
+              scheduledFor: new Date(),
+            },
+            update: { status: 'PENDING', scheduledFor: new Date() },
+          });
+          await dispatchQueue.add(
+            'dispatch',
+            { dispatchId: d.id, bypassWindow: true },
+            { delay: 0 },
+          );
+          dispatchIds.push(d.id);
+        }
+
+        return {
+          ok: true,
+          offer: {
+            id: offer.id,
+            title: offer.title,
+            price: Number(offer.price),
+            couponApplied: couponCode ?? null,
+          },
+          dispatchIds,
+          campaignName: campaign.name,
+        };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    },
+  );
+
   // Importa produtos de uma LOJA específica via Apify (renderiza JS do SPA Shopee).
   // V1 da API afiliada foi deprecada e V2 não filtra por loja, então scraping é
   // a única opção. Apify usa Chrome headless + proxy pra evitar bot detection.

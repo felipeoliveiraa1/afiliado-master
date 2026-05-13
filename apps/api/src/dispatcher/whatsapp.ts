@@ -72,7 +72,10 @@ type LoadedDispatch = Dispatch & { offer: Offer; channel: Channel; campaign?: Ca
  * Devolve o resultado para que o worker possa decidir se reagenda ou não.
  * Mantém efeitos colaterais (Prisma writes) atômicos por dispatch.
  */
-export async function executeWhatsappDispatch(dispatchId: string): Promise<DispatchExecutionResult> {
+export async function executeWhatsappDispatch(
+  dispatchId: string,
+  opts: { bypassWindow?: boolean } = {},
+): Promise<DispatchExecutionResult> {
   const dispatch = await prisma.dispatch.findUnique({
     where: { id: dispatchId },
     include: { offer: true, channel: true, campaign: true },
@@ -86,19 +89,21 @@ export async function executeWhatsappDispatch(dispatchId: string): Promise<Dispa
 
   const campaignSchedule = (dispatch.campaign?.schedule as CampaignSchedule) ?? undefined;
   const antiban = await getAntibanCfg(campaignSchedule);
-  const window = checkDispatchWindow(new Date(), antiban.windowStartHour, antiban.windowEndHour);
-  if (!window.open) {
-    logger.info(
-      {
-        dispatchId,
-        nowHour: new Date().getHours(),
-        windowStart: antiban.windowStartHour,
-        windowEnd: antiban.windowEndHour,
-        nextOpenAt: window.nextOpenAt,
-      },
-      'dispatch RESCHEDULED — fora da janela',
-    );
-    return { kind: 'RESCHEDULED', dispatchId, runAt: window.nextOpenAt };
+  if (!opts.bypassWindow) {
+    const window = checkDispatchWindow(new Date(), antiban.windowStartHour, antiban.windowEndHour);
+    if (!window.open) {
+      logger.info(
+        {
+          dispatchId,
+          nowHour: new Date().getHours(),
+          windowStart: antiban.windowStartHour,
+          windowEnd: antiban.windowEndHour,
+          nextOpenAt: window.nextOpenAt,
+        },
+        'dispatch RESCHEDULED — fora da janela',
+      );
+      return { kind: 'RESCHEDULED', dispatchId, runAt: window.nextOpenAt };
+    }
   }
 
   const dailyLimitHit = await applyDailyLimit(dispatch, antiban.dailyLimitPerInstance);

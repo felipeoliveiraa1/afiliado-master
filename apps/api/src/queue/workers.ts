@@ -413,7 +413,9 @@ export function startWorkers() {
       if (dispatch.channel.kind !== 'WHATSAPP_GROUP') {
         throw new Error('TELEGRAM dispatcher ainda não implementado');
       }
-      const result = await executeWhatsappDispatch(job.data.dispatchId);
+      const result = await executeWhatsappDispatch(job.data.dispatchId, {
+        bypassWindow: job.data.bypassWindow,
+      });
       if (result.kind === 'RESCHEDULED') {
         // Adiciona jitter de 0-90min no nextOpenAt — evita que TODOS os jobs
         // rescheduled (acumulados de madrugada) disparem juntos às 8:00:00.
