@@ -63,7 +63,7 @@ export async function enrichShopeeFromUrl(url: string): Promise<EnrichedShopeePr
   // Open API Shopee NÃO aceita busca por itemId/shopId direto — só por keyword.
   if (keyword.length >= 6) {
     try {
-      const results = await fetchShopeeProducts({ keyword, limit: 100 });
+      const results = await fetchShopeeProducts({ keyword, limit: 50 });
       const match = results.find((r) => r.externalId === itemId);
       if (match) {
         logger.info({ itemId, keyword, source: 'graphql' }, 'shopee enrich: matched via productOfferV2');
@@ -97,7 +97,19 @@ export async function enrichShopeeFromUrl(url: string): Promise<EnrichedShopeePr
     );
     const item = items.find((i) => String(i.itemId) === itemId);
     if (!item) {
-      throw new Error('Produto não encontrado nem via API Shopee nem via scraper');
+      logger.warn(
+        {
+          itemId,
+          apifyCount: items.length,
+          sampleIds: items.slice(0, 5).map((i) => String(i.itemId)),
+          sampleKeys: items[0] ? Object.keys(items[0]).slice(0, 20) : [],
+        },
+        'shopee enrich: Apify retornou produtos mas itemId não bateu',
+      );
+      throw new Error(
+        `Apify retornou ${items.length} produtos da página, mas nenhum com itemId=${itemId}. ` +
+          'Pode ser que o produto não esteja na página inicial da loja (scrape Apify só pega 1ª página).',
+      );
     }
 
     const price = normalizePrice(item.price ?? item.price_min);
