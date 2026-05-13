@@ -1019,20 +1019,31 @@ export async function buildServer() {
   );
 
   // Preview de loja Shopee — lista produtos pra esposa selecionar quais quer enviar.
+  // Custo Apify (xtracto/shopee-scraper, pay-per-event):
+  //   ~$0.20 start fee + ~$0.015 por produto = $0.50/20prod, $1.00/50prod
+  // Cache em memória 1h por shopName pra evitar re-fetch.
+  const shopPreviewCache = new Map<string, { at: number; data: unknown }>();
+  const SHOP_CACHE_TTL_MS = 60 * 60 * 1000;
   app.post(
     '/import-shop/preview',
     {
       schema: {
         body: z.object({
           shop: z.string().min(2),
-          maxItems: z.number().int().min(5).max(100).optional(),
+          maxItems: z.number().int().min(5).max(50).optional(),
         }),
       },
     },
     async (req) => {
       try {
+        const maxItems = req.body.maxItems ?? 20;
+        const cacheKey = `${req.body.shop}:${maxItems}`;
+        const cached = shopPreviewCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < SHOP_CACHE_TTL_MS) {
+          return { ...(cached.data as object), cached: true };
+        }
         const { previewShopeeShop } = await import('@/sources/shopee_url_enrich.js');
-        const products = await previewShopeeShop(req.body.shop, req.body.maxItems ?? 50);
+        const products = await previewShopeeShop(req.body.shop, maxItems);
         const coupons = await prisma.shopeeCoupon.findMany({
           where: {
             enabled: true,
@@ -1040,14 +1051,18 @@ export async function buildServer() {
           },
           orderBy: { code: 'asc' },
         });
-        return {
+        const response = {
           ok: true,
           count: products.length,
           products,
+          // Custo aproximado em USD: $0.20 start fee + $0.015 por produto retornado
+          estimatedCostUsd: Number((0.2 + products.length * 0.015).toFixed(2)),
           allCoupons: coupons
             .filter((c) => c.code)
             .map((c) => ({ code: c.code as string, description: c.description ?? '' })),
         };
+        shopPreviewCache.set(cacheKey, { at: Date.now(), data: response });
+        return { ...response, cached: false };
       } catch (err) {
         return { ok: false, error: (err as Error).message };
       }

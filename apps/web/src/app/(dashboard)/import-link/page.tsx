@@ -37,6 +37,8 @@ type ShopPreviewResp = {
   error?: string;
   count?: number;
   products?: PreviewProduct[];
+  estimatedCostUsd?: number;
+  cached?: boolean;
   allCoupons?: Array<{ code: string; description: string }>;
 };
 
@@ -108,11 +110,12 @@ export default function ImportLinkPage(): React.ReactElement {
     onError: (err) => setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` }),
   });
 
+  const [shopMaxItems, setShopMaxItems] = useState(20);
   const shopPreviewMut = useMutation({
     mutationFn: (shop: string) =>
       clientFetch<ShopPreviewResp>('/import-shop/preview', {
         method: 'POST',
-        body: { shop, maxItems: 50 },
+        body: { shop, maxItems: shopMaxItems },
       }),
     onSuccess: (data) => {
       setShopPreview(data);
@@ -294,7 +297,7 @@ export default function ImportLinkPage(): React.ReactElement {
             <CardContent className="space-y-3">
               <div className="flex gap-2">
                 <Input
-                  placeholder="https://shopee.com.br/mundo.kidssc  ou  mundo.kidssc"
+                  placeholder="https://shopee.com.br/sobodybaby  ou  sobodybaby"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   className="flex-1 text-base"
@@ -304,8 +307,28 @@ export default function ImportLinkPage(): React.ReactElement {
                   {shopPreviewMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Listar Produtos'}
                 </Button>
               </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted-foreground">Quantos puxar?</label>
+                <select
+                  value={shopMaxItems}
+                  onChange={(e) => setShopMaxItems(Number(e.target.value))}
+                  className="border rounded px-2 py-1 text-sm bg-background"
+                >
+                  <option value={10}>10 (~$0.35)</option>
+                  <option value={20}>20 (~$0.50) — recomendado</option>
+                  <option value={30}>30 (~$0.65)</option>
+                  <option value={50}>50 (~$0.95)</option>
+                </select>
+                <span className="text-xs text-muted-foreground">
+                  Estimativa Apify (cache 1h re-lista grátis)
+                </span>
+              </div>
               {shopPreview && !shopPreview.ok && <p className="text-destructive text-sm">❌ {shopPreview.error}</p>}
-              <p className="text-xs text-muted-foreground">⚠️ Apify cobra ~$0.001 por loja (cada listagem). Selecione produtos e envie — gera shortlink só dos selecionados.</p>
+              {shopPreview?.ok && shopPreview.estimatedCostUsd != null ? (
+                <p className="text-xs text-muted-foreground">
+                  💰 Custo {shopPreview.cached ? '(cache, grátis)' : `~$${shopPreview.estimatedCostUsd.toFixed(2)} Apify`}
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 
