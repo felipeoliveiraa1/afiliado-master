@@ -959,14 +959,19 @@ export async function buildServer() {
         });
 
         const campaign = await prisma.campaign.findFirst({
-          where: { name: { contains: 'Helena', mode: 'insensitive' } },
+          where: {
+            OR: [
+              { name: { contains: 'Helena', mode: 'insensitive' } },
+              { name: { contains: 'PROMO', mode: 'insensitive' } },
+            ],
+          },
           include: { channels: true },
         });
         if (!campaign || campaign.channels.length === 0) {
           return {
             ok: false,
             offer: { id: offer.id },
-            error: 'Campanha "Promo Helena" não encontrada ou sem canais configurados',
+            error: 'Campanha Promo Helena/PROMO não encontrada ou sem canais configurados',
           };
         }
 
