@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Loader2, Send, ExternalLink, Store, Package } from 'lucide-react';
+import { Loader2, Send, ExternalLink, Store, Package, Layers } from 'lucide-react';
 import { clientFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
+import { Textarea } from '@/components/ui/textarea';
 
 type PreviewProduct = {
   externalId: string;
@@ -59,7 +60,26 @@ type ShopDispatchResp = {
   campaignName?: string;
 };
 
-type Mode = 'product' | 'shop';
+type BatchPreviewResp = {
+  ok: boolean;
+  total: number;
+  succeeded: number;
+  failed: number;
+  items: Array<{ url: string; ok: boolean; product?: PreviewProduct; error?: string }>;
+  allCoupons?: Array<{ code: string; description: string }>;
+};
+
+type BatchDispatchResp = {
+  ok: boolean;
+  error?: string;
+  scheduled?: number;
+  failed?: number;
+  intervalSec?: number;
+  totalSpanSec?: number;
+  campaignName?: string;
+};
+
+type Mode = 'product' | 'batch' | 'shop';
 
 export default function ImportLinkPage(): React.ReactElement {
   const [mode, setMode] = useState<Mode>('product');
@@ -74,6 +94,13 @@ export default function ImportLinkPage(): React.ReactElement {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [intervalSec, setIntervalSec] = useState(180);
   const [shopCoupon, setShopCoupon] = useState<string | undefined>(undefined);
+
+  // Batch (vários links)
+  const [batchUrls, setBatchUrls] = useState('');
+  const [batchPreview, setBatchPreview] = useState<BatchPreviewResp | null>(null);
+  const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set());
+  const [batchIntervalSec, setBatchIntervalSec] = useState(180);
+  const [batchCoupon, setBatchCoupon] = useState<string | undefined>(undefined);
 
   const [resultMsg, setResultMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -169,6 +196,74 @@ export default function ImportLinkPage(): React.ReactElement {
     onError: (err) => setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` }),
   });
 
+  // BATCH mutations
+  const batchPreviewMut = useMutation({
+    mutationFn: () => {
+      const urls = batchUrls
+        .split(/\r?\n/)
+        .map((u) => u.trim())
+        .filter((u) => u.startsWith('http'));
+      return clientFetch<BatchPreviewResp>('/import-link/batch-preview', {
+        method: 'POST',
+        body: { urls },
+      });
+    },
+    onSuccess: (data) => {
+      setBatchPreview(data);
+      // Pré-seleciona todos os que deram OK
+      setBatchSelected(
+        new Set(data.items.filter((i) => i.ok && i.product).map((i) => i.product!.externalId)),
+      );
+      setBatchCoupon(undefined);
+      setResultMsg(null);
+    },
+    onError: (err) => {
+      setBatchPreview(null);
+      setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` });
+    },
+  });
+
+  const batchDispatchMut = useMutation({
+    mutationFn: () => {
+      const products = (batchPreview?.items ?? [])
+        .filter((i) => i.ok && i.product && batchSelected.has(i.product.externalId))
+        .map((i) => i.product!);
+      return clientFetch<BatchDispatchResp>('/import-link/batch-dispatch', {
+        method: 'POST',
+        body: { products, intervalSec: batchIntervalSec, couponOverride: batchCoupon },
+      });
+    },
+    onSuccess: (data) => {
+      if (data.ok) {
+        const totalMin = Math.ceil((data.totalSpanSec ?? 0) / 60);
+        setResultMsg({
+          kind: 'ok',
+          text: `✅ ${data.scheduled} agendados em "${data.campaignName}" (1 a cada ${data.intervalSec}s — total ~${totalMin}min)`,
+        });
+        setBatchPreview(null); setBatchSelected(new Set()); setBatchUrls('');
+        setTimeout(() => setResultMsg(null), 12000);
+      } else {
+        setResultMsg({ kind: 'err', text: `❌ ${data.error}` });
+      }
+    },
+    onError: (err) => setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` }),
+  });
+
+  const toggleBatchSelected = (id: string) => {
+    setBatchSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const batchOkCount = batchPreview?.items.filter((i) => i.ok).length ?? 0;
+  const batchUrlCount = batchUrls
+    .split(/\r?\n/)
+    .map((u) => u.trim())
+    .filter((u) => u.startsWith('http')).length;
+
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -192,6 +287,29 @@ export default function ImportLinkPage(): React.ReactElement {
         title="Enviar Link Agora"
         description="Cole um link Shopee de produto — sistema puxa foto, preço, cupom e envia no grupo na hora"
       />
+
+      <div className="flex gap-2 border rounded-lg p-1 w-fit">
+        <button
+          onClick={() => { setMode('product'); setBatchPreview(null); setShopPreview(null); }}
+          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition ${
+            mode === 'product' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Package className="h-4 w-4" />
+          <span className="hidden sm:inline">Um link</span>
+          <span className="sm:hidden">1 link</span>
+        </button>
+        <button
+          onClick={() => { setMode('batch'); setPreview(null); setShopPreview(null); }}
+          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition ${
+            mode === 'batch' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Layers className="h-4 w-4" />
+          <span className="hidden sm:inline">Vários links (até 30)</span>
+          <span className="sm:hidden">Vários</span>
+        </button>
+      </div>
 
       {/* Toggle "Loja inteira" em stand-by — backend mantém /import-shop/* funcional.
           Pra reativar: trocar `false &&` por `true &&` (ou remover o wrapper). */}
@@ -294,6 +412,165 @@ export default function ImportLinkPage(): React.ReactElement {
               </CardContent>
             </Card>
           ) : null}
+        </>
+      ) : mode === 'batch' ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>1. Cole os links (1 por linha, até 30)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                placeholder={'https://shopee.com.br/...\nhttps://s.shopee.com.br/...\nhttps://shopee.com.br/...'}
+                value={batchUrls}
+                onChange={(e) => setBatchUrls(e.target.value)}
+                rows={8}
+                className="font-mono text-sm"
+              />
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  {batchUrlCount} link(s) {batchUrlCount > 30 ? `(máximo 30 — vai cortar)` : ''}
+                </p>
+                <Button
+                  onClick={() => batchPreviewMut.mutate()}
+                  disabled={batchUrlCount === 0 || batchPreviewMut.isPending}
+                  size="lg"
+                >
+                  {batchPreviewMut.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Buscar Produtos'
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {batchPreview && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle>
+                    2. Selecione e envie ({batchSelected.size}/{batchOkCount} marcados)
+                  </CardTitle>
+                  {batchPreview.failed > 0 && (
+                    <span className="text-xs text-destructive">
+                      {batchPreview.failed} falhou
+                    </span>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[520px] overflow-y-auto pr-1">
+                  {batchPreview.items.map((item, idx) => {
+                    if (!item.ok || !item.product) {
+                      return (
+                        <div
+                          key={idx}
+                          className="rounded border border-destructive/30 bg-destructive/5 p-3 text-xs"
+                        >
+                          <div className="truncate font-mono text-destructive">{item.url}</div>
+                          <div className="mt-1 text-destructive/80">❌ {item.error?.slice(0, 80)}</div>
+                        </div>
+                      );
+                    }
+                    const p = item.product;
+                    const sel = batchSelected.has(p.externalId);
+                    return (
+                      <label
+                        key={p.externalId}
+                        className={`flex gap-2 rounded border p-2 cursor-pointer transition ${
+                          sel ? 'border-accent bg-accent-soft' : 'hover:bg-muted/40'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={sel}
+                          onChange={() => toggleBatchSelected(p.externalId)}
+                          className="mt-1 size-4 accent-current"
+                        />
+                        {p.imageUrl ? (
+                          <img
+                            src={p.imageUrl}
+                            alt=""
+                            className="size-16 shrink-0 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="size-16 shrink-0 rounded bg-muted" />
+                        )}
+                        <div className="min-w-0 flex-1 text-xs">
+                          <div className="line-clamp-2 font-medium">{p.title}</div>
+                          <div className="mt-0.5 font-semibold text-emerald-600">
+                            R$ {p.price.toFixed(2)}
+                          </div>
+                          {p.discountPct ? (
+                            <div className="text-destructive">-{p.discountPct.toFixed(0)}%</div>
+                          ) : null}
+                          {p.salesCount ? (
+                            <div className="text-muted-foreground">{p.salesCount} vend</div>
+                          ) : null}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Intervalo entre envios</label>
+                    <select
+                      value={batchIntervalSec}
+                      onChange={(e) => setBatchIntervalSec(Number(e.target.value))}
+                      className="w-full border rounded px-3 py-2 text-sm bg-background"
+                    >
+                      <option value={60}>1 min</option>
+                      <option value={120}>2 min</option>
+                      <option value={180}>3 min</option>
+                      <option value={300}>5 min</option>
+                      <option value={480}>8 min</option>
+                    </select>
+                  </div>
+                  {batchPreview.allCoupons && batchPreview.allCoupons.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Cupom (opcional)</label>
+                      <select
+                        value={batchCoupon ?? ''}
+                        onChange={(e) => setBatchCoupon(e.target.value || undefined)}
+                        className="w-full border rounded px-3 py-2 text-sm bg-background"
+                      >
+                        <option value="">— auto (melhor por produto) —</option>
+                        {batchPreview.allCoupons.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.code}
+                            {c.description ? ` — ${c.description}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  size="xl"
+                  className="w-full"
+                  disabled={batchSelected.size === 0 || batchDispatchMut.isPending}
+                  onClick={() => batchDispatchMut.mutate()}
+                >
+                  {batchDispatchMut.isPending ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                      Enviando {batchSelected.size}...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-5 w-5 mr-2" />
+                      Enviar {batchSelected.size} produtos
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </>
       ) : (
         <>

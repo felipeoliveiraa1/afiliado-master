@@ -1039,6 +1039,215 @@ export async function buildServer() {
   // Preview de loja Shopee — lista produtos pra esposa selecionar quais quer enviar.
   // Custo Apify (xtracto/shopee-scraper, pay-per-event):
   //   ~$0.20 start fee + ~$0.015 por produto = $0.50/20prod, $1.00/50prod
+  // Batch preview: até 30 URLs Shopee enriquecidas em paralelo (concurrency 5).
+  // Cada URL passa pelo enrichShopeeFromUrl (Open API → fallback Apify).
+  // Retorna lista de { url, ok, product?, error? } na ordem dos inputs.
+  app.post(
+    '/import-link/batch-preview',
+    {
+      schema: {
+        body: z.object({
+          urls: z.array(z.string().min(8)).min(1).max(30),
+        }),
+      },
+    },
+    async (req) => {
+      const { enrichShopeeFromUrl } = await import('@/sources/shopee_url_enrich.js');
+      const urls = req.body.urls.map((u) => u.trim()).filter((u) => u.length > 0);
+      const concurrency = 5;
+      const results: Array<{ url: string; ok: boolean; product?: unknown; error?: string }> = [];
+      for (let i = 0; i < urls.length; i += concurrency) {
+        const batch = urls.slice(i, i + concurrency);
+        const settled = await Promise.all(
+          batch.map(async (url) => {
+            try {
+              const enriched = await enrichShopeeFromUrl(url);
+              return { url, ok: true, product: enriched };
+            } catch (err) {
+              return { url, ok: false, error: (err as Error).message };
+            }
+          }),
+        );
+        results.push(...settled);
+      }
+      // Cupons disponíveis pra UI mostrar dropdown
+      const coupons = await prisma.shopeeCoupon.findMany({
+        where: { enabled: true, OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }] },
+        orderBy: { code: 'asc' },
+      });
+      return {
+        ok: true,
+        total: results.length,
+        succeeded: results.filter((r) => r.ok).length,
+        failed: results.filter((r) => !r.ok).length,
+        items: results,
+        allCoupons: coupons
+          .filter((c) => c.code)
+          .map((c) => ({ code: c.code as string, description: c.description ?? '' })),
+      };
+    },
+  );
+
+  // Batch dispatch: recebe array de produtos (já enriquecidos no preview) +
+  // intervalSec entre cada disparo. Cria Offers + Dispatches escalonados.
+  app.post(
+    '/import-link/batch-dispatch',
+    {
+      schema: {
+        body: z.object({
+          products: z
+            .array(
+              z.object({
+                url: z.string().url(),
+                externalId: z.string(),
+                title: z.string().min(3),
+                imageUrl: z.string().optional(),
+                price: z.number().positive(),
+                originalPrice: z.number().positive().optional(),
+                discountPct: z.number().optional(),
+                rating: z.number().optional(),
+                salesCount: z.number().int().optional(),
+                commissionPct: z.number().optional(),
+                affiliateUrl: z.string().url().optional(),
+              }),
+            )
+            .min(1)
+            .max(30),
+          intervalSec: z.number().int().min(60).max(600).default(180),
+          couponOverride: z.string().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const source = await prisma.source.upsert({
+        where: { kind: 'SHOPEE' },
+        update: {},
+        create: { kind: 'SHOPEE' },
+      });
+      const campaign = await prisma.campaign.findFirst({
+        where: {
+          OR: [
+            { name: { contains: 'Helena', mode: 'insensitive' } },
+            { name: { contains: 'PROMO', mode: 'insensitive' } },
+          ],
+        },
+        include: { channels: true },
+      });
+      if (!campaign || campaign.channels.length === 0) {
+        return { ok: false, error: 'Campanha Promo Helena/PROMO não encontrada ou sem canais' };
+      }
+
+      const { generateShopeeShortLink } = await import('@/sources/shopee.js');
+      const activeCoupons = await prisma.shopeeCoupon.findMany({
+        where: { enabled: true, OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }] },
+      });
+      const { applyCoupon } = await import('@/dispatcher/format.js');
+
+      const results: Array<{ externalId: string; ok: boolean; reason?: string; dispatchId?: string }> = [];
+      let scheduledOffset = 0;
+      for (const p of req.body.products) {
+        try {
+          let couponCode: string | undefined;
+          if (req.body.couponOverride === undefined) {
+            let best: { code: string; discount: number } | null = null;
+            for (const c of activeCoupons) {
+              if (!c.code) continue;
+              const r = applyCoupon(p.price, {
+                code: c.code,
+                type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
+                value: Number(c.value),
+                minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
+                maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+              });
+              if (r.applies && (!best || r.discountValue > best.discount)) {
+                best = { code: c.code, discount: r.discountValue };
+              }
+            }
+            couponCode = best?.code;
+          } else if (req.body.couponOverride !== '') {
+            couponCode = req.body.couponOverride;
+          }
+
+          const affiliateUrl = p.affiliateUrl ?? (await generateShopeeShortLink(p.url));
+
+          const offer = await prisma.offer.upsert({
+            where: { sourceId_externalId: { sourceId: source.id, externalId: p.externalId } },
+            create: {
+              sourceId: source.id,
+              externalId: p.externalId,
+              title: p.title,
+              imageUrl: p.imageUrl,
+              price: p.price,
+              originalPrice: p.originalPrice,
+              discountPct: p.discountPct,
+              coupon: couponCode,
+              rating: p.rating,
+              salesCount: p.salesCount,
+              commissionPct: p.commissionPct,
+              url: p.url,
+              affiliateUrl,
+              score: 0.99,
+              raw: { importedFrom: 'batch-link', importedAt: new Date().toISOString() } as object,
+              fetchedAt: new Date(),
+            },
+            update: {
+              title: p.title,
+              imageUrl: p.imageUrl,
+              price: p.price,
+              originalPrice: p.originalPrice,
+              discountPct: p.discountPct,
+              coupon: couponCode,
+              affiliateUrl,
+              score: 0.99,
+              fetchedAt: new Date(),
+            },
+          });
+
+          const delaySec = scheduledOffset;
+          scheduledOffset += req.body.intervalSec;
+          for (const channel of campaign.channels) {
+            const d = await prisma.dispatch.upsert({
+              where: {
+                campaignId_offerId_channelId: {
+                  campaignId: campaign.id,
+                  offerId: offer.id,
+                  channelId: channel.id,
+                },
+              },
+              create: {
+                campaignId: campaign.id,
+                offerId: offer.id,
+                channelId: channel.id,
+                scheduledFor: new Date(Date.now() + delaySec * 1000),
+              },
+              update: {
+                status: 'PENDING',
+                scheduledFor: new Date(Date.now() + delaySec * 1000),
+              },
+            });
+            await dispatchQueue.add(
+              'dispatch',
+              { dispatchId: d.id, bypassWindow: true },
+              { delay: delaySec * 1000 },
+            );
+            results.push({ externalId: p.externalId, ok: true, dispatchId: d.id });
+          }
+        } catch (err) {
+          results.push({ externalId: p.externalId, ok: false, reason: (err as Error).message });
+        }
+      }
+
+      return {
+        ok: true,
+        scheduled: results.filter((r) => r.ok).length,
+        failed: results.filter((r) => !r.ok).length,
+        intervalSec: req.body.intervalSec,
+        totalSpanSec: scheduledOffset,
+        campaignName: campaign.name,
+      };
+    },
+  );
+
   // Cache em memória 1h por shopName pra evitar re-fetch.
   const shopPreviewCache = new Map<string, { at: number; data: unknown }>();
   const SHOP_CACHE_TTL_MS = 60 * 60 * 1000;
