@@ -213,9 +213,10 @@ export async function fetchShopeeProducts(opts?: ShopeeFetchOpts): Promise<RawOf
  * (ex: /opaanlp/564882971/29556869913 onde "opaanlp" é a loja, não o produto).
  */
 export async function fetchShopeeByItemId(itemId: string | number): Promise<RawOffer | null> {
+  // itemId vai inline (não como variável) — Shopee tem bug com Int64 grande via vars JSON.
   const query = `
-    query ProductOfferByItemId($itemId: Int64!) {
-      productOfferV2(itemId: $itemId, limit: 1) {
+    query {
+      productOfferV2(itemId: ${Number(itemId)}, limit: 1) {
         nodes {
           itemId productName commissionRate commission sales imageUrl
           priceMin priceMax priceDiscountRate ratingStar
@@ -233,7 +234,7 @@ export async function fetchShopeeByItemId(itemId: string | number): Promise<RawO
     offerLink?: string; productLink?: string;
   };
   type Resp = { productOfferV2: { nodes: Node[] } };
-  const data = await gql<Resp>(query, { itemId: Number(itemId) });
+  const data = await gql<Resp>(query, {});
   const n = data.productOfferV2?.nodes?.[0];
   if (!n) return null;
   const price = Number(n.priceMin ?? '0');
