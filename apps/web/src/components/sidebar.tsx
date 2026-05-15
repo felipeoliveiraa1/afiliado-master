@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
@@ -38,9 +39,7 @@ type NavSection = {
 const SECTIONS: NavSection[] = [
   {
     label: '💜 Promo Helena',
-    items: [
-      { href: '/import-link', label: 'Enviar Link Agora', icon: Send },
-    ],
+    items: [{ href: '/import-link', label: 'Enviar Link Agora', icon: Send }],
   },
   {
     label: 'Visão geral',
@@ -77,9 +76,7 @@ const SECTIONS: NavSection[] = [
   },
   {
     label: '🔵 Amazon',
-    items: [
-      { href: '/sources/AMAZON', label: 'Visão geral', icon: Tags },
-    ],
+    items: [{ href: '/sources/AMAZON', label: 'Visão geral', icon: Tags }],
   },
   {
     label: 'Sistema',
@@ -87,11 +84,20 @@ const SECTIONS: NavSection[] = [
   },
 ];
 
-function NavLink({ item, active }: { item: NavItem; active: boolean }): React.ReactElement {
+function NavLink({
+  item,
+  active,
+  onClick,
+}: {
+  item: NavItem;
+  active: boolean;
+  onClick?: () => void;
+}): React.ReactElement {
   const Icon = item.icon;
   return (
     <Link
       href={item.href}
+      onClick={onClick}
       className={cn(
         'group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all',
         active
@@ -107,20 +113,27 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }): React.Re
         </span>
       ) : null}
       {active ? (
-        <span className="absolute -left-2 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-accent" aria-hidden />
+        <span
+          className="absolute -left-2 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-accent"
+          aria-hidden
+        />
       ) : null}
     </Link>
   );
 }
 
-export function Sidebar(): React.ReactElement {
+/**
+ * Conteúdo da sidebar — reutilizado pelo desktop fixo e pelo drawer mobile.
+ * `onNavigate` é chamado quando usuário clica num link (mobile usa pra fechar drawer).
+ */
+export function SidebarContent({ onNavigate }: { onNavigate?: () => void }): React.ReactElement {
   const pathname = usePathname();
   const isActive = (href: string): boolean => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:shrink-0 lg:border-r lg:bg-card/40 lg:backdrop-blur lg:sticky lg:top-0 lg:h-screen">
-      <div className="flex h-16 items-center border-b px-5">
-        <Link href="/dashboard" aria-label="afiliado.master">
+    <div className="flex h-full flex-col">
+      <div className="flex h-16 shrink-0 items-center border-b px-5">
+        <Link href="/dashboard" aria-label="afiliado.master" onClick={onNavigate}>
           <LogoFull />
         </Link>
       </div>
@@ -133,14 +146,19 @@ export function Sidebar(): React.ReactElement {
             </p>
             <div className="space-y-0.5">
               {section.items.map((item) => (
-                <NavLink key={item.href} item={item} active={isActive(item.href)} />
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  active={isActive(item.href)}
+                  onClick={onNavigate}
+                />
               ))}
             </div>
           </div>
         ))}
       </nav>
 
-      <div className="border-t p-3 space-y-2">
+      <div className="shrink-0 space-y-2 border-t p-3">
         <div className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <div className="grid size-8 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground text-xs font-semibold">
@@ -161,6 +179,18 @@ export function Sidebar(): React.ReactElement {
           Sair
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Sidebar desktop — fixa à esquerda, oculta abaixo de lg.
+ * Mobile: ver MobileTopbar que abre drawer.
+ */
+export function Sidebar(): React.ReactElement {
+  return (
+    <aside className="hidden lg:flex lg:w-72 lg:shrink-0 lg:border-r lg:bg-card/40 lg:backdrop-blur lg:sticky lg:top-0 lg:h-screen">
+      <SidebarContent />
     </aside>
   );
 }

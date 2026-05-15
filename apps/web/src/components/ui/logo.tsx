@@ -2,8 +2,8 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * Símbolo do afiliado-master: um diamante geométrico em accent.
- * Funciona em sidebar, login, favicon (re-render como SVG estático em /favicon.svg também).
+ * Símbolo do afiliado-master: cifrão estilizado dentro de gradiente verde — representa
+ * monetização/conversão. Funciona em sidebar, login, favicon.
  */
 export function LogoMark({
   className,
@@ -24,17 +24,16 @@ export function LogoMark({
     >
       <defs>
         <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="hsl(217 91% 60%)" />
-          <stop offset="1" stopColor="hsl(263 83% 65%)" />
+          <stop offset="0" stopColor="hsl(152 76% 42%)" />
+          <stop offset="1" stopColor="hsl(168 76% 38%)" />
         </linearGradient>
       </defs>
       <rect width="32" height="32" rx="8" fill="url(#logo-grad)" />
       <path
-        d="M9.6 22.4 16 9.6l6.4 12.8h-3.2l-3.2-6.4-3.2 6.4H9.6Z"
+        d="M17.2 7.2v2.05c2.3.18 4.05 1.42 4.05 3.55h-2.6c0-.85-.7-1.45-1.95-1.55v3.3c2.95.5 4.55 1.45 4.55 4 0 2.4-1.85 3.75-4.55 3.95v2.1h-2.4v-2.1c-2.6-.2-4.45-1.55-4.45-3.95h2.6c0 .9.8 1.55 2.25 1.7v-3.45c-2.85-.5-4.55-1.4-4.55-3.85 0-2.25 1.8-3.55 4.55-3.7V7.2h2.4Zm-2.4 4.05c-1.25.1-1.95.65-1.95 1.45 0 .7.5 1.2 1.95 1.55v-3Zm2.4 5.95v3.15c1.35-.1 2.1-.65 2.1-1.55 0-.85-.55-1.3-2.1-1.6Z"
         fill="white"
-        fillOpacity="0.95"
+        fillOpacity="0.97"
       />
-      <circle cx="16" cy="22.4" r="1.4" fill="hsl(217 91% 60%)" />
     </svg>
   );
 }
