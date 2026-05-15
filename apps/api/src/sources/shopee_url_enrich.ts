@@ -86,7 +86,9 @@ export type ShopProductPreview = {
   discountPct?: number;
   rating?: number;
   salesCount?: number;
+  commissionPct?: number;
   url: string;
+  affiliateUrl?: string;
 };
 
 function extractShopFromUrl(input: string): string {
@@ -98,9 +100,19 @@ function extractShopFromUrl(input: string): string {
 }
 
 /**
- * Preview de loja Shopee — pega N produtos da página inicial SEM gerar shortlinks.
- * Shortlinks são gerados depois, só pros selecionados (otimização: 1 chamada Apify
- * lista até 50 produtos, esposa marca 5-10, geramos shortlinks só desses).
+ * Preview de loja Shopee — HÍBRIDO:
+ *   1. Apify lista produtos da loja (pega APENAS itemIds — Apify é bugado pra preços/ratings)
+ *   2. Pra cada itemId, fetchShopeeByItemId() puxa dados completos via Open API (FREE):
+ *      foto correta, preço real, originalPrice, discount, rating, salesCount, commissionPct,
+ *      offerLink JÁ TAGUEADO com nosso afiliado, cupom auto-aplicado.
+ *
+ * Vantagens vs Apify-only:
+ *   - ✅ Preços corretos (Apify mistura centavos × 1000)
+ *   - ✅ Rating + vendas + comissão (Apify não traz)
+ *   - ✅ affiliateUrl já tagueado (Apify exige chamada generateShortLink separada)
+ *   - ✅ Custo Shopee: 0 (não cobra). Custo Apify: mesmo (1 chamada lista)
+ *
+ * Limites: produtos NÃO afiliados Shopee são pulados (raros — geralmente Mall/Preferred).
  */
 export async function previewShopeeShop(
   shopInput: string,
@@ -116,38 +128,52 @@ export async function previewShopeeShop(
     { country: 'br', mode: 'url', url: pageUrl, maxProducts: maxItems, fetchDetail: false, delay: 1.5 },
     env.APIFY_TOKEN,
   );
-  const out: ShopProductPreview[] = [];
+  // 1ª passada: extrai itemIds únicos (titles/preços do Apify são descartados)
+  const itemIds: string[] = [];
   const seen = new Set<string>();
   for (const i of items) {
     const itemId = String((i as Record<string, unknown>).item_id ?? i.itemId ?? '');
-    const shopId = String((i as Record<string, unknown>).shop_id ?? i.shopId ?? '');
     if (!itemId || seen.has(itemId)) continue;
     seen.add(itemId);
-    const title = i.name ?? i.title ?? '';
-    if (!title) continue;
-    const price = normalizePrice(i.price ?? (i as Record<string, unknown>).price_min as number | string | undefined);
-    const originalPrice = i.price_max ? normalizePrice(i.price_max) : undefined;
-    out.push({
-      externalId: itemId,
-      shopId,
-      title,
-      imageUrl: i.image_url ?? i.image ?? i.images?.[0],
-      price,
-      originalPrice: originalPrice && originalPrice > price ? originalPrice : undefined,
-      discountPct: i.raw_discount
-        ? Number(String(i.raw_discount).replace('%', ''))
-        : originalPrice && originalPrice > price
-          ? Number((((originalPrice - price) / originalPrice) * 100).toFixed(2))
-          : undefined,
-      rating: i.rating_star,
-      salesCount: i.historical_sold ?? i.sold,
-      // URL canônica baseada em shopId+itemId — evita usar slug do scraper que às vezes
-      // vem do produto adjacente na listagem (bug do actor).
-      url: `https://shopee.com.br/product/${shopId}/${itemId}`,
-    });
+    itemIds.push(itemId);
   }
-  logger.info({ shop, requested: maxItems, returned: out.length }, 'preview-shop ready');
-  return out;
+  logger.info({ shop, apifyReturned: items.length, uniqueIds: itemIds.length }, 'preview-shop: apify done, enriching via Shopee API');
+
+  // 2ª passada: enriquece cada itemId via Open API Shopee em paralelo (concurrency 5).
+  // Free + dados completos + offerLink tagueado.
+  const enriched: ShopProductPreview[] = [];
+  const concurrency = 5;
+  for (let i = 0; i < itemIds.length; i += concurrency) {
+    const batch = itemIds.slice(i, i + concurrency);
+    const results = await Promise.all(
+      batch.map(async (itemId) => {
+        try {
+          const offer = await fetchShopeeByItemId(itemId);
+          if (!offer) return null;
+          return {
+            externalId: offer.externalId,
+            shopId: String((offer.raw as { shopId?: number })?.shopId ?? ''),
+            title: offer.title,
+            imageUrl: offer.imageUrl,
+            price: offer.price,
+            originalPrice: offer.originalPrice,
+            discountPct: offer.discountPct,
+            rating: offer.rating,
+            salesCount: offer.salesCount,
+            commissionPct: offer.commissionPct,
+            url: offer.url || `https://shopee.com.br/product/${(offer.raw as { shopId?: number })?.shopId}/${itemId}`,
+            affiliateUrl: offer.affiliateUrl,
+          } as ShopProductPreview;
+        } catch (err) {
+          logger.debug({ itemId, err: (err as Error).message }, 'preview-shop: item not in affiliate program — skipping');
+          return null;
+        }
+      }),
+    );
+    for (const r of results) if (r) enriched.push(r);
+  }
+  logger.info({ shop, requested: maxItems, returned: enriched.length, skipped: itemIds.length - enriched.length }, 'preview-shop ready (enriched)');
+  return enriched;
 }
 
 export async function enrichShopeeFromUrl(url: string): Promise<EnrichedShopeeProduct> {

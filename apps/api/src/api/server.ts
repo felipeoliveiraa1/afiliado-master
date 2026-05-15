@@ -651,6 +651,21 @@ export async function buildServer() {
     },
   );
 
+  // Lista offerIds já com Dispatch (qualquer status) pra essa campanha.
+  // Usado pra evitar re-dispatch manual do mesmo produto.
+  app.get(
+    '/campaigns/:id/dispatched-offer-ids',
+    { schema: { params: z.object({ id: z.string() }) } },
+    async (req) => {
+      const rows = await prisma.dispatch.findMany({
+        where: { campaignId: req.params.id },
+        select: { offerId: true },
+        distinct: ['offerId'],
+      });
+      return { offerIds: rows.map((r) => r.offerId) };
+    },
+  );
+
   app.patch(
     '/campaigns/:id',
     {
@@ -1090,7 +1105,9 @@ export async function buildServer() {
                 discountPct: z.number().optional(),
                 rating: z.number().optional(),
                 salesCount: z.number().int().optional(),
+                commissionPct: z.number().optional(),
                 url: z.string().url(),
+                affiliateUrl: z.string().url().optional(),
               }),
             )
             .min(1)
@@ -1157,8 +1174,9 @@ export async function buildServer() {
               couponCode = req.body.couponOverride;
             }
 
-            // Gera shortlink afiliado pra esse produto específico
-            const affiliateUrl = await generateShopeeShortLink(p.url);
+            // Usa affiliateUrl já tagueado vindo do preview híbrido (Open API).
+            // Fallback: gera shortlink (caso preview legado sem affiliateUrl).
+            const affiliateUrl = p.affiliateUrl ?? (await generateShopeeShortLink(p.url));
 
             const offer = await prisma.offer.upsert({
               where: {

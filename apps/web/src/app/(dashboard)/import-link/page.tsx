@@ -146,6 +146,7 @@ export default function ImportLinkPage(): React.ReactElement {
             rating: p.rating,
             salesCount: p.salesCount,
             url: p.url,
+            affiliateUrl: p.affiliateUrl,
           })),
           intervalSec,
           couponOverride: shopCoupon,
