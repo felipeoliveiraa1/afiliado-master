@@ -1789,6 +1789,7 @@ export async function buildServer() {
           discountText: z.string().max(80).optional(),
           imageUrl: z.string().url().optional(),
           validUntil: z.string().datetime().optional(),
+          officialOnly: z.boolean().optional(),
         }),
       },
     },
@@ -1805,6 +1806,7 @@ export async function buildServer() {
         discountText: req.body.discountText,
         imageUrl: req.body.imageUrl,
         validUntil: req.body.validUntil ? new Date(req.body.validUntil) : null,
+        officialOnly: req.body.officialOnly ?? false,
       };
       // Upsert por code SE tiver code; senão sempre cria novo (cupons automáticos
       // sem code não dedupam — múltiplos auto-coupons podem coexistir).

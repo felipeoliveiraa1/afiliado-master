@@ -203,9 +203,16 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
         OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
       },
     });
+    // Filtra cupons officialOnly se a oferta não é de Loja Oficial Shopee Mall.
+    const isOfficialMall = Boolean(
+      (dispatch.offer.raw as { isOfficialMall?: boolean } | null)?.isOfficialMall,
+    );
+    const eligibleCoupons = activeCoupons.filter(
+      (c) => !c.officialOnly || isOfficialMall,
+    );
     let bestCoupon: typeof activeCoupons[number] | null = null;
     let best: { finalPrice: number; discount: number } | null = null;
-    for (const c of activeCoupons) {
+    for (const c of eligibleCoupons) {
       const result = applyCoupon(price, {
         code: c.code,
         type: (c.type === 'FIXED' ? 'FIXED' : 'PERCENT') as 'PERCENT' | 'FIXED',
