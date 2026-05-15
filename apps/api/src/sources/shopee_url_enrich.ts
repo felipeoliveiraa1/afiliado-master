@@ -34,6 +34,20 @@ function extractShopAndItemId(url: string): { shopId: string; itemId: string } |
   return { shopId: m[1], itemId: m[2] };
 }
 
+/** Expande shortlink s.shopee.com.br ou shopee.com.br/affiliate-go pra URL canônica. */
+async function expandShortlink(url: string): Promise<string> {
+  if (!/^https?:\/\/(s\.shopee\.com\.br|shopee\.com\.br\/affiliate-go)/.test(url)) {
+    return url;
+  }
+  try {
+    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    return res.url || url;
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, url }, 'shopee shortlink expand failed');
+    return url;
+  }
+}
+
 function extractKeywordFromSlug(url: string): string {
   const slugMatch = url.match(/shopee\.com\.br\/([^?]+?)-i\./);
   if (!slugMatch) return '';
@@ -130,6 +144,8 @@ export async function previewShopeeShop(
 }
 
 export async function enrichShopeeFromUrl(url: string): Promise<EnrichedShopeeProduct> {
+  // Expande shortlink s.shopee.com.br pra URL canônica antes de extrair shopId/itemId
+  url = await expandShortlink(url);
   const ids = extractShopAndItemId(url);
   if (!ids) {
     throw new Error('URL Shopee inválida — esperado formato com /product/N/N ou *.i.N.N');
