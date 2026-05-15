@@ -1,4 +1,4 @@
-import { fetchShopeeProducts, generateShopeeShortLink } from './shopee.js';
+import { fetchShopeeProducts, fetchShopeeByItemId, generateShopeeShortLink } from './shopee.js';
 import { runApifyActor } from './apify-client.js';
 import { env } from '@/config/env.js';
 import { logger } from '@/lib/logger.js';
@@ -153,8 +153,21 @@ export async function enrichShopeeFromUrl(url: string): Promise<EnrichedShopeePr
   const { shopId, itemId } = ids;
   const keyword = extractKeywordFromSlug(url);
 
-  // TENTATIVA 1: productOfferV2 com keyword extraída do slug (limit 100).
-  // Open API Shopee NÃO aceita busca por itemId/shopId direto — só por keyword.
+  // TENTATIVA 1 (DESCOBERTA HAR DivulgaNinja): productOfferV2 ACEITA itemId direto!
+  // Cobre 100% dos produtos afiliados Shopee, sem depender do slug ter keyword
+  // descritiva (ex: /opaanlp/...  onde "opaanlp" é nome da loja, não do produto).
+  try {
+    const match = await fetchShopeeByItemId(itemId);
+    if (match) {
+      logger.info({ itemId, source: 'graphql' }, 'shopee enrich: matched via productOfferV2(itemId)');
+      return { ...match, source: 'graphql' };
+    }
+    logger.warn({ itemId }, 'shopee enrich: itemId não encontrado via productOfferV2 — tentando keyword');
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, itemId }, 'shopee enrich: itemId query falhou — tentando keyword');
+  }
+
+  // TENTATIVA 2: productOfferV2 com keyword extraída do slug (fallback se itemId falhar).
   if (keyword.length >= 6) {
     try {
       const results = await fetchShopeeProducts({ keyword, limit: 50 });

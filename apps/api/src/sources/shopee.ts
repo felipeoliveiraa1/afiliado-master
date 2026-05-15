@@ -207,6 +207,56 @@ export async function fetchShopeeProducts(opts?: ShopeeFetchOpts): Promise<RawOf
 }
 
 /**
+ * Busca UM produto específico via productOfferV2 com itemId direto (sem keyword).
+ * Shopee Affiliate Open API aceita arg `itemId: Int64!` — descoberto via HAR do
+ * DivulgaNinja. Cobre casos onde slug da URL não tem keyword descritiva
+ * (ex: /opaanlp/564882971/29556869913 onde "opaanlp" é a loja, não o produto).
+ */
+export async function fetchShopeeByItemId(itemId: string | number): Promise<RawOffer | null> {
+  const query = `
+    query ProductOfferByItemId($itemId: Int64) {
+      productOfferV2(itemId: $itemId, limit: 1) {
+        nodes {
+          itemId productName commissionRate commission sales imageUrl
+          priceMin priceMax priceDiscountRate ratingStar
+          shopId shopName shopType productCatIds offerLink productLink
+        }
+      }
+    }
+  `;
+  type Node = {
+    itemId: number; productName: string; commissionRate?: string;
+    commission?: string; sales?: number; imageUrl?: string;
+    priceMin?: string; priceMax?: string; priceDiscountRate?: number;
+    ratingStar?: string; shopId?: number; shopName?: string;
+    shopType?: number[]; productCatIds?: number[];
+    offerLink?: string; productLink?: string;
+  };
+  type Resp = { productOfferV2: { nodes: Node[] } };
+  const data = await gql<Resp>(query, { itemId: Number(itemId) });
+  const n = data.productOfferV2?.nodes?.[0];
+  if (!n) return null;
+  const price = Number(n.priceMin ?? '0');
+  const priceMax = n.priceMax ? Number(n.priceMax) : undefined;
+  const isOfficialMall = Array.isArray(n.shopType) && n.shopType.includes(1);
+  return {
+    externalId: String(n.itemId),
+    title: n.productName,
+    imageUrl: n.imageUrl,
+    price,
+    originalPrice: priceMax && priceMax > price ? priceMax : undefined,
+    discountPct: n.priceDiscountRate ? Number(n.priceDiscountRate) : undefined,
+    url: n.productLink ?? '',
+    affiliateUrl: n.offerLink,
+    commissionPct: n.commissionRate ? Number(n.commissionRate) * 100 : undefined,
+    rating: n.ratingStar ? Number(n.ratingStar) : undefined,
+    salesCount: n.sales,
+    category: n.productCatIds?.[0] ? String(n.productCatIds[0]) : undefined,
+    raw: { ...n, seller: n.shopName, isOfficialMall } as Record<string, unknown>,
+  };
+}
+
+/**
  * Importa produtos de uma loja via Apify web-scraper (renderiza JS — Shopee é SPA).
  *
  * Como funciona:
