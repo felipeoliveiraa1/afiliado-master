@@ -41,9 +41,9 @@ function extractShopAndItemId(url: string): { shopId: string; itemId: string } |
   return { shopId: m[1], itemId: m[2] };
 }
 
-/** Expande shortlink s.shopee.com.br ou shopee.com.br/affiliate-go pra URL canônica. */
+/** Expande shortlinks Shopee (s.shopee.com.br, br.shp.ee, shopee.com.br/affiliate-go). */
 async function expandShortlink(url: string): Promise<string> {
-  if (!/^https?:\/\/(s\.shopee\.com\.br|shopee\.com\.br\/affiliate-go)/.test(url)) {
+  if (!/^https?:\/\/(s\.shopee\.com\.br|br\.shp\.ee|shopee\.com\.br\/affiliate-go)/.test(url)) {
     return url;
   }
   try {
