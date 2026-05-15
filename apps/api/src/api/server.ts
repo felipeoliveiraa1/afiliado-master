@@ -1999,6 +1999,28 @@ export async function buildServer() {
     return { deleted: true };
   });
 
+  // Dedupe global por source (image + fuzzy title). Dispara sob demanda.
+  // dryRun=true só lista o que seria deletado sem apagar.
+  app.post(
+    '/admin/dedupe',
+    {
+      schema: {
+        body: z.object({
+          source: z.enum(['SHOPEE', 'MERCADOLIVRE', 'AMAZON']),
+          maxDeleteRatio: z.number().min(0).max(0.5).optional(),
+          dryRun: z.boolean().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const { runOfferDedupe } = await import('@/lib/dedup.js');
+      return runOfferDedupe(req.body.source, {
+        maxDeleteRatio: req.body.maxDeleteRatio,
+        dryRun: req.body.dryRun,
+      });
+    },
+  );
+
   app.get('/admin/cookie-health', async () => {
     const sources = await prisma.source.findMany({
       where: { kind: { in: ['SHOPEE', 'MERCADOLIVRE'] } },
