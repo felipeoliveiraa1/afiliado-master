@@ -190,29 +190,33 @@ export default function ImportLinkPage(): React.ReactElement {
     <div className="space-y-6 max-w-4xl mx-auto">
       <PageHeader
         title="Enviar Link Agora"
-        description="Cole um link Shopee — produto único ou loja inteira — e envie pro grupo na hora"
+        description="Cole um link Shopee de produto — sistema puxa foto, preço, cupom e envia no grupo na hora"
       />
 
-      <div className="flex gap-2 border rounded-lg p-1 w-fit">
-        <button
-          onClick={() => { setMode('product'); setShopPreview(null); }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${
-            mode === 'product' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Package className="h-4 w-4" />
-          Produto único
-        </button>
-        <button
-          onClick={() => { setMode('shop'); setPreview(null); }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${
-            mode === 'shop' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Store className="h-4 w-4" />
-          Loja inteira
-        </button>
-      </div>
+      {/* Toggle "Loja inteira" em stand-by — backend mantém /import-shop/* funcional.
+          Pra reativar: trocar `false &&` por `true &&` (ou remover o wrapper). */}
+      {false && (
+        <div className="flex gap-2 border rounded-lg p-1 w-fit">
+          <button
+            onClick={() => { setMode('product'); setShopPreview(null); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${
+              mode === 'product' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Package className="h-4 w-4" />
+            Produto único
+          </button>
+          <button
+            onClick={() => { setMode('shop'); setPreview(null); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${
+              mode === 'shop' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Store className="h-4 w-4" />
+            Loja inteira
+          </button>
+        </div>
+      )}
 
       {mode === 'product' ? (
         <>
