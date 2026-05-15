@@ -214,7 +214,7 @@ export async function fetchShopeeProducts(opts?: ShopeeFetchOpts): Promise<RawOf
  */
 export async function fetchShopeeByItemId(itemId: string | number): Promise<RawOffer | null> {
   const query = `
-    query ProductOfferByItemId($itemId: String) {
+    query ProductOfferByItemId($itemId: Int64!) {
       productOfferV2(itemId: $itemId, limit: 1) {
         nodes {
           itemId productName commissionRate commission sales imageUrl
@@ -233,7 +233,7 @@ export async function fetchShopeeByItemId(itemId: string | number): Promise<RawO
     offerLink?: string; productLink?: string;
   };
   type Resp = { productOfferV2: { nodes: Node[] } };
-  const data = await gql<Resp>(query, { itemId: String(itemId) });
+  const data = await gql<Resp>(query, { itemId: Number(itemId) });
   const n = data.productOfferV2?.nodes?.[0];
   if (!n) return null;
   const price = Number(n.priceMin ?? '0');
