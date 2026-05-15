@@ -74,17 +74,51 @@ export async function describeOffer(offerId: string, input: Input, channelKind: 
     return { caption: cached.caption, hashtags: cached.hashtags, urgency: (cached.urgency as Output['urgency']) ?? 'low' };
   }
 
+  // Se OPENAI_API_KEY vazia, pula IA e salva fallback — evita 3 retries por job.
+  if (!env.OPENAI_API_KEY) {
+    const fallback: Output = { caption: 'OFERTA IMPERDÍVEL🔥', hashtags: [], urgency: 'low' };
+    await prisma.variant.create({
+      data: {
+        offerId,
+        channelKind,
+        caption: fallback.caption,
+        hashtags: fallback.hashtags,
+        urgency: fallback.urgency,
+        promptHash,
+      },
+    });
+    return fallback;
+  }
+
   const userMsg = JSON.stringify(input);
-  const resp = await client.chat.completions.create({
-    model: env.OPENAI_MODEL,
-    max_tokens: 300,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: SYSTEM },
-      { role: 'user', content: userMsg },
-    ],
-  });
-  const text = resp.choices[0]?.message?.content ?? '';
+  let text = '';
+  try {
+    const resp = await client.chat.completions.create({
+      model: env.OPENAI_MODEL,
+      max_tokens: 300,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SYSTEM },
+        { role: 'user', content: userMsg },
+      ],
+    });
+    text = resp.choices[0]?.message?.content ?? '';
+  } catch (err) {
+    // Quota/auth/rate limit — salva fallback E não falha o job (BullMQ não retenta).
+    logger.warn({ err: (err as Error).message }, 'openai call failed — using fallback caption');
+    const fallback: Output = { caption: 'OFERTA IMPERDÍVEL🔥', hashtags: [], urgency: 'low' };
+    await prisma.variant.create({
+      data: {
+        offerId,
+        channelKind,
+        caption: fallback.caption,
+        hashtags: fallback.hashtags,
+        urgency: fallback.urgency,
+        promptHash,
+      },
+    });
+    return fallback;
+  }
 
   let parsed: Output;
   try {
