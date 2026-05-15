@@ -609,6 +609,7 @@ export async function buildServer() {
         body: z.object({
           offerId: z.string(),
           delaySec: z.number().int().min(0).max(86400).optional(),
+          bypassWindow: z.boolean().optional(),
         }),
       },
     },
@@ -637,12 +638,14 @@ export async function buildServer() {
             channelId: channel.id,
             scheduledFor,
           },
-          update: {},
+          update: { status: 'PENDING', scheduledFor },
         });
-        if (d.status === 'PENDING') {
-          await dispatchQueue.add('dispatch', { dispatchId: d.id }, { delay: delayMs });
-          dispatchIds.push(d.id);
-        }
+        await dispatchQueue.add(
+          'dispatch',
+          { dispatchId: d.id, bypassWindow: req.body.bypassWindow },
+          { delay: delayMs },
+        );
+        dispatchIds.push(d.id);
       }
       return { dispatched: dispatchIds.length, dispatchIds, scheduledFor };
     },
