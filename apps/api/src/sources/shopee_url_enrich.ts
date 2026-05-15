@@ -29,7 +29,14 @@ type ApifyShopeeItem = {
 };
 
 function extractShopAndItemId(url: string): { shopId: string; itemId: string } | null {
-  const m = url.match(/\/product\/(\d+)\/(\d+)/) || url.match(/[.\-]i\.(\d+)\.(\d+)/);
+  // Suporta os 3 formatos Shopee:
+  // - /product/SHOPID/ITEMID (antigo)
+  // - /SLUG-i.SHOPID.ITEMID (slug descritivo)
+  // - /SHOPNAME/SHOPID/ITEMID (novo formato com nome da loja)
+  const m =
+    url.match(/\/product\/(\d+)\/(\d+)/) ||
+    url.match(/[.\-]i\.(\d+)\.(\d+)/) ||
+    url.match(/shopee\.com\.br\/[^/?#]+\/(\d+)\/(\d+)/);
   if (!m) return null;
   return { shopId: m[1], itemId: m[2] };
 }
