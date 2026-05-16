@@ -4,25 +4,30 @@ import { logger } from '@/lib/logger.js';
 import { getSettingsSection } from '@/lib/settings.js';
 import type { RawOffer } from './types.js';
 
-// junglee/Amazon-crawler — aceita product URLs específicas, retorna tudo
-// (title, price, image, asin, stars, reviewsCount). PAY_PER_EVENT.
-const APIFY_AMAZON_ACTOR = 'junglee~Amazon-crawler';
+// pratikdani/amazon-product-scraper — aceita 1 URL por chamada, PAY_PER_EVENT
+// $0.002 start (vs $0.07 do junglee/Amazon-crawler — 35x mais barato).
+// Retorna asin, title, brand, buybox_prices.final_price, images, description, coupon.
+const APIFY_AMAZON_ACTOR = 'pratikdani~amazon-product-scraper';
 
 export type EnrichedAmazonProduct = RawOffer & { source: 'apify' };
 
+// Formato resposta de pratikdani/amazon-product-scraper
 type ApifyAmazonItem = {
   asin?: string;
   title?: string;
-  price?: { value?: number; currency?: string } | number;
-  listPrice?: { value?: number } | number | null;
-  thumbnailImage?: string;
-  highResolutionImages?: string[];
-  galleryThumbnails?: string[];
-  url?: string;
-  stars?: number;
-  reviewsCount?: number;
-  inStock?: boolean;
   brand?: string;
+  buybox_prices?: { final_price?: number; unit_price?: number | null };
+  final_price?: number;
+  list_price?: number;
+  image_url?: string;
+  image?: string;
+  images?: string[];
+  rating?: number;
+  reviews_count?: number;
+  currency?: string;
+  coupon?: string;
+  description?: string;
+  availability?: string;
 };
 
 /** Expande shortlinks Amazon (amzn.to, amzn.la, a.co) pra URL canônica. */
@@ -47,13 +52,10 @@ function extractAsin(url: string): string | null {
   return m ? m[1].toUpperCase() : null;
 }
 
-/** Normaliza preço — Apify pode retornar number ou { value, currency }. */
-function normalizePrice(p: unknown): number | undefined {
-  if (typeof p === 'number') return p;
-  if (p && typeof p === 'object' && 'value' in p) {
-    const v = (p as { value?: number }).value;
-    return typeof v === 'number' ? v : undefined;
-  }
+/** Extrai final_price de buybox_prices ou outros campos. */
+function pickPrice(item: ApifyAmazonItem): number | undefined {
+  if (item.buybox_prices?.final_price) return item.buybox_prices.final_price;
+  if (typeof item.final_price === 'number') return item.final_price;
   return undefined;
 }
 
@@ -80,12 +82,7 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
 
   const items = await runApifyActor<ApifyAmazonItem>(
     APIFY_AMAZON_ACTOR,
-    {
-      categoryOrProductUrls: [{ url: `https://www.amazon.com.br/dp/${asin}` }],
-      maxItemsPerStartUrl: 1,
-      countryCode: 'BR',
-      proxyConfiguration: { useApifyProxy: true },
-    },
+    { url: `https://www.amazon.com.br/dp/${asin}` },
     env.APIFY_TOKEN,
   );
 
@@ -94,8 +91,8 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
     throw new Error(`Amazon: produto ASIN ${asin} não encontrado no scraper`);
   }
 
-  const price = normalizePrice(item.price);
-  const originalPrice = normalizePrice(item.listPrice);
+  const price = pickPrice(item);
+  const originalPrice = typeof item.list_price === 'number' ? item.list_price : undefined;
   const discountPct =
     originalPrice && price && originalPrice > price
       ? Number((((originalPrice - price) / originalPrice) * 100).toFixed(2))
@@ -105,20 +102,25 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
     ? `https://www.amazon.com.br/dp/${asin}?tag=${encodeURIComponent(partnerTag)}`
     : `https://www.amazon.com.br/dp/${asin}`;
 
-  logger.info({ asin, hasTag: !!partnerTag }, 'amazon enrich: matched via apify scraper');
+  logger.info({ asin, hasTag: !!partnerTag, price }, 'amazon enrich: matched via apify scraper');
 
   return {
     externalId: asin,
     title: item.title ?? `Produto Amazon ${asin}`,
-    imageUrl: item.thumbnailImage ?? item.highResolutionImages?.[0] ?? item.galleryThumbnails?.[0],
+    imageUrl: item.image_url ?? item.image ?? item.images?.[0],
     price: price ?? 0,
     originalPrice: originalPrice && originalPrice > (price ?? 0) ? originalPrice : undefined,
     discountPct,
     url: `https://www.amazon.com.br/dp/${asin}`,
     affiliateUrl,
-    rating: item.stars,
-    ratingCount: item.reviewsCount,
-    raw: { asin, brand: item.brand, importedVia: 'apify-amazon-crawler' } as Record<string, unknown>,
+    rating: item.rating,
+    ratingCount: item.reviews_count,
+    raw: {
+      asin,
+      brand: item.brand,
+      coupon: item.coupon,
+      importedVia: 'apify-pratikdani-amazon',
+    } as Record<string, unknown>,
     source: 'apify',
   };
 }
