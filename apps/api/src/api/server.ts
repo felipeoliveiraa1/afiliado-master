@@ -2276,6 +2276,173 @@ export async function buildServer() {
     return { offersToday, dispatchAgg, cookieHealth, totalsBySource };
   });
 
+  /**
+   * Stats EXTENDED — agrega TUDO pro dashboard novo num único call.
+   * Inclui: funil hoje, throughput por hora (24h), top sources, comissão
+   * potencial, distribuição por status, health geral + spark line 7 dias.
+   */
+  app.get('/stats/extended', async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    // Maps de sourceId pra kind (pra UI mostrar nome correto)
+    const sources = await prisma.source.findMany({
+      select: { id: true, kind: true, lastFetchAt: true, cookieHealth: true, cookieValidatedAt: true, enabled: true },
+    });
+    const sourceMap = new Map(sources.map((s) => [s.id, s]));
+
+    const [
+      totalsBySource,
+      offersToday,
+      offersYesterday,
+      offersBySource7d,
+      dispatchToday,
+      dispatchYesterday,
+      offersWithCommission,
+      dispatches24hRaw,
+      sparkRaw,
+    ] = await Promise.all([
+      // Totais por source (banco inteiro)
+      prisma.offer.groupBy({ by: ['sourceId'], _count: true }),
+      // Captadas hoje (createdAt)
+      prisma.offer.count({ where: { createdAt: { gte: today } } }),
+      // Captadas ontem (delta)
+      prisma.offer.count({
+        where: { createdAt: { gte: yesterday, lt: today } },
+      }),
+      // Captadas por source nos últimos 7d (pra bar chart distribuição)
+      prisma.offer.groupBy({
+        by: ['sourceId'],
+        where: { createdAt: { gte: weekAgo } },
+        _count: true,
+      }),
+      // Dispatches hoje (por status)
+      prisma.dispatch.groupBy({
+        by: ['status'],
+        where: { createdAt: { gte: today } },
+        _count: true,
+      }),
+      // Dispatches ontem (pra delta)
+      prisma.dispatch.count({
+        where: { createdAt: { gte: yesterday, lt: today }, status: 'SENT' },
+      }),
+      // Pra comissão potencial: ofertas que tiveram dispatch SENT hoje
+      prisma.dispatch.findMany({
+        where: { createdAt: { gte: today }, status: 'SENT' },
+        select: { offer: { select: { price: true, commissionPct: true, discountPct: true } } },
+      }),
+      // Throughput por hora — dispatches enviados hoje agrupados por hora (UTC)
+      prisma.$queryRaw<Array<{ hour: number; count: bigint }>>`
+        SELECT EXTRACT(HOUR FROM "sentAt")::int as hour, COUNT(*)::bigint as count
+        FROM "Dispatch"
+        WHERE "sentAt" >= ${today} AND status = 'SENT'
+        GROUP BY hour ORDER BY hour
+      `,
+      // Sparkline ofertas captadas últimos 7 dias (count por dia)
+      prisma.$queryRaw<Array<{ day: Date; count: bigint }>>`
+        SELECT DATE_TRUNC('day', "createdAt") as day, COUNT(*)::bigint as count
+        FROM "Offer"
+        WHERE "createdAt" >= ${weekAgo}
+        GROUP BY day ORDER BY day
+      `,
+    ]);
+
+    // Comissão potencial (sum de price * commissionPct/100) + discount médio
+    let commissionTotal = 0;
+    let discountSum = 0;
+    let discountCount = 0;
+    for (const d of offersWithCommission) {
+      const p = d.offer?.price ? Number(d.offer.price) : 0;
+      const c = d.offer?.commissionPct ?? 0;
+      if (p && c) commissionTotal += (p * c) / 100;
+      if (d.offer?.discountPct) {
+        discountSum += d.offer.discountPct;
+        discountCount++;
+      }
+    }
+    const discountAvg = discountCount > 0 ? discountSum / discountCount : 0;
+
+    // Throughput como array 24h (preenche horas vazias com 0)
+    const throughput24h = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      count: Number(dispatches24hRaw.find((r) => r.hour === h)?.count ?? 0),
+    }));
+
+    // Sparkline 7d preenchendo dias vazios
+    const sparkline7d: Array<{ day: string; count: number }> = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      const row = sparkRaw.find((r) => r.day.toISOString().slice(0, 10) === iso);
+      sparkline7d.push({ day: iso, count: Number(row?.count ?? 0) });
+    }
+
+    // Enriquece grupos por source com kind (UI usa kind, não sourceId)
+    const enrich = <T extends { sourceId: string; _count: number }>(items: T[]) =>
+      items
+        .map((it) => ({ kind: sourceMap.get(it.sourceId)?.kind ?? 'UNKNOWN', count: it._count }))
+        .reduce<Record<string, number>>((acc, cur) => {
+          acc[cur.kind] = (acc[cur.kind] ?? 0) + cur.count;
+          return acc;
+        }, {});
+
+    // Dispatch status mapping
+    const dispatchByStatus = dispatchToday.reduce<Record<string, number>>((acc, d) => {
+      acc[d.status] = d._count;
+      return acc;
+    }, {});
+
+    const sentToday = dispatchByStatus.SENT ?? 0;
+    const sentDelta =
+      dispatchYesterday > 0 ? ((sentToday - dispatchYesterday) / dispatchYesterday) * 100 : null;
+    const offersDelta =
+      offersYesterday > 0 ? ((offersToday - offersYesterday) / offersYesterday) * 100 : null;
+
+    return {
+      today: {
+        offersCaptadas: offersToday,
+        offersDelta,
+        sent: sentToday,
+        sentDelta,
+        failed: dispatchByStatus.FAILED ?? 0,
+        skipped: dispatchByStatus.SKIPPED ?? 0,
+        pending: dispatchByStatus.PENDING ?? 0,
+        commissionPotential: Number(commissionTotal.toFixed(2)),
+        discountAvg: Number(discountAvg.toFixed(2)),
+        successRate:
+          sentToday + (dispatchByStatus.FAILED ?? 0) > 0
+            ? Number(
+                ((sentToday * 100) / (sentToday + (dispatchByStatus.FAILED ?? 0))).toFixed(1),
+              )
+            : 100,
+      },
+      totals: {
+        bySource: enrich(totalsBySource),
+        all: totalsBySource.reduce((a, b) => a + b._count, 0),
+      },
+      week: {
+        bySource: enrich(offersBySource7d),
+        sparkline: sparkline7d, // [{day, count}]
+      },
+      throughput24h, // [{hour, count}]
+      sources: sources.map((s) => ({
+        kind: s.kind,
+        enabled: s.enabled,
+        lastFetchAt: s.lastFetchAt,
+        hoursAgo: s.lastFetchAt
+          ? Math.floor((Date.now() - s.lastFetchAt.getTime()) / 3600_000)
+          : null,
+        cookieValid: (s.cookieHealth as { valid?: boolean } | null)?.valid ?? null,
+        cookieValidatedAt: s.cookieValidatedAt,
+      })),
+    };
+  });
+
   app.get(
     '/campaigns/:id/dispatches',
     {
