@@ -23,6 +23,7 @@ type PreviewProduct = {
   url: string;
   affiliateUrl?: string;
   source?: 'graphql' | 'apify';
+  platform?: 'SHOPEE' | 'AMAZON';
 };
 
 type PreviewResp = {

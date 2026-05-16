@@ -837,42 +837,35 @@ export async function buildServer() {
     { schema: { body: z.object({ url: z.string().url() }) } },
     async (req) => {
       try {
-        const { enrichShopeeFromUrl } = await import('@/sources/shopee_url_enrich.js');
-        const enriched = await enrichShopeeFromUrl(req.body.url);
-        const coupons = await prisma.shopeeCoupon.findMany({
-          where: {
-            enabled: true,
-            OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
-          },
-          orderBy: { code: 'asc' },
-        });
-        const { applyCoupon } = await import('@/dispatcher/format.js');
+        const { enrichFromUrl } = await import('@/sources/url_enrich.js');
+        const enriched = await enrichFromUrl(req.body.url);
+        // Cupons só aplicam pra Shopee (Amazon não tem cupom Shopee)
         let bestCoupon: { code: string; discount: number; finalPrice: number } | null = null;
-        for (const c of coupons) {
-          if (!c.code) continue;
-          const result = applyCoupon(enriched.price ?? 0, {
-            code: c.code,
-            type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
-            value: Number(c.value),
-            minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
-            maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+        let allCoupons: Array<{ code: string; description: string }> = [];
+        if (enriched.platform === 'SHOPEE') {
+          const coupons = await prisma.shopeeCoupon.findMany({
+            where: { enabled: true, OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }] },
+            orderBy: { code: 'asc' },
           });
-          if (result.applies && (!bestCoupon || result.discountValue > bestCoupon.discount)) {
-            bestCoupon = {
+          const { applyCoupon } = await import('@/dispatcher/format.js');
+          for (const c of coupons) {
+            if (!c.code) continue;
+            const result = applyCoupon(enriched.price ?? 0, {
               code: c.code,
-              discount: result.discountValue,
-              finalPrice: result.finalPrice,
-            };
+              type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
+              value: Number(c.value),
+              minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
+              maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+            });
+            if (result.applies && (!bestCoupon || result.discountValue > bestCoupon.discount)) {
+              bestCoupon = { code: c.code, discount: result.discountValue, finalPrice: result.finalPrice };
+            }
           }
-        }
-        return {
-          ok: true,
-          product: enriched,
-          bestCoupon,
-          allCoupons: coupons
+          allCoupons = coupons
             .filter((c) => c.code)
-            .map((c) => ({ code: c.code as string, description: c.description ?? '' })),
-        };
+            .map((c) => ({ code: c.code as string, description: c.description ?? '' }));
+        }
+        return { ok: true, product: enriched, bestCoupon, allCoupons };
       } catch (err) {
         return { ok: false, error: (err as Error).message };
       }
@@ -892,48 +885,45 @@ export async function buildServer() {
     },
     async (req) => {
       try {
-        const { enrichShopeeFromUrl } = await import('@/sources/shopee_url_enrich.js');
-        const enriched = await enrichShopeeFromUrl(req.body.url);
+        const { enrichFromUrl } = await import('@/sources/url_enrich.js');
+        const enriched = await enrichFromUrl(req.body.url);
         const finalPrice = req.body.priceOverride ?? enriched.price;
         if (!finalPrice || finalPrice <= 0) {
           return { ok: false, error: 'Preço inválido (zero ou negativo)' };
         }
 
         const source = await prisma.source.upsert({
-          where: { kind: 'SHOPEE' },
+          where: { kind: enriched.platform },
           update: {},
-          create: { kind: 'SHOPEE' },
+          create: { kind: enriched.platform },
         });
 
-        // Cupom: override > melhor automático > nenhum
+        // Cupom Shopee: override > melhor automático > nenhum (Amazon não tem cupom Shopee)
         let couponCode: string | undefined;
-        if (req.body.couponOverride === undefined) {
-          const activeCoupons = await prisma.shopeeCoupon.findMany({
-            where: {
-              enabled: true,
-              OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
-            },
-          });
-          const { applyCoupon } = await import('@/dispatcher/format.js');
-          let best: { code: string; discount: number } | null = null;
-          for (const c of activeCoupons) {
-            if (!c.code) continue;
-            const r = applyCoupon(finalPrice, {
-              code: c.code,
-              type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
-              value: Number(c.value),
-              minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
-              maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+        if (enriched.platform === 'SHOPEE') {
+          if (req.body.couponOverride === undefined) {
+            const activeCoupons = await prisma.shopeeCoupon.findMany({
+              where: { enabled: true, OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }] },
             });
-            if (r.applies && (!best || r.discountValue > best.discount)) {
-              best = { code: c.code, discount: r.discountValue };
+            const { applyCoupon } = await import('@/dispatcher/format.js');
+            let best: { code: string; discount: number } | null = null;
+            for (const c of activeCoupons) {
+              if (!c.code) continue;
+              const r = applyCoupon(finalPrice, {
+                code: c.code,
+                type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
+                value: Number(c.value),
+                minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
+                maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+              });
+              if (r.applies && (!best || r.discountValue > best.discount)) {
+                best = { code: c.code, discount: r.discountValue };
+              }
             }
+            couponCode = best?.code;
+          } else if (req.body.couponOverride !== '') {
+            couponCode = req.body.couponOverride;
           }
-          couponCode = best?.code;
-        } else if (req.body.couponOverride === '') {
-          couponCode = undefined;
-        } else {
-          couponCode = req.body.couponOverride;
         }
 
         const offer = await prisma.offer.upsert({
@@ -1052,7 +1042,7 @@ export async function buildServer() {
       },
     },
     async (req) => {
-      const { enrichShopeeFromUrl } = await import('@/sources/shopee_url_enrich.js');
+      const { enrichFromUrl } = await import('@/sources/url_enrich.js');
       const urls = req.body.urls.map((u) => u.trim()).filter((u) => u.length > 0);
       const concurrency = 5;
       const results: Array<{ url: string; ok: boolean; product?: unknown; error?: string }> = [];
@@ -1061,7 +1051,7 @@ export async function buildServer() {
         const settled = await Promise.all(
           batch.map(async (url) => {
             try {
-              const enriched = await enrichShopeeFromUrl(url);
+              const enriched = await enrichFromUrl(url);
               return { url, ok: true, product: enriched };
             } catch (err) {
               return { url, ok: false, error: (err as Error).message };
@@ -1109,6 +1099,7 @@ export async function buildServer() {
                 salesCount: z.number().int().optional(),
                 commissionPct: z.number().optional(),
                 affiliateUrl: z.string().url().optional(),
+                platform: z.enum(['SHOPEE', 'AMAZON']).optional().default('SHOPEE'),
               }),
             )
             .min(1)
@@ -1119,11 +1110,17 @@ export async function buildServer() {
       },
     },
     async (req) => {
-      const source = await prisma.source.upsert({
-        where: { kind: 'SHOPEE' },
-        update: {},
-        create: { kind: 'SHOPEE' },
-      });
+      // Pré-cria/recupera sources das plataformas presentes no batch
+      const platforms = [...new Set(req.body.products.map((p) => p.platform))];
+      const sourceByPlatform: Record<string, { id: string }> = {};
+      for (const pl of platforms) {
+        const s = await prisma.source.upsert({
+          where: { kind: pl },
+          update: {},
+          create: { kind: pl },
+        });
+        sourceByPlatform[pl] = s;
+      }
       const campaign = await prisma.campaign.findFirst({
         where: {
           OR: [
@@ -1147,33 +1144,39 @@ export async function buildServer() {
       let scheduledOffset = 0;
       for (const p of req.body.products) {
         try {
+          const productSource = sourceByPlatform[p.platform];
+          // Cupons Shopee só aplicam pra produtos SHOPEE
           let couponCode: string | undefined;
-          if (req.body.couponOverride === undefined) {
-            let best: { code: string; discount: number } | null = null;
-            for (const c of activeCoupons) {
-              if (!c.code) continue;
-              const r = applyCoupon(p.price, {
-                code: c.code,
-                type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
-                value: Number(c.value),
-                minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
-                maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
-              });
-              if (r.applies && (!best || r.discountValue > best.discount)) {
-                best = { code: c.code, discount: r.discountValue };
+          if (p.platform === 'SHOPEE') {
+            if (req.body.couponOverride === undefined) {
+              let best: { code: string; discount: number } | null = null;
+              for (const c of activeCoupons) {
+                if (!c.code) continue;
+                const r = applyCoupon(p.price, {
+                  code: c.code,
+                  type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
+                  value: Number(c.value),
+                  minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
+                  maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+                });
+                if (r.applies && (!best || r.discountValue > best.discount)) {
+                  best = { code: c.code, discount: r.discountValue };
+                }
               }
+              couponCode = best?.code;
+            } else if (req.body.couponOverride !== '') {
+              couponCode = req.body.couponOverride;
             }
-            couponCode = best?.code;
-          } else if (req.body.couponOverride !== '') {
-            couponCode = req.body.couponOverride;
           }
 
-          const affiliateUrl = p.affiliateUrl ?? (await generateShopeeShortLink(p.url));
+          // Amazon já vem com tag no affiliateUrl (do enrich); Shopee gera shortlink se faltar
+          const affiliateUrl =
+            p.affiliateUrl ?? (p.platform === 'SHOPEE' ? await generateShopeeShortLink(p.url) : p.url);
 
           const offer = await prisma.offer.upsert({
-            where: { sourceId_externalId: { sourceId: source.id, externalId: p.externalId } },
+            where: { sourceId_externalId: { sourceId: productSource.id, externalId: p.externalId } },
             create: {
-              sourceId: source.id,
+              sourceId: productSource.id,
               externalId: p.externalId,
               title: p.title,
               imageUrl: p.imageUrl,
