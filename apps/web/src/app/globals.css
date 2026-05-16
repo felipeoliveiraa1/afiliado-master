@@ -22,10 +22,11 @@
     --muted: 220 14% 96%;
     --muted-foreground: 220 9% 46%;
 
-    --accent: 152 76% 36%;
+    --accent: 156 84% 39%;
     --accent-foreground: 0 0% 100%;
-    --accent-soft: 152 76% 95%;
-    --accent-soft-foreground: 152 76% 22%;
+    --accent-soft: 156 80% 95%;
+    --accent-soft-foreground: 156 84% 22%;
+    --accent-vivid: 152 92% 45%;
 
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
@@ -72,10 +73,11 @@
     --muted: 222 14% 16%;
     --muted-foreground: 215 16% 65%;
 
-    --accent: 152 70% 50%;
+    --accent: 156 80% 52%;
     --accent-foreground: 222 16% 9%;
-    --accent-soft: 152 40% 18%;
-    --accent-soft-foreground: 152 70% 75%;
+    --accent-soft: 156 45% 18%;
+    --accent-soft-foreground: 156 80% 78%;
+    --accent-vivid: 152 92% 58%;
 
     --success: 142 65% 50%;
     --success-foreground: 222 16% 9%;
@@ -156,6 +158,56 @@
   .surface {
     @apply rounded-xl border bg-card shadow-[var(--shadow-card)];
   }
+
+  /* Card com hover refinado pra dashboards */
+  .card-interactive {
+    @apply transition-all duration-200 hover:shadow-[var(--shadow-pop)] hover:-translate-y-0.5 hover:border-accent/30;
+  }
+
+  /* Hero gradient sutil pra cards destaque */
+  .hero-gradient {
+    background:
+      radial-gradient(at 0% 0%, hsl(var(--accent) / 0.08), transparent 50%),
+      radial-gradient(at 100% 100%, hsl(var(--accent-vivid) / 0.06), transparent 50%);
+  }
+
+  /* Gradient bg de hero principal */
+  .gradient-accent {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--accent)) 0%,
+      hsl(var(--accent-vivid)) 100%
+    );
+  }
+
+  /* Texto com gradient */
+  .text-gradient-accent {
+    background: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent-vivid)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Stagger pra animar listas em sequência (CSS-only) */
+  .stagger > * {
+    opacity: 0;
+    animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 50ms; }
+  .stagger > *:nth-child(2) { animation-delay: 100ms; }
+  .stagger > *:nth-child(3) { animation-delay: 150ms; }
+  .stagger > *:nth-child(4) { animation-delay: 200ms; }
+  .stagger > *:nth-child(5) { animation-delay: 250ms; }
+  .stagger > *:nth-child(6) { animation-delay: 300ms; }
+  .stagger > *:nth-child(7) { animation-delay: 350ms; }
+  .stagger > *:nth-child(8) { animation-delay: 400ms; }
+
+  /* Pulse sutil pra indicar "ao vivo" */
+  .pulse-dot::before {
+    content: '';
+    @apply absolute inset-0 rounded-full bg-current opacity-75;
+    animation: ping-soft 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
 }
 
 @layer utilities {
@@ -167,5 +219,12 @@
   }
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+@keyframes ping-soft {
+  75%, 100% {
+    transform: scale(1.8);
+    opacity: 0;
   }
 }

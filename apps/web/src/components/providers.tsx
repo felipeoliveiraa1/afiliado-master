@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionProvider } from 'next-auth/react';
 import * as React from 'react';
+import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/theme-provider';
 
 export function Providers({ children }: { children: React.ReactNode }): React.ReactElement {
@@ -17,7 +18,20 @@ export function Providers({ children }: { children: React.ReactNode }): React.Re
   return (
     <ThemeProvider>
       <SessionProvider>
-        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        <QueryClientProvider client={client}>
+          {children}
+          <Toaster
+            position="top-right"
+            theme="system"
+            richColors
+            closeButton
+            toastOptions={{
+              classNames: {
+                toast: 'border border-border shadow-[var(--shadow-pop)]',
+              },
+            }}
+          />
+        </QueryClientProvider>
       </SessionProvider>
     </ThemeProvider>
   );

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Loader2, Send, ExternalLink, Store, Package, Layers } from 'lucide-react';
+import { toast } from 'sonner';
 import { clientFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,19 +104,16 @@ export default function ImportLinkPage(): React.ReactElement {
   const [batchIntervalSec, setBatchIntervalSec] = useState(180);
   const [batchCoupon, setBatchCoupon] = useState<string | undefined>(undefined);
 
-  const [resultMsg, setResultMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
-
   const previewMut = useMutation({
     mutationFn: (u: string) =>
       clientFetch<PreviewResp>('/import-link/preview', { method: 'POST', body: { url: u } }),
     onSuccess: (data) => {
       setPreview(data);
       setCouponOverride(undefined);
-      setResultMsg(null);
     },
     onError: (err) => {
       setPreview(null);
-      setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` });
+      toast.error(`❌ ${(err as Error).message}`);
     },
   });
 
@@ -128,14 +126,13 @@ export default function ImportLinkPage(): React.ReactElement {
     onSuccess: (data) => {
       if (data.ok) {
         const cupom = data.offer?.couponApplied ? ` (cupom ${data.offer.couponApplied})` : '';
-        setResultMsg({ kind: 'ok', text: `✅ Enviado em "${data.campaignName}"${cupom}!` });
+        toast.success(`✅ Enviado em "${data.campaignName}"${cupom}!`);
         setUrl(''); setPreview(null); setCouponOverride(undefined);
-        setTimeout(() => setResultMsg(null), 10000);
       } else {
-        setResultMsg({ kind: 'err', text: `❌ ${data.error}` });
+        toast.error(`❌ ${data.error}`);
       }
     },
-    onError: (err) => setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` }),
+    onError: (err) => toast.error(`❌ ${(err as Error).message}`),
   });
 
   const [shopMaxItems, setShopMaxItems] = useState(20);
@@ -149,11 +146,10 @@ export default function ImportLinkPage(): React.ReactElement {
       setShopPreview(data);
       setSelected(new Set());
       setShopCoupon(undefined);
-      setResultMsg(null);
     },
     onError: (err) => {
       setShopPreview(null);
-      setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` });
+      toast.error(`❌ ${(err as Error).message}`);
     },
   });
 
@@ -184,17 +180,15 @@ export default function ImportLinkPage(): React.ReactElement {
     onSuccess: (data) => {
       if (data.ok) {
         const totalMin = Math.ceil((data.totalSpanSec ?? 0) / 60);
-        setResultMsg({
-          kind: 'ok',
-          text: `✅ ${data.scheduled} produtos agendados em "${data.campaignName}" (1 a cada ${data.intervalSec}s — total ~${totalMin}min)`,
-        });
+        toast.success(
+          `✅ ${data.scheduled} produtos agendados em "${data.campaignName}" (1 a cada ${data.intervalSec}s — total ~${totalMin}min)`,
+        );
         setShopPreview(null); setSelected(new Set()); setUrl('');
-        setTimeout(() => setResultMsg(null), 12000);
       } else {
-        setResultMsg({ kind: 'err', text: `❌ ${data.error}` });
+        toast.error(`❌ ${data.error}`);
       }
     },
-    onError: (err) => setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` }),
+    onError: (err) => toast.error(`❌ ${(err as Error).message}`),
   });
 
   // BATCH mutations
@@ -216,11 +210,10 @@ export default function ImportLinkPage(): React.ReactElement {
         new Set(data.items.filter((i) => i.ok && i.product).map((i) => i.product!.externalId)),
       );
       setBatchCoupon(undefined);
-      setResultMsg(null);
     },
     onError: (err) => {
       setBatchPreview(null);
-      setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` });
+      toast.error(`❌ ${(err as Error).message}`);
     },
   });
 
@@ -237,17 +230,15 @@ export default function ImportLinkPage(): React.ReactElement {
     onSuccess: (data) => {
       if (data.ok) {
         const totalMin = Math.ceil((data.totalSpanSec ?? 0) / 60);
-        setResultMsg({
-          kind: 'ok',
-          text: `✅ ${data.scheduled} agendados em "${data.campaignName}" (1 a cada ${data.intervalSec}s — total ~${totalMin}min)`,
-        });
+        toast.success(
+          `✅ ${data.scheduled} agendados em "${data.campaignName}" (1 a cada ${data.intervalSec}s — total ~${totalMin}min)`,
+        );
         setBatchPreview(null); setBatchSelected(new Set()); setBatchUrls('');
-        setTimeout(() => setResultMsg(null), 12000);
       } else {
-        setResultMsg({ kind: 'err', text: `❌ ${data.error}` });
+        toast.error(`❌ ${data.error}`);
       }
     },
-    onError: (err) => setResultMsg({ kind: 'err', text: `❌ ${(err as Error).message}` }),
+    onError: (err) => toast.error(`❌ ${(err as Error).message}`),
   });
 
   const toggleBatchSelected = (id: string) => {
@@ -701,15 +692,7 @@ export default function ImportLinkPage(): React.ReactElement {
         </>
       )}
 
-      {resultMsg ? (
-        <div className={`p-4 rounded font-medium ${
-          resultMsg.kind === 'ok'
-            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-            : 'bg-destructive/10 text-destructive border border-destructive/20'
-        }`}>
-          {resultMsg.text}
-        </div>
-      ) : null}
+      
     </div>
   );
 }
