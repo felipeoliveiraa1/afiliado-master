@@ -4,25 +4,25 @@ import { logger } from '@/lib/logger.js';
 import { getSettingsSection } from '@/lib/settings.js';
 import type { RawOffer } from './types.js';
 
-// junglee/free-amazon-product-scraper — funciona com ASINs específicos, country BR
-const APIFY_AMAZON_ACTOR = 'junglee~free-amazon-product-scraper';
+// junglee/Amazon-crawler — aceita product URLs específicas, retorna tudo
+// (title, price, image, asin, stars, reviewsCount). PAY_PER_EVENT.
+const APIFY_AMAZON_ACTOR = 'junglee~Amazon-crawler';
 
 export type EnrichedAmazonProduct = RawOffer & { source: 'apify' };
 
 type ApifyAmazonItem = {
   asin?: string;
   title?: string;
-  name?: string;
-  productName?: string;
   price?: { value?: number; currency?: string } | number;
-  listPrice?: { value?: number } | number;
+  listPrice?: { value?: number } | number | null;
   thumbnailImage?: string;
-  image?: string;
-  images?: string[];
+  highResolutionImages?: string[];
+  galleryThumbnails?: string[];
   url?: string;
-  rating?: number;
+  stars?: number;
   reviewsCount?: number;
-  starsCount?: number;
+  inStock?: boolean;
+  brand?: string;
 };
 
 /** Expande shortlinks Amazon (amzn.to, amzn.la, a.co) pra URL canônica. */
@@ -81,10 +81,10 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
   const items = await runApifyActor<ApifyAmazonItem>(
     APIFY_AMAZON_ACTOR,
     {
-      asins: [asin],
-      country: 'BR',
-      maxItems: 1,
-      ensureLoadedProductDescription: false,
+      categoryOrProductUrls: [{ url: `https://www.amazon.com.br/dp/${asin}` }],
+      maxItemsPerStartUrl: 1,
+      countryCode: 'BR',
+      proxyConfiguration: { useApifyProxy: true },
     },
     env.APIFY_TOKEN,
   );
@@ -109,16 +109,16 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
 
   return {
     externalId: asin,
-    title: item.title ?? item.name ?? item.productName ?? `Produto Amazon ${asin}`,
-    imageUrl: item.thumbnailImage ?? item.image ?? item.images?.[0],
+    title: item.title ?? `Produto Amazon ${asin}`,
+    imageUrl: item.thumbnailImage ?? item.highResolutionImages?.[0] ?? item.galleryThumbnails?.[0],
     price: price ?? 0,
     originalPrice: originalPrice && originalPrice > (price ?? 0) ? originalPrice : undefined,
     discountPct,
     url: `https://www.amazon.com.br/dp/${asin}`,
     affiliateUrl,
-    rating: item.rating ?? item.starsCount,
+    rating: item.stars,
     ratingCount: item.reviewsCount,
-    raw: { asin, importedVia: 'apify-amazon' } as Record<string, unknown>,
+    raw: { asin, brand: item.brand, importedVia: 'apify-amazon-crawler' } as Record<string, unknown>,
     source: 'apify',
   };
 }
