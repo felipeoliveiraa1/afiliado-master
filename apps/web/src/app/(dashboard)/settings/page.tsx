@@ -33,6 +33,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { PageHeader } from '@/components/ui/page-header';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogBody,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 type Section =
   | 'evolution'
@@ -50,6 +58,12 @@ type SectionMeta = {
   description: string;
   icon: LucideIcon;
   fields: FieldDef[];
+  /** Emoji ou letra grande pra header do card (visual rápido). */
+  badge?: string;
+  /** "Pra que serve" em 1 frase — exibido no card compacto. */
+  shortHint?: string;
+  /** Campo chave pra detectar "configurado" (não-vazio = ✅). */
+  configuredKey?: string;
 };
 
 type FieldDef = {
@@ -274,6 +288,7 @@ const SECTIONS: SectionMeta[] = [
 ];
 
 export default function SettingsPage(): React.ReactElement {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [revealed, setRevealed] = useState<Record<Section, boolean>>(() =>
     Object.fromEntries(SECTIONS.map((s) => [s.key, false])) as Record<Section, boolean>,
   );
@@ -282,7 +297,7 @@ export default function SettingsPage(): React.ReactElement {
     <div className="space-y-6">
       <PageHeader
         title="Configurações"
-        description="Tudo editável aqui — sem precisar SSH na VPS. Mudanças entram no efeito em até 5s (cache TTL)."
+        description="Cada serviço numa caixa. Clique em Configurar pra editar."
         badge={
           <Badge variant="accent" dot>
             <SettingsIcon className="size-3" /> live config
@@ -290,21 +305,108 @@ export default function SettingsPage(): React.ReactElement {
         }
       />
 
-      <div className="space-y-5">
-        {SECTIONS.map((section) => (
-          <SectionCard
-            key={section.key}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {SECTIONS.map((section, idx) => (
+          <SectionTileCard
+            key={`${section.key}-${idx}`}
             meta={section}
-            revealed={revealed[section.key]}
-            onToggleReveal={() => setRevealed((r) => ({ ...r, [section.key]: !r[section.key] }))}
+            onOpen={() => setOpenIdx(idx)}
           />
         ))}
       </div>
+
+      {openIdx !== null && (
+        <Dialog open onOpenChange={(o) => { if (!o) setOpenIdx(null); }}>
+          <DialogContent size="lg" className="p-0">
+            <SectionDialogContent
+              meta={SECTIONS[openIdx]}
+              revealed={revealed[SECTIONS[openIdx].key]}
+              onToggleReveal={() =>
+                setRevealed((r) => ({
+                  ...r,
+                  [SECTIONS[openIdx].key]: !r[SECTIONS[openIdx].key],
+                }))
+              }
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
 
-function SectionCard({
+/**
+ * Card compacto da grid — ícone + título + descrição + botão Configurar.
+ * Mostra badge de status (configurado/pendente) baseado em configuredKey.
+ */
+function SectionTileCard({
+  meta,
+  onOpen,
+}: {
+  meta: SectionMeta;
+  onOpen: () => void;
+}): React.ReactElement {
+  const Icon = meta.icon;
+  const query = useQuery<Record<string, unknown>>({
+    queryKey: ['settings-tile', meta.key],
+    queryFn: () => clientFetch<Record<string, unknown>>(`/settings/${meta.key}`),
+    staleTime: 30_000,
+  });
+
+  // Heurística: campo configurado = primeiro field não-boolean preenchido (ou configuredKey)
+  const isConfigured = (() => {
+    if (!query.data) return null;
+    if (meta.configuredKey) {
+      const v = query.data[meta.configuredKey];
+      return Boolean(v && String(v).trim().length > 0);
+    }
+    return meta.fields.some((f) => {
+      if (f.type === 'boolean') return false;
+      const v = query.data?.[f.key];
+      return v && String(v).trim().length > 0;
+    });
+  })();
+
+  return (
+    <Card className="flex h-full flex-col">
+      <CardHeader className="flex-1 gap-2 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+            {meta.badge ? (
+              <span className="text-lg leading-none">{meta.badge}</span>
+            ) : (
+              <Icon className="size-5" />
+            )}
+          </div>
+          {isConfigured === true ? (
+            <Badge variant="success" dot>
+              <CheckCircle2 className="size-3" /> configurado
+            </Badge>
+          ) : isConfigured === false ? (
+            <Badge variant="warning" dot>
+              pendente
+            </Badge>
+          ) : null}
+        </div>
+        <CardTitle className="text-base">{meta.title}</CardTitle>
+        <CardDescription className="line-clamp-2 text-xs">
+          {meta.shortHint ?? meta.description}
+        </CardDescription>
+      </CardHeader>
+      <div className="border-t p-3">
+        <Button onClick={onOpen} variant="soft" size="sm" className="w-full">
+          <SettingsIcon className="size-3.5" /> Configurar
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Conteúdo do Dialog — herda lógica do antigo SectionCard.
+ * Usa o mesmo Field render existente + save mutation.
+ */
+function SectionDialogContent({
   meta,
   revealed,
   onToggleReveal,
@@ -328,7 +430,6 @@ function SectionCard({
 
   useEffect(() => {
     if (!query.data) return;
-    // Hidrata: campos array (ex: landing.groupLinks) viram string CSV pra UI
     const hydrated: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(query.data)) {
       if (Array.isArray(v)) hydrated[k] = v.join('\n');
@@ -344,33 +445,24 @@ function SectionCard({
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      // Defesa: nunca envia valores mascarados de volta (`abcd…wxyz (218 chars)`).
-      // Sem isso, salvar sem clicar "Mostrar secrets" reescreve apiKey/cookie
-      // com a string mascarada.
       const isMasked = (v: unknown): boolean =>
         typeof v === 'string' && v.includes('…') && /\(\d+ chars\)\s*$/.test(v);
       const cleanBody: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(draft)) {
         if (isMasked(v)) continue;
-        // landing.groupLinks vem do textarea como string CSV/multilinha — converte em array
         if (meta.key === 'landing' && k === 'groupLinks' && typeof v === 'string') {
-          cleanBody[k] = v
-            .split(/[\n,]/)
-            .map((s) => s.trim())
-            .filter(Boolean);
+          cleanBody[k] = v.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
           continue;
         }
         cleanBody[k] = v;
       }
-      return clientFetch(`/settings/${meta.key}`, {
-        method: 'PATCH',
-        body: cleanBody,
-      });
+      return clientFetch(`/settings/${meta.key}`, { method: 'PATCH', body: cleanBody });
     },
     onSuccess: () => {
       setSavedAt(Date.now());
       setTimeout(() => setSavedAt(null), 3000);
       queryClient.invalidateQueries({ queryKey: ['settings', meta.key] });
+      queryClient.invalidateQueries({ queryKey: ['settings-tile', meta.key] });
     },
   });
 
@@ -379,25 +471,25 @@ function SectionCard({
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
-            <Icon className="size-4" />
+    <>
+      <DialogHeader>
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+            {meta.badge ? <span className="text-lg">{meta.badge}</span> : <Icon className="size-5" />}
           </div>
-          <div>
-            <CardTitle>{meta.title}</CardTitle>
-            <CardDescription>{meta.description}</CardDescription>
+          <div className="min-w-0 flex-1">
+            <DialogTitle>{meta.title}</DialogTitle>
+            <DialogDescription className="text-xs">{meta.description}</DialogDescription>
           </div>
+          {hasSecrets ? (
+            <Button size="sm" variant="ghost" onClick={onToggleReveal}>
+              {revealed ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              {revealed ? 'Ocultar' : 'Mostrar'}
+            </Button>
+          ) : null}
         </div>
-        {hasSecrets ? (
-          <Button size="sm" variant="ghost" onClick={onToggleReveal}>
-            {revealed ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            {revealed ? 'Ocultar secrets' : 'Mostrar secrets'}
-          </Button>
-        ) : null}
-      </CardHeader>
-      <CardContent>
+      </DialogHeader>
+      <DialogBody>
         {query.isLoading ? (
           <div className="flex justify-center py-6">
             <Spinner label="Carregando…" />
@@ -447,10 +539,11 @@ function SectionCard({
             ) : null}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </DialogBody>
+    </>
   );
 }
+
 
 function Field({
   field,
