@@ -86,6 +86,8 @@ export type FormatOfferInput = {
   /** Preço PIX calculado (preço atual × (1 - pixDiscountPct/100)). Renderiza "OU R$ X no PIX". */
   readonly pricePix?: number | null;
   readonly installments?: number | null;
+  /** Preço unitário display (ex: "R$0,87 / unidade") — vem do Amazon scraper. */
+  readonly unitPrice?: string | null;
   readonly hookLine?: string | null;
   readonly link: string;
   readonly instagramHandle?: string | null;
@@ -130,6 +132,10 @@ export function formatOfferMessage(input: FormatOfferInput): string {
     input.installments,
   );
   if (installmentLine) priceLines.push(installmentLine);
+  // Preço unitário (fralda, perfume, etc) — display direto do scraper, ex: "R$0,87 / unidade"
+  if (input.unitPrice?.trim()) {
+    priceLines.push(`💡 ${input.unitPrice.trim()}`);
+  }
   sections.push(priceLines.join('\n'));
 
   // 4. Link de COMPRA primeiro (foco principal — cliente decide rápido)

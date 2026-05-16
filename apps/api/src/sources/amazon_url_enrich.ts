@@ -16,18 +16,30 @@ type ApifyAmazonItem = {
   asin?: string;
   title?: string;
   brand?: string;
-  buybox_prices?: { final_price?: number; unit_price?: number | null };
+  manufacturer?: string;
+  buybox_prices?: {
+    final_price?: number;
+    initial_price?: number;
+    unit_price?: string | number | null;
+    discount?: string;
+  };
   final_price?: number;
+  initial_price?: number;
   list_price?: number;
+  discount?: string;
   image_url?: string;
   image?: string;
   images?: string[];
   rating?: number;
   reviews_count?: number;
+  bought_past_month?: number;
   currency?: string;
   coupon?: string;
+  coupon_description?: string;
   description?: string;
   availability?: string;
+  features?: string[];
+  categories?: string[];
 };
 
 /** Expande shortlinks Amazon (amzn.to, amzn.la, a.co) pra URL canônica. */
@@ -92,21 +104,35 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
   }
 
   const price = pickPrice(item);
-  const originalPrice = typeof item.list_price === 'number' ? item.list_price : undefined;
+  // initial_price (preço riscado) vem em buybox_prices ou na raiz. list_price é fallback.
+  const originalPrice =
+    item.buybox_prices?.initial_price ??
+    item.initial_price ??
+    (typeof item.list_price === 'number' ? item.list_price : undefined);
   const discountPct =
     originalPrice && price && originalPrice > price
       ? Number((((originalPrice - price) / originalPrice) * 100).toFixed(2))
       : undefined;
 
+  // unit_price vem como "R$0,87 / unidade" ou número. Normaliza pra string display.
+  const unitPriceRaw = item.buybox_prices?.unit_price;
+  const unitPrice =
+    typeof unitPriceRaw === 'string'
+      ? unitPriceRaw
+      : typeof unitPriceRaw === 'number'
+        ? `R$${unitPriceRaw.toFixed(2).replace('.', ',')} / unidade`
+        : undefined;
+
   const affiliateUrl = partnerTag
     ? `https://www.amazon.com.br/dp/${asin}?tag=${encodeURIComponent(partnerTag)}`
     : `https://www.amazon.com.br/dp/${asin}`;
 
-  logger.info({ asin, hasTag: !!partnerTag, price }, 'amazon enrich: matched via apify scraper');
+  logger.info({ asin, hasTag: !!partnerTag, price, unitPrice }, 'amazon enrich: matched via apify scraper');
 
   return {
     externalId: asin,
     title: item.title ?? `Produto Amazon ${asin}`,
+    description: item.description,
     imageUrl: item.image_url ?? item.image ?? item.images?.[0],
     price: price ?? 0,
     originalPrice: originalPrice && originalPrice > (price ?? 0) ? originalPrice : undefined,
@@ -115,10 +141,16 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
     affiliateUrl,
     rating: item.rating,
     ratingCount: item.reviews_count,
+    salesCount: item.bought_past_month,
     raw: {
       asin,
       brand: item.brand,
+      manufacturer: item.manufacturer,
+      unitPrice,
+      features: item.features?.slice(0, 5),
+      categories: item.categories,
       coupon: item.coupon,
+      couponDescription: item.coupon_description,
       importedVia: 'apify-pratikdani-amazon',
     } as Record<string, unknown>,
     source: 'apify',

@@ -279,6 +279,7 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     price,
     originalPrice: dispatch.offer.originalPrice ? Number(dispatch.offer.originalPrice) : null,
     installments: dispatch.offer.installments,
+    unitPrice: dispatch.offer.unitPrice,
     couponCode,
     couponRedeemLink,
     couponDiscountLabel,

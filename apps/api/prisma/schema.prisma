@@ -92,6 +92,9 @@ model Offer {
   /// Quando foi vista pela primeira vez. Nunca atualiza em upserts.
   /// Usado em stats "captadas hoje" sem inflar com refetches do cron.
   createdAt      DateTime   @default(now())
+  /// Preço por unidade/medida (string display): "R$0,87 / unidade", "R$1,29 / litro".
+  /// Vem do Amazon scraper (buybox_prices.unit_price). Útil pra fralda/perfume/etc.
+  unitPrice      String?
   expiresAt      DateTime?
   raw            Json       @default("{}")
   variants       Variant[]
