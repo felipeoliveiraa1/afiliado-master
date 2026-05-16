@@ -2244,10 +2244,13 @@ export async function buildServer() {
   app.get('/stats/today', async () => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    const [offersToday, dispatchAgg, cookieHealth] = await Promise.all([
+    // ⚠️ "Captadas hoje" = ofertas NOVAS criadas hoje (createdAt).
+    // Antes usava fetchedAt mas isso é atualizado em CADA upsert do cron
+    // (a cada 30min), inflando o número absurdamente.
+    const [offersToday, dispatchAgg, cookieHealth, totalsBySource] = await Promise.all([
       prisma.offer.groupBy({
         by: ['sourceId'],
-        where: { fetchedAt: { gte: start } },
+        where: { createdAt: { gte: start } },
         _count: true,
       }),
       prisma.dispatch.groupBy({
@@ -2259,8 +2262,13 @@ export async function buildServer() {
         where: { kind: { in: ['SHOPEE', 'MERCADOLIVRE'] } },
         select: { kind: true, cookieHealth: true, cookieValidatedAt: true },
       }),
+      // Totais por source (banco inteiro) — útil pra dashboard mostrar separado
+      prisma.offer.groupBy({
+        by: ['sourceId'],
+        _count: true,
+      }),
     ]);
-    return { offersToday, dispatchAgg, cookieHealth };
+    return { offersToday, dispatchAgg, cookieHealth, totalsBySource };
   });
 
   app.get(

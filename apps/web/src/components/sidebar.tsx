@@ -46,7 +46,8 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/offers', label: 'Ofertas', icon: ShoppingBag },
-      { href: '/offers/pending', label: 'Pendentes', icon: ListChecks },
+      // 'Pendentes' removido — Shopee/Amazon vêm com link pronto;
+      // ML auto-gera shortlink via cron. Página /offers/pending fica sempre vazia.
     ],
   },
   {

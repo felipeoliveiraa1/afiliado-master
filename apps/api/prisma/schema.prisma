@@ -89,6 +89,9 @@ model Offer {
   salesCount      Int?
   score          Float?
   fetchedAt      DateTime   @default(now())
+  /// Quando foi vista pela primeira vez. Nunca atualiza em upserts.
+  /// Usado em stats "captadas hoje" sem inflar com refetches do cron.
+  createdAt      DateTime   @default(now())
   expiresAt      DateTime?
   raw            Json       @default("{}")
   variants       Variant[]
@@ -96,6 +99,7 @@ model Offer {
 
   @@unique([sourceId, externalId])
   @@index([fetchedAt])
+  @@index([createdAt])
   @@index([discountPct])
   @@index([score])
 }
