@@ -23,8 +23,11 @@ export function EmptyState({
       )}
     >
       {Icon ? (
-        <div className="mb-4 grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent-soft-foreground ring-8 ring-accent-soft/30">
-          <Icon className="size-5" aria-hidden />
+        <div className="relative mb-4">
+          <div className="absolute inset-0 -z-10 scale-150 rounded-full bg-accent/15 blur-xl" aria-hidden />
+          <div className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent-soft-foreground ring-8 ring-accent-soft/30">
+            <Icon className="size-6" aria-hidden />
+          </div>
         </div>
       ) : null}
       <h3 className="text-base font-semibold tracking-tight">{title}</h3>

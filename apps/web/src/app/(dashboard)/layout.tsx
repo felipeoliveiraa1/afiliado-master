@@ -16,7 +16,7 @@ export default async function DashboardLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileTopbar />
         <main className="flex-1 min-w-0 overflow-x-hidden">
-          <div className="page-shell">{children}</div>
+          <div className="page-shell animate-fade-in">{children}</div>
         </main>
       </div>
     </div>
