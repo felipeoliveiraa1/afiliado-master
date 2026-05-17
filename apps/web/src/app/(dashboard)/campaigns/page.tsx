@@ -8,10 +8,13 @@ import {
   ChevronUp,
   Clock,
   Megaphone,
+  Pause,
   Pencil,
   Play,
   Plus,
   Save,
+  Sparkles,
+  Timer,
   Trash2,
   Users,
   X,
@@ -186,13 +189,29 @@ export default function DisparosPage(): React.ReactElement {
       nicheIds: f.nicheIds.includes(id) ? f.nicheIds.filter((x) => x !== id) : [...f.nicheIds, id],
     }));
 
+  const totalCampaigns = campaigns.data?.length ?? 0;
+  const activeCampaigns = campaigns.data?.filter((c) => c.enabled).length ?? 0;
+  const pausedCampaigns = totalCampaigns - activeCampaigns;
+  const loopActive = campaigns.data?.filter((c) => c.enabled && c.schedule?.postLoop).length ?? 0;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Disparos"
         description="Cada disparo = canal WhatsApp + nicho(s) + cadência. Crie quantos quiser pra atender públicos diferentes."
+        badge={
+          activeCampaigns > 0 ? (
+            <Badge variant="success" dot>
+              <span className="relative flex size-2">
+                <span className="absolute inset-0 inline-flex animate-ping rounded-full bg-current opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-current" />
+              </span>
+              {activeCampaigns} ativo{activeCampaigns > 1 ? 's' : ''}
+            </Badge>
+          ) : undefined
+        }
         actions={
-          <Button size="lg" onClick={() => setShowForm((v) => !v)}>
+          <Button size="lg" onClick={() => setShowForm((v) => !v)} variant={showForm ? 'outline' : 'accent'}>
             {showForm ? (
               <>
                 <ChevronUp className="mr-2 size-4" />
@@ -208,11 +227,34 @@ export default function DisparosPage(): React.ReactElement {
         }
       />
 
+      {/* KPIs do disparo */}
+      <div className="stagger grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <KpiTile
+          label="Ativos"
+          value={activeCampaigns}
+          icon={Megaphone}
+          tone="success"
+          accent
+        />
+        <KpiTile label="Pausados" value={pausedCampaigns} icon={Pause} tone="muted" />
+        <KpiTile label="Em loop ♻️" value={loopActive} icon={Sparkles} tone="default" />
+        <KpiTile
+          label="Próximo tick"
+          value={totalCampaigns > 0 ? '~1min' : '—'}
+          icon={Timer}
+          tone="default"
+          isString
+        />
+      </div>
+
       {/* Form inline colapsável */}
       {showForm && (
-        <Card className="border-accent/40">
+        <Card className="border-accent/40 hero-gradient animate-fade-in-up">
           <CardHeader>
-            <CardTitle className="text-base">🚀 Configurar novo disparo</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="size-4 text-accent" />
+              Configurar novo disparo
+            </CardTitle>
             <CardDescription>Tudo numa página. Salvar = disparo ativo no próximo tick.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -463,16 +505,29 @@ export default function DisparosPage(): React.ReactElement {
       {/* Lista de disparos */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Disparos ativos ({campaigns.data?.length ?? 0})</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Megaphone className="size-4 text-accent" />
+            Todos os disparos ({campaigns.data?.length ?? 0})
+          </CardTitle>
+          <CardDescription>
+            {activeCampaigns} ativo{activeCampaigns !== 1 ? 's' : ''} ·{' '}
+            {pausedCampaigns} pausado{pausedCampaigns !== 1 ? 's' : ''}
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="stagger space-y-3">
           {campaigns.isLoading ? (
             <p className="text-sm text-muted-foreground">Carregando...</p>
           ) : !campaigns.data?.length ? (
             <EmptyState
               icon={Megaphone}
               title="Nenhum disparo ainda"
-              description='Clica em "Novo disparo" pra criar o primeiro.'
+              description='Crie seu primeiro disparo pra começar a enviar ofertas pros grupos.'
+              action={
+                <Button onClick={() => setShowForm(true)} variant="accent">
+                  <Plus className="size-4" />
+                  Criar primeiro disparo
+                </Button>
+              }
             />
           ) : (
             campaigns.data.map((c) => (
@@ -615,18 +670,35 @@ function CampaignCard({
     }));
 
   return (
-    <div className="rounded-lg border bg-card/50 p-4 transition-shadow hover:shadow-sm">
+    <div
+      className={`relative rounded-lg border p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-pop)] ${
+        campaign.enabled
+          ? 'border-accent/30 bg-gradient-to-br from-accent-soft/40 to-transparent hover:border-accent/50'
+          : 'bg-card/50 hover:border-accent/20'
+      }`}
+    >
+      {/* Indicador lateral verde quando ativo */}
+      {campaign.enabled ? (
+        <span
+          className="absolute left-0 top-4 bottom-4 w-1 rounded-r-full bg-accent"
+          aria-hidden
+        />
+      ) : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <Link
               href={`/campaigns/${campaign.id}`}
-              className="text-base font-semibold hover:text-accent"
+              className="text-base font-semibold transition-colors hover:text-accent"
             >
               {campaign.name}
             </Link>
             {campaign.enabled ? (
               <Badge variant="success" dot>
+                <span className="relative flex size-1.5">
+                  <span className="absolute inset-0 inline-flex animate-ping rounded-full bg-current opacity-75" />
+                  <span className="relative inline-flex size-1.5 rounded-full bg-current" />
+                </span>
                 ativo
               </Badge>
             ) : (
@@ -657,9 +729,15 @@ function CampaignCard({
           </div>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          <Button size="sm" variant="accent" onClick={onRunNow} loading={runPending}>
-            <Play className="size-3.5" />
-            Run now
+          <Button
+            size="sm"
+            variant="accent"
+            onClick={onRunNow}
+            loading={runPending}
+            className="shadow-sm"
+          >
+            <Sparkles className="size-3.5" />
+            Disparar agora
           </Button>
           <Button size="sm" variant="outline" onClick={editing ? () => setEditing(false) : startEdit}>
             {editing ? <X className="size-3.5" /> : <Pencil className="size-3.5" />}
@@ -943,5 +1021,49 @@ function CampaignCard({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function KpiTile({
+  label,
+  value,
+  icon: Icon,
+  tone = 'default',
+  accent = false,
+  isString = false,
+}: {
+  label: string;
+  value: number | string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone?: 'default' | 'success' | 'muted';
+  accent?: boolean;
+  isString?: boolean;
+}): React.ReactElement {
+  const iconTone =
+    tone === 'success'
+      ? 'bg-success-soft text-success-soft-foreground'
+      : tone === 'muted'
+        ? 'bg-muted text-muted-foreground'
+        : 'bg-accent-soft text-accent';
+  return (
+    <Card className={accent ? 'hero-gradient' : undefined}>
+      <CardContent className="flex items-center justify-between gap-3 p-4">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            {label}
+          </p>
+          <p
+            className={`mt-1 text-2xl font-bold tracking-tight ${
+              accent ? 'text-gradient-accent' : ''
+            }`}
+          >
+            {isString ? value : (value as number).toLocaleString('pt-BR')}
+          </p>
+        </div>
+        <div className={`grid size-9 shrink-0 place-items-center rounded-lg ${iconTone}`}>
+          <Icon className="size-4" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
