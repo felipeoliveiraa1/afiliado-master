@@ -23,7 +23,7 @@ type PreviewProduct = {
   salesCount?: number;
   url: string;
   affiliateUrl?: string;
-  source?: 'graphql' | 'apify' | 'public-api';
+  source?: 'graphql' | 'apify' | 'html-scrape';
   platform?: 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE';
 };
 

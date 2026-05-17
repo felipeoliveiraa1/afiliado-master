@@ -1,41 +1,29 @@
 import { fetch } from 'undici';
 import { logger } from '@/lib/logger.js';
+import { getSettingsSection } from '@/lib/settings.js';
 import {
   generateMercadoLivreShortlink,
   MercadoLivrePanelError,
 } from './mercadolivre_panel.js';
 import type { RawOffer } from './types.js';
 
-export type EnrichedMercadoLivreProduct = RawOffer & { source: 'public-api' };
+export type EnrichedMercadoLivreProduct = RawOffer & { source: 'html-scrape' };
 
-const ITEM_API = 'https://api.mercadolibre.com/items';
+type MlPanelConfig = { cookie?: string };
 
-type MlPicture = { id?: string; url?: string; secure_url?: string };
-type MlItem = {
-  id?: string;
-  title?: string;
-  price?: number;
-  original_price?: number | null;
-  available_quantity?: number;
-  sold_quantity?: number;
-  permalink?: string;
-  thumbnail?: string;
-  secure_thumbnail?: string;
-  pictures?: MlPicture[];
-  condition?: string;
-  seller_id?: number;
-  category_id?: string;
-};
+const DEFAULT_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
 
 /**
  * Expande shortlinks ML (meli.la, mercadolivre.com/sec/) pra URL canônica
- * `mercadolivre.com.br/MLB-...`. Segue o redirect que o app/painel gera.
- *
- * IMPORTANTE: o meli.la original é mantido pelo caller como affiliateUrl —
- * essa função só serve pra extrair o MLB id do produto destino.
+ * `mercadolivre.com.br/MLB-...` ou `mercadolivre.com.br/p/MLB...?wid=MLB...`.
  */
 async function expandShortlink(url: string): Promise<string> {
-  if (!/^https?:\/\/(meli\.la|mercadolivre\.com\/sec|mercadolibre\.com\/sec|mercadol\.ivr\.it)/.test(url)) {
+  if (
+    !/^https?:\/\/(meli\.la|mercadolivre\.com\/sec|mercadolibre\.com\/sec|mercadol\.ivr\.it)/.test(
+      url,
+    )
+  ) {
     return url;
   }
   try {
@@ -47,34 +35,141 @@ async function expandShortlink(url: string): Promise<string> {
   }
 }
 
-/** Extrai MLB id de URL ML. Aceita `MLB-12345678` ou `MLB12345678`. */
+/**
+ * Extrai MLB item id de URL ML. Aceita formatos:
+ *   - /MLB-12345678-... (produto direto)
+ *   - /MLB12345678 (produto direto sem dash)
+ *   - /p/MLB47899174?pdp_filters=item_id:MLB4032459479 (catálogo c/ item via "Compartilhar")
+ *   - ...&wid=MLB4032459479 (catálogo com winning item)
+ *
+ * Prioriza query params (item_id, wid, itemId) sobre o path, porque /p/MLBxxx
+ * é ID de CATÁLOGO. O item real vem nos params da URL gerada pelo app/site.
+ */
 function extractItemId(url: string): string | null {
   const m =
-    url.match(/\/(MLB-?\d{6,})/i) ||
-    url.match(/\bMLB-?(\d{6,})\b/i) ||
-    url.match(/itemId=(MLB-?\d{6,})/i);
+    url.match(/[?&]pdp_filters=item_id:(MLB-?\d{6,})/i) ||
+    url.match(/[?&]wid=(MLB-?\d{6,})/i) ||
+    url.match(/[?&]itemId=(MLB-?\d{6,})/i) ||
+    url.match(/\/(MLB-\d{6,})/i) ||
+    url.match(/\/(?!p\/)(MLB\d{6,})/i) ||
+    url.match(/\bMLB-?(\d{6,})\b/i);
   if (!m) return null;
-  // Normaliza removendo o `-` (a API pública aceita `MLB12345678` sem dash)
   return m[1].toUpperCase().replace(/^MLB-?/, 'MLB');
 }
 
-function pickImage(item: MlItem): string | undefined {
-  const first = item.pictures?.[0];
-  return first?.secure_url || first?.url || item.secure_thumbnail || item.thumbnail || undefined;
+/**
+ * Headers de navegador que ML aceita (mesmos do painel /afiliados/hub).
+ * Sem isso, ML serve skeleton de ~14KB ao invés do HTML completo de ~1MB.
+ */
+function buildBrowserHeaders(cookie: string): Record<string, string> {
+  return {
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+    'User-Agent': DEFAULT_USER_AGENT,
+    'sec-ch-ua': '"Chromium";v="147", "Not.A/Brand";v="8"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"macOS"',
+    'sec-fetch-dest': 'document',
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-site': 'none',
+    'sec-fetch-user': '?1',
+    'Upgrade-Insecure-Requests': '1',
+    Cookie: cookie,
+  };
 }
 
 /**
- * Enriquece URL Mercado Livre → produto completo via API pública
- * (`api.mercadolibre.com/items/MLB...`) e gera affiliate URL via painel cookie.
+ * Descrição vem com entidades HTML duplas (`&amp;quot;` por ex.) — decodifica
+ * em 2 camadas pra exibir limpo no preview.
+ */
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;quot;/g, '"')
+    .replace(/&amp;amp;/g, '&')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function parsePrice(brStr: string): number {
+  // "224,87" → 224.87 | "1.234,56" → 1234.56
+  return Number(brStr.replace(/\./g, '').replace(',', '.'));
+}
+
+type ParsedProduct = {
+  title: string;
+  price: number;
+  imageUrl?: string;
+  originalPrice?: number;
+  description?: string;
+};
+
+/**
+ * Extrai dados do produto do HTML completo do ML (renderizado com cookie).
+ *
+ * Estratégia em 2 camadas:
+ *   1. Meta tags `og:`/`twitter:` — sempre presentes, robustas
+ *      - og:title traz "Nome do produto - R$ XXX,XX" (parse pelo separador)
+ *      - og:image traz CDN URL pronta
+ *      - twitter:description traz a descrição completa
+ *   2. Raw regex no JSON do `__NAVIGATION_PRELOADED_STATE__` pra puxar
+ *      original_price (preço riscado) que NÃO está nas meta tags
+ */
+export function parseMlProductFromHtml(html: string): ParsedProduct {
+  const titleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
+  if (!titleMatch) {
+    throw new Error('Mercado Livre HTML sem og:title — provavelmente bloqueou ou cookie expirou');
+  }
+
+  let title = decodeHtmlEntities(titleMatch[1]);
+  let price = 0;
+  // og:title formato: "Nome do produto - R$ 224,87"
+  const tm = title.match(/^(.+?)\s*-\s*R\$\s*([\d.]+,\d{2})\s*$/);
+  if (tm) {
+    title = tm[1].trim();
+    price = parsePrice(tm[2]);
+  }
+
+  // Fallback se og:title não tinha preço: procura no JSON preloaded state
+  if (price === 0) {
+    const jp = html.match(/"price":\s*(\d+(?:\.\d+)?)/);
+    if (jp) price = Number(jp[1]);
+  }
+
+  const imageMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+  const imageUrl = imageMatch?.[1];
+
+  const descMatch = html.match(/<meta\s+name="twitter:description"\s+content="([^"]+)"/i);
+  const description = descMatch ? decodeHtmlEntities(descMatch[1]) : undefined;
+
+  // original_price (preço riscado) — vem no JSON preloaded state perto do
+  // bloco do item. Match defensivo: aceita só se > price atual.
+  const origMatch = html.match(/"original_price":\s*(\d+(?:\.\d+)?)/);
+  const origPriceRaw = origMatch ? Number(origMatch[1]) : undefined;
+  const originalPrice = origPriceRaw && origPriceRaw > price ? origPriceRaw : undefined;
+
+  return { title, price, imageUrl, originalPrice, description };
+}
+
+/**
+ * Enriquece URL Mercado Livre → produto completo via scrape do HTML logado.
  *
  * Fluxo:
- *   1. Expande shortlink (meli.la → mercadolivre.com.br/MLB-...)
- *   2. Extrai MLB id via regex
- *   3. GET /items/{MLB_ID} — title, price, original_price, pictures, permalink
- *   4. Tenta generateMercadoLivreShortlink(permalink) — gera meli.la com sua tag
- *   5. Se falhar (cookie expirou ou produto fora do programa), affiliateUrl = URL original
+ *   1. Expande shortlink (meli.la → mercadolivre.com.br/...)
+ *   2. Extrai MLB item id via regex (prioriza query params: wid, pdp_filters)
+ *   3. Fetch HTML com cookie do painel — ML serve 1MB com og: tags completas
+ *      (sem cookie ou sem headers de navegador, serve skeleton de ~14KB)
+ *   4. Parse título/preço/imagem/originalPrice via meta tags + regex no JSON
+ *   5. Gera meli.la affiliateUrl via panel (HARD-FAIL se cookie expirou)
  *
- * Custo: $0 (API pública é gratuita, painel ML também).
+ * Custo: $0. Performance: ~1s (1MB download + parse leve).
+ *
+ * IMPORTANTE: a API pública `api.mercadolibre.com/items/MLB...` foi bloqueada
+ * pelo PolicyAgent do ML em 2026-05 (retorna 403 PA_UNAUTHORIZED) — por isso
+ * scrape do HTML é o único caminho gratuito que sobra.
  */
 export async function enrichMercadoLivreFromUrl(
   url: string,
@@ -83,40 +178,57 @@ export async function enrichMercadoLivreFromUrl(
   const itemId = extractItemId(expandedUrl);
   if (!itemId) {
     throw new Error(
-      'URL Mercado Livre inválida — não consegui extrair o ID MLB (esperado /MLB-12345678 ou /MLB12345678)',
+      'URL Mercado Livre inválida — não consegui extrair o ID MLB (esperado /MLB-... ou /p/MLB...?wid=MLB...)',
     );
   }
 
-  const apiUrl = `${ITEM_API}/${itemId}`;
-  const res = await fetch(apiUrl, { headers: { Accept: 'application/json' } });
-  if (!res.ok) {
-    if (res.status === 404) {
-      throw new Error(`ML: produto ${itemId} não encontrado (404 na API pública)`);
-    }
-    throw new Error(`ML public API HTTP ${res.status} pra ${itemId}`);
-  }
-  const item = (await res.json()) as MlItem;
-  if (!item.id) {
-    throw new Error(`ML: resposta inválida pra ${itemId}`);
+  // Cookie do mesmo painel ML (já configurado em /settings). Sem cookie,
+  // ML serve skeleton sem dados.
+  const cfg = await getSettingsSection<MlPanelConfig>('mercadolivre_panel');
+  if (!cfg.cookie || cfg.cookie.trim().length < 50) {
+    throw new Error(
+      'Cookie do Mercado Livre não configurado — configure em /settings → Mercado Livre antes de enviar links ML',
+    );
   }
 
-  const permalink = item.permalink ?? expandedUrl;
-  const price = typeof item.price === 'number' ? item.price : 0;
-  const originalPrice =
-    typeof item.original_price === 'number' && item.original_price > price
-      ? item.original_price
-      : undefined;
+  // Fetch HTML completo do produto (com cookie da esposa). ML serve ~1MB.
+  const htmlRes = await fetch(expandedUrl, {
+    headers: buildBrowserHeaders(cfg.cookie),
+    redirect: 'follow',
+  });
+  if (htmlRes.status === 401 || htmlRes.status === 403) {
+    throw new Error(
+      `Cookie do Mercado Livre EXPIROU (HTTP ${htmlRes.status} no fetch HTML) — renove em /settings → Mercado Livre antes de enviar`,
+    );
+  }
+  if (!htmlRes.ok) {
+    throw new Error(`ML retornou HTTP ${htmlRes.status} pra ${itemId} — tenta de novo daqui pouco`);
+  }
+  const html = await htmlRes.text();
+
+  // Sanity check: skeleton tem ~14KB, página completa ~1MB. Se < 50KB, cookie
+  // não foi aceito e o ML serviu skeleton (sem dados).
+  if (html.length < 50_000) {
+    throw new Error(
+      `ML serviu HTML incompleto (${Math.round(html.length / 1024)}KB) pra ${itemId} — cookie pode estar inválido. Renove em /settings → Mercado Livre`,
+    );
+  }
+
+  const parsed = parseMlProductFromHtml(html);
+  if (!parsed.price || parsed.price <= 0) {
+    throw new Error(`Não consegui extrair o preço do produto ${itemId} — pode estar fora de estoque`);
+  }
+
   const discountPct =
-    originalPrice && price > 0
-      ? Number((((originalPrice - price) / originalPrice) * 100).toFixed(2))
+    parsed.originalPrice && parsed.price > 0
+      ? Number((((parsed.originalPrice - parsed.price) / parsed.originalPrice) * 100).toFixed(2))
       : undefined;
 
-  // Gera shortlink meli.la com a tag dela. HARD-FAIL se não conseguir —
-  // nunca despachar URL sem affiliate link (perde comissão silenciosamente).
-  // Erros traduzidos pra mensagens acionáveis na UI.
+  // Gera meli.la com a tag dela. HARD-FAIL se cookie/produto bloquear —
+  // nunca dispatchar URL sem affiliate link (perde comissão silenciosamente).
   let affiliateUrl: string;
   try {
-    affiliateUrl = await generateMercadoLivreShortlink(permalink);
+    affiliateUrl = await generateMercadoLivreShortlink(expandedUrl);
   } catch (err) {
     if (err instanceof MercadoLivrePanelError) {
       logger.warn(
@@ -138,7 +250,6 @@ export async function enrichMercadoLivreFromUrl(
           'Mercado Livre bloqueou o painel temporariamente (rate limit) — tenta de novo daqui 1h',
         );
       }
-      // unknown/parse — geralmente produto fora do programa de afiliados
       throw new Error(
         `Produto ${itemId} não gerou link de afiliado (provavelmente fora do programa ML). Envia manual pelo WhatsApp se quiser — aqui não vai sair sem comissão.`,
       );
@@ -147,27 +258,25 @@ export async function enrichMercadoLivreFromUrl(
   }
 
   logger.info(
-    { itemId, hasAffiliate: affiliateUrl !== permalink, price },
-    'ml enrich: matched via public api',
+    { itemId, price: parsed.price, hasDiscount: !!discountPct, htmlSize: html.length },
+    'ml enrich: matched via html scrape',
   );
 
   return {
     externalId: itemId,
-    title: item.title ?? `Produto ML ${itemId}`,
-    imageUrl: pickImage(item),
-    price,
-    originalPrice,
+    title: parsed.title,
+    description: parsed.description,
+    imageUrl: parsed.imageUrl,
+    price: parsed.price,
+    originalPrice: parsed.originalPrice,
     discountPct,
-    salesCount: item.sold_quantity,
-    url: permalink,
+    url: expandedUrl,
     affiliateUrl,
     raw: {
       itemId,
-      sellerId: item.seller_id,
-      categoryId: item.category_id,
-      condition: item.condition,
-      importedVia: 'ml-public-api',
+      htmlSize: html.length,
+      importedVia: 'ml-html-scrape',
     } as Record<string, unknown>,
-    source: 'public-api',
+    source: 'html-scrape',
   };
 }
