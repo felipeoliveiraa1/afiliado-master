@@ -1174,7 +1174,14 @@ export async function buildServer() {
             }
           }
 
-          // Amazon já vem com tag no affiliateUrl (do enrich); Shopee gera shortlink se faltar
+          // Amazon já vem com tag no affiliateUrl (do enrich); Shopee gera shortlink se faltar;
+          // ML hard-fail se vier sem affiliateUrl (preview já bloqueia, isso é só rede de segurança
+          // pra não dispatchar permalink puro do ML e perder comissão silenciosamente)
+          if (p.platform === 'MERCADOLIVRE' && !p.affiliateUrl) {
+            throw new Error(
+              `Produto ML ${p.externalId} sem link de afiliado — cookie ML pode ter expirado entre preview e envio. Refaça o preview.`,
+            );
+          }
           const affiliateUrl =
             p.affiliateUrl ?? (p.platform === 'SHOPEE' ? await generateShopeeShortLink(p.url) : p.url);
 

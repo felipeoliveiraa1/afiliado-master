@@ -111,21 +111,39 @@ export async function enrichMercadoLivreFromUrl(
       ? Number((((originalPrice - price) / originalPrice) * 100).toFixed(2))
       : undefined;
 
-  // Tenta gerar shortlink meli.la com a tag dela. Se cookie estiver ativo,
-  // retorna URL curtinha com tracking. Se falhar, cai pra URL original
-  // (sem comissão, mas mensagem ainda dispara).
-  let affiliateUrl = permalink;
+  // Gera shortlink meli.la com a tag dela. HARD-FAIL se não conseguir —
+  // nunca despachar URL sem affiliate link (perde comissão silenciosamente).
+  // Erros traduzidos pra mensagens acionáveis na UI.
+  let affiliateUrl: string;
   try {
     affiliateUrl = await generateMercadoLivreShortlink(permalink);
   } catch (err) {
     if (err instanceof MercadoLivrePanelError) {
       logger.warn(
         { itemId, kind: err.kind, msg: err.message },
-        'ml enrich: falha gerando shortlink afiliado — usando permalink puro',
+        'ml enrich: shortlink falhou — bloqueando dispatch',
       );
-    } else {
-      logger.warn({ itemId, err }, 'ml enrich: erro inesperado no shortlink');
+      if (err.kind === 'auth') {
+        throw new Error(
+          'Cookie do Mercado Livre EXPIROU — renove em /settings → Mercado Livre antes de enviar (senão a comissão não cai)',
+        );
+      }
+      if (err.kind === 'config') {
+        throw new Error(
+          'Mercado Livre não configurado — configure cookie em /settings → Mercado Livre antes de enviar',
+        );
+      }
+      if (err.kind === 'rate') {
+        throw new Error(
+          'Mercado Livre bloqueou o painel temporariamente (rate limit) — tenta de novo daqui 1h',
+        );
+      }
+      // unknown/parse — geralmente produto fora do programa de afiliados
+      throw new Error(
+        `Produto ${itemId} não gerou link de afiliado (provavelmente fora do programa ML). Envia manual pelo WhatsApp se quiser — aqui não vai sair sem comissão.`,
+      );
     }
+    throw err;
   }
 
   logger.info(
