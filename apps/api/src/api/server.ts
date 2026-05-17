@@ -1104,7 +1104,7 @@ export async function buildServer() {
                 salesCount: z.number().int().optional(),
                 commissionPct: z.number().optional(),
                 affiliateUrl: z.string().url().optional(),
-                platform: z.enum(['SHOPEE', 'AMAZON']).optional().default('SHOPEE'),
+                platform: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']).optional().default('SHOPEE'),
               }),
             )
             .min(1)

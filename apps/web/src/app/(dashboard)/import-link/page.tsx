@@ -23,8 +23,8 @@ type PreviewProduct = {
   salesCount?: number;
   url: string;
   affiliateUrl?: string;
-  source?: 'graphql' | 'apify';
-  platform?: 'SHOPEE' | 'AMAZON';
+  source?: 'graphql' | 'apify' | 'public-api';
+  platform?: 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE';
 };
 
 type PreviewResp = {
@@ -277,7 +277,7 @@ export default function ImportLinkPage(): React.ReactElement {
     <div className="space-y-6 max-w-4xl mx-auto">
       <PageHeader
         title="Enviar Link Agora"
-        description="Cole um link Shopee de produto — sistema puxa foto, preço, cupom e envia no grupo na hora"
+        description="Cole um link Shopee, Amazon ou Mercado Livre — sistema puxa foto, preço, cupom e envia no grupo na hora"
       />
 
       <div className="flex gap-2 border rounded-lg p-1 w-fit">
@@ -335,7 +335,7 @@ export default function ImportLinkPage(): React.ReactElement {
             <CardContent className="space-y-3">
               <div className="flex gap-2">
                 <Input
-                  placeholder="https://shopee.com.br/..."
+                  placeholder="https://shopee.com.br/...  ou  amazon.com.br/dp/...  ou  mercadolivre.com.br/MLB-..."
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   className="flex-1 text-base"
@@ -377,7 +377,7 @@ export default function ImportLinkPage(): React.ReactElement {
                       </div>
                     ) : null}
                     <a href={preview.product.url} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline inline-flex items-center gap-1 pt-1">
-                      ver no Shopee <ExternalLink className="h-3 w-3" />
+                      ver no {preview.product.platform === 'AMAZON' ? 'Amazon' : preview.product.platform === 'MERCADOLIVRE' ? 'Mercado Livre' : 'Shopee'} <ExternalLink className="h-3 w-3" />
                     </a>
                   </div>
                 </div>
@@ -413,7 +413,7 @@ export default function ImportLinkPage(): React.ReactElement {
             </CardHeader>
             <CardContent className="space-y-3">
               <Textarea
-                placeholder={'https://shopee.com.br/...\nhttps://s.shopee.com.br/...\nhttps://shopee.com.br/...'}
+                placeholder={'https://shopee.com.br/...\nhttps://amazon.com.br/dp/B0...\nhttps://mercadolivre.com.br/MLB-...\nhttps://meli.la/...'}
                 value={batchUrls}
                 onChange={(e) => setBatchUrls(e.target.value)}
                 rows={8}
