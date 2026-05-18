@@ -72,8 +72,22 @@ function pickPrice(item: ApifyAmazonItem): number | undefined {
 }
 
 /**
+ * Cache por ASIN — garante que múltiplos cliques em Buscar/Enviar com a MESMA
+ * URL (mesmo com query strings diferentes tipo ?ref=, ?tag=, etc) NÃO disparem
+ * runs duplicadas no Apify ($0.01 cada).
+ *
+ * TTL alinhado com o cache de URL no url_enrich.ts (5 min cobre o fluxo
+ * típico preview → revisar → enviar).
+ */
+const ASIN_CACHE = new Map<string, { product: EnrichedAmazonProduct; expiresAt: number }>();
+const ASIN_TTL_MS = 5 * 60 * 1000;
+
+/**
  * Enriquece URL Amazon → produto completo via Apify scraper.
  * Adiciona ?tag=PARTNER_TAG (configurado em settings.marketplaces.amazonAffiliateTag).
+ *
+ * Cache por ASIN garante 1 chamada Apify por produto por 5min, independente
+ * de quantos cliques o frontend dispare ou de variações na URL (ref, tag, etc).
  */
 export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonProduct> {
   url = await expandShortlink(url);
@@ -81,6 +95,13 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
   if (!asin) {
     throw new Error('URL Amazon inválida — não consegui extrair ASIN (esperado /dp/ASIN ou /gp/product/ASIN)');
   }
+
+  const cached = ASIN_CACHE.get(asin);
+  if (cached && cached.expiresAt > Date.now()) {
+    logger.info({ asin }, 'amazon enrich: cache hit — Apify call skipped');
+    return cached.product;
+  }
+
   if (!env.APIFY_TOKEN) {
     throw new Error('APIFY_TOKEN não configurado — configure em /settings → Marketplaces');
   }
@@ -129,7 +150,7 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
 
   logger.info({ asin, hasTag: !!partnerTag, price, unitPrice }, 'amazon enrich: matched via apify scraper');
 
-  return {
+  const result: EnrichedAmazonProduct = {
     externalId: asin,
     title: item.title ?? `Produto Amazon ${asin}`,
     description: item.description,
@@ -155,4 +176,13 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
     } as Record<string, unknown>,
     source: 'apify',
   };
+
+  // Cap simples no cache: 500 entradas com FIFO. Footprint trivial (~500KB).
+  if (ASIN_CACHE.size >= 500) {
+    const firstKey = ASIN_CACHE.keys().next().value;
+    if (firstKey) ASIN_CACHE.delete(firstKey);
+  }
+  ASIN_CACHE.set(asin, { product: result, expiresAt: Date.now() + ASIN_TTL_MS });
+
+  return result;
 }
