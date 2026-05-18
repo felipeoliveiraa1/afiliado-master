@@ -423,6 +423,7 @@ export function startWorkers() {
       }
       const result = await executeWhatsappDispatch(job.data.dispatchId, {
         bypassWindow: job.data.bypassWindow,
+        bypassDailyLimit: job.data.bypassDailyLimit,
       });
       if (result.kind === 'RESCHEDULED') {
         // Adiciona jitter de 0-90min no nextOpenAt — evita que TODOS os jobs

@@ -642,7 +642,13 @@ export async function buildServer() {
         });
         await dispatchQueue.add(
           'dispatch',
-          { dispatchId: d.id, bypassWindow: req.body.bypassWindow },
+          {
+            dispatchId: d.id,
+            bypassWindow: req.body.bypassWindow,
+            // Dispatch manual via dashboard = intenção explícita do usuário,
+            // bypassa daily limit (anti-ban) igual /import-link/dispatch
+            bypassDailyLimit: req.body.bypassWindow,
+          },
           { delay: delayMs },
         );
         dispatchIds.push(d.id);
@@ -1008,7 +1014,7 @@ export async function buildServer() {
           });
           await dispatchQueue.add(
             'dispatch',
-            { dispatchId: d.id, bypassWindow: true },
+            { dispatchId: d.id, bypassWindow: true, bypassDailyLimit: true },
             { delay: 0 },
           );
           dispatchIds.push(d.id);
@@ -1242,7 +1248,7 @@ export async function buildServer() {
             });
             await dispatchQueue.add(
               'dispatch',
-              { dispatchId: d.id, bypassWindow: true },
+              { dispatchId: d.id, bypassWindow: true, bypassDailyLimit: true },
               { delay: delaySec * 1000 },
             );
             results.push({ externalId: p.externalId, ok: true, dispatchId: d.id });
@@ -1464,7 +1470,7 @@ export async function buildServer() {
               });
               await dispatchQueue.add(
                 'dispatch',
-                { dispatchId: d.id, bypassWindow: true },
+                { dispatchId: d.id, bypassWindow: true, bypassDailyLimit: true },
                 { delay: scheduledOffset * 1000 },
               );
               dispatchIds.push(d.id);

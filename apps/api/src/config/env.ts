@@ -61,7 +61,7 @@ export const env = cleanEnv(process.env, {
   DISPATCH_MAX_INTERVAL: num({ default: 180 }),
   DISPATCH_DAILY_LIMIT_PER_INSTANCE: num({ default: 300 }),
   DISPATCH_WINDOW_START: num({ default: 8 }),
-  DISPATCH_WINDOW_END: num({ default: 22 }),
+  DISPATCH_WINDOW_END: num({ default: 23 }),
 
 
   WEB_ORIGIN_URL: str({ default: 'http://localhost:3001' }),

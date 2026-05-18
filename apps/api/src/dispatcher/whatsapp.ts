@@ -74,7 +74,7 @@ type LoadedDispatch = Dispatch & { offer: Offer; channel: Channel; campaign?: Ca
  */
 export async function executeWhatsappDispatch(
   dispatchId: string,
-  opts: { bypassWindow?: boolean } = {},
+  opts: { bypassWindow?: boolean; bypassDailyLimit?: boolean } = {},
 ): Promise<DispatchExecutionResult> {
   const dispatch = await prisma.dispatch.findUnique({
     where: { id: dispatchId },
@@ -106,9 +106,13 @@ export async function executeWhatsappDispatch(
     }
   }
 
-  const dailyLimitHit = await applyDailyLimit(dispatch, antiban.dailyLimitPerInstance);
-  if (dailyLimitHit) {
-    return { kind: 'SKIPPED', dispatchId, reason: 'daily limit' };
+  // Daily limit é defesa anti-ban pro cron automático. Quando o usuário clica
+  // "Enviar Agora" (bypassDailyLimit:true), é intenção explícita — passa direto.
+  if (!opts.bypassDailyLimit) {
+    const dailyLimitHit = await applyDailyLimit(dispatch, antiban.dailyLimitPerInstance);
+    if (dailyLimitHit) {
+      return { kind: 'SKIPPED', dispatchId, reason: 'daily limit' };
+    }
   }
 
   const missingAffiliate = await rejectIfMissingAffiliateUrl(dispatch);
@@ -118,7 +122,9 @@ export async function executeWhatsappDispatch(
 
   const fullText = await buildMessageText(dispatch);
 
-  return await sendAndPersist(dispatch, fullText, antiban);
+  return await sendAndPersist(dispatch, fullText, antiban, {
+    bypassDailyLimit: opts.bypassDailyLimit,
+  });
 }
 
 export function checkDispatchWindow(
@@ -295,6 +301,7 @@ async function sendAndPersist(
   dispatch: LoadedDispatch,
   fullText: string,
   antiban: { typingMinSec: number; typingMaxSec: number },
+  opts: { bypassDailyLimit?: boolean } = {},
 ): Promise<DispatchExecutionResult> {
   if (!dispatch.channel.whatsappGroupId) {
     await prisma.dispatch.update({
@@ -324,10 +331,14 @@ async function sendAndPersist(
       where: { id: dispatch.id },
       data: { status: 'SENT', sentAt: new Date(), externalMsgId },
     });
-    await prisma.channel.update({
-      where: { id: dispatch.channel.id },
-      data: { dailySent: { increment: 1 } },
-    });
+    // Dispatch manual (bypassDailyLimit:true) NÃO conta no cap diário —
+    // intenção do usuário não deve estourar a defesa anti-ban automática.
+    if (!opts.bypassDailyLimit) {
+      await prisma.channel.update({
+        where: { id: dispatch.channel.id },
+        data: { dailySent: { increment: 1 } },
+      });
+    }
     return { kind: 'SENT', dispatchId: dispatch.id, externalMsgId };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);

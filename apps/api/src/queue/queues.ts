@@ -5,7 +5,12 @@ import type { SourceKind } from '@prisma/client';
 
 export type FetchJob = { sourceKind: SourceKind; limit?: number };
 export type CurateJob = { offerId: string; channelKind: 'WHATSAPP_GROUP' | 'TELEGRAM_CHANNEL' };
-export type DispatchJob = { dispatchId: string; bypassWindow?: boolean };
+export type DispatchJob = {
+  dispatchId: string;
+  bypassWindow?: boolean;
+  /** Bypassa o cap diário anti-ban — usado por dispatches manuais ("Enviar Agora") onde a intenção do usuário > defesa anti-ban automática do cron */
+  bypassDailyLimit?: boolean;
+};
 export type ShopeeShortlinkJob = { offerId: string };
 export type MercadoLivreShortlinkJob = { offerId: string };
 
