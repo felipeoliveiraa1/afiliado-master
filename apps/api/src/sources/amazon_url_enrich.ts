@@ -82,6 +82,12 @@ function pickPrice(item: ApifyAmazonItem): number | undefined {
 const ASIN_CACHE = new Map<string, { product: EnrichedAmazonProduct; expiresAt: number }>();
 const ASIN_TTL_MS = 5 * 60 * 1000;
 
+// Negative cache — quando Apify retorna vazio pra um ASIN, marca por 1 min
+// pra evitar a esposa pagar $0.01 toda vez que clicar Buscar de novo no mesmo
+// link inválido (indisponível / bloqueado / produto fora do ar).
+const ASIN_FAIL_CACHE = new Map<string, number>();
+const ASIN_FAIL_TTL_MS = 60 * 1000;
+
 /**
  * Enriquece URL Amazon → produto completo via Apify scraper.
  * Adiciona ?tag=PARTNER_TAG (configurado em settings.marketplaces.amazonAffiliateTag).
@@ -100,6 +106,15 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
   if (cached && cached.expiresAt > Date.now()) {
     logger.info({ asin }, 'amazon enrich: cache hit — Apify call skipped');
     return cached.product;
+  }
+
+  // Negative cache — se Apify falhou nos últimos 60s pra esse ASIN, não
+  // chamar de novo. Evita gastar $0.01 em retries do mesmo URL inválido.
+  const failExpiry = ASIN_FAIL_CACHE.get(asin);
+  if (failExpiry && failExpiry > Date.now()) {
+    throw new Error(
+      `Amazon: produto ${asin} acabou de falhar no scraper (Apify retornou vazio). Pode estar indisponível ou bloqueado. Tenta de novo em ~1 min, ou troca de produto.`,
+    );
   }
 
   if (!env.APIFY_TOKEN) {
@@ -125,6 +140,17 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
   }
 
   const price = pickPrice(item);
+
+  // Valida resultado — Apify às vezes retorna item vazio quando o produto
+  // está indisponível, fora de estoque ou bloqueado por anti-bot. Sem isso
+  // a esposa pagava $0.01 e via "Produto Amazon B0XXX" com R$ 0.
+  if (!item.title?.trim() || !price || price <= 0) {
+    // Marca no negative cache pra retries não pagarem de novo no próximo 1 min
+    ASIN_FAIL_CACHE.set(asin, Date.now() + ASIN_FAIL_TTL_MS);
+    throw new Error(
+      `Amazon: produto ${asin} retornou dados incompletos (sem título ou preço). Pode estar indisponível, fora de estoque ou Apify bloqueou. Abre a URL no navegador pra confirmar e tenta de novo em ~1 min.`,
+    );
+  }
   // initial_price (preço riscado) vem em buybox_prices ou na raiz. list_price é fallback.
   const originalPrice =
     item.buybox_prices?.initial_price ??
