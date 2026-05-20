@@ -25,6 +25,7 @@ type PreviewProduct = {
   affiliateUrl?: string;
   source?: 'graphql' | 'apify' | 'html-scrape';
   platform?: 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE';
+  raw?: { isOfficialMall?: boolean } & Record<string, unknown>;
 };
 
 type PreviewResp = {
@@ -235,7 +236,25 @@ export default function ImportLinkPage(): React.ReactElement {
     mutationFn: () => {
       const products = (batchPreview?.items ?? [])
         .filter((i) => i.ok && i.product && batchSelected.has(i.product.externalId))
-        .map((i) => i.product!);
+        .map((i) => {
+          const p = i.product!;
+          // Propaga isOfficialMall do raw do enrich pra o backend conseguir
+          // aplicar o cupom 20% OFF Lojas Oficiais corretamente no dispatch.
+          return {
+            externalId: p.externalId,
+            title: p.title,
+            imageUrl: p.imageUrl,
+            price: p.price,
+            originalPrice: p.originalPrice,
+            discountPct: p.discountPct,
+            rating: p.rating,
+            salesCount: p.salesCount,
+            url: p.url,
+            affiliateUrl: p.affiliateUrl,
+            platform: p.platform,
+            isOfficialMall: Boolean(p.raw?.isOfficialMall),
+          };
+        });
       return clientFetch<BatchDispatchResp>('/import-link/batch-dispatch', {
         method: 'POST',
         body: { products, intervalSec: batchIntervalSec, couponOverride: batchCoupon },
@@ -525,6 +544,11 @@ export default function ImportLinkPage(): React.ReactElement {
                         )}
                         <div className="min-w-0 flex-1 text-xs">
                           <div className="line-clamp-2 font-medium">{p.title}</div>
+                          {p.raw?.isOfficialMall ? (
+                            <div className="mt-0.5 inline-block rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase text-amber-900">
+                              🏪 Mall · 20% OFF
+                            </div>
+                          ) : null}
                           <div className="mt-0.5 font-semibold text-emerald-600">
                             R$ {p.price.toFixed(2)}
                           </div>

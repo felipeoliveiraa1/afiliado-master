@@ -1179,6 +1179,9 @@ export async function buildServer() {
                 commissionPct: z.number().optional(),
                 affiliateUrl: z.string().url().optional(),
                 platform: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']).optional().default('SHOPEE'),
+                // Flag Shopee Mall propagado do preview pro dispatch — sem isso
+                // o cupom officialOnly:true seria filtrado fora indevidamente.
+                isOfficialMall: z.boolean().optional(),
               }),
             )
             .min(1)
@@ -1228,9 +1231,12 @@ export async function buildServer() {
           let couponCode: string | undefined;
           if (p.platform === 'SHOPEE') {
             if (req.body.couponOverride === undefined) {
-              let best: { code: string; discount: number } | null = null;
-              for (const c of activeCoupons) {
-                if (!c.code) continue;
+              // Filtra cupons officialOnly respeitando o flag Mall propagado do preview.
+              const eligibleHere = activeCoupons.filter(
+                (c) => !c.officialOnly || p.isOfficialMall,
+              );
+              let best: { code: string | null; discount: number } | null = null;
+              for (const c of eligibleHere) {
                 const r = applyCoupon(p.price, {
                   code: c.code,
                   type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
@@ -1242,7 +1248,9 @@ export async function buildServer() {
                   best = { code: c.code, discount: r.discountValue };
                 }
               }
-              couponCode = best?.code;
+              // Só seta couponCode se for cupom DIGITÁVEL (com code). Auto-cupons
+              // (sem code) são re-resolvidos no dispatch worker via masterLink.
+              couponCode = best?.code ?? undefined;
             } else if (req.body.couponOverride !== '') {
               couponCode = req.body.couponOverride;
             }
@@ -1258,6 +1266,15 @@ export async function buildServer() {
           }
           const affiliateUrl =
             p.affiliateUrl ?? (p.platform === 'SHOPEE' ? await generateShopeeShortLink(p.url) : p.url);
+
+          // CRÍTICO: propaga isOfficialMall pro raw. Sem isso, o dispatcher
+          // worker (whatsapp.ts) lê raw.isOfficialMall=undefined e filtra
+          // fora os cupons officialOnly (ex: 20% OFF Lojas Oficiais).
+          const rawObj: Record<string, unknown> = {
+            importedFrom: 'batch-link',
+            importedAt: new Date().toISOString(),
+          };
+          if (p.isOfficialMall) rawObj.isOfficialMall = true;
 
           const offer = await prisma.offer.upsert({
             where: { sourceId_externalId: { sourceId: productSource.id, externalId: p.externalId } },
@@ -1276,7 +1293,7 @@ export async function buildServer() {
               url: p.url,
               affiliateUrl,
               score: 0.99,
-              raw: { importedFrom: 'batch-link', importedAt: new Date().toISOString() } as object,
+              raw: rawObj as object,
               fetchedAt: new Date(),
             },
             update: {
@@ -1288,6 +1305,7 @@ export async function buildServer() {
               coupon: couponCode,
               affiliateUrl,
               score: 0.99,
+              raw: rawObj as object,
               fetchedAt: new Date(),
             },
           });
