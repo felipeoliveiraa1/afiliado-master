@@ -2585,13 +2585,18 @@ export async function buildServer() {
         orderBy: { createdAt: 'desc' },
       });
       const previewLink = offer.affiliateUrl ?? offer.url;
+      // Banner global (ex: "ESQUENTA 6.6 🚨") sobrepõe o hook AI quando setado
+      // em /settings → Marketplaces → messageBanner. Mesma lógica do dispatcher.
+      const mkt = await getSettingsSection<{ messageBanner?: string }>('marketplaces');
+      const banner = mkt.messageBanner?.trim();
+      const hookLine = banner || variant?.caption || null;
       const text = formatOfferMessage({
         title: offer.title,
         price: Number(offer.price),
         originalPrice: offer.originalPrice ? Number(offer.originalPrice) : null,
         installments: offer.installments,
         couponCode: offer.coupon,
-        hookLine: variant?.caption ?? null,
+        hookLine,
         link: previewLink,
       });
       return {
