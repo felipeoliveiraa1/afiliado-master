@@ -280,10 +280,31 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
   }
 
   const instagramHandle = process.env.INSTAGRAM_HANDLE || 'promodahelena.oficial';
-  // Banner global (ex: "ESQUENTA 6.6 🚨") sobrepõe o hook AI quando setado
-  // em /settings → Marketplaces → messageBanner. Vazio = volta ao hook AI.
-  const banner = (mkt as { messageBanner?: string }).messageBanner?.trim();
-  const hookLine = banner || variant?.caption || null;
+  // Banner + footer POR PLATAFORMA — Shopee tem ESQUENTA 6.6, Amazon pode ter
+  // "CUPOM NOVO MUNDIAL", ML outro. Fallback no messageBanner legacy (global)
+  // pra retrocompatibilidade.
+  const mktExt = mkt as {
+    messageBanner?: string;
+    messageBannerShopee?: string;
+    messageBannerAmazon?: string;
+    messageBannerMercadolivre?: string;
+    messageFooterShopee?: string;
+    messageFooterAmazon?: string;
+    messageFooterMercadolivre?: string;
+  };
+  const bannerByKind: Record<string, string | undefined> = {
+    SHOPEE: mktExt.messageBannerShopee,
+    AMAZON: mktExt.messageBannerAmazon,
+    MERCADOLIVRE: mktExt.messageBannerMercadolivre,
+  };
+  const footerByKind: Record<string, string | undefined> = {
+    SHOPEE: mktExt.messageFooterShopee,
+    AMAZON: mktExt.messageFooterAmazon,
+    MERCADOLIVRE: mktExt.messageFooterMercadolivre,
+  };
+  const banner =
+    (source?.kind ? bannerByKind[source.kind]?.trim() : '') || mktExt.messageBanner?.trim();
+  const footer = source?.kind ? footerByKind[source.kind]?.trim() : '';
   return formatOfferMessage({
     title: dispatch.offer.title,
     price,
@@ -295,7 +316,11 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     couponDiscountLabel,
     priceWithCoupon,
     pricePix,
-    hookLine,
+    // Banner multi-linha (preserva formatação) sobrepõe o hook AI. Se vazio,
+    // hook AI ainda aparece (variant.caption uppercased).
+    bannerBlock: banner || null,
+    hookLine: banner ? null : variant?.caption ?? null,
+    footerLine: footer,
     link: trackingLink,
     instagramHandle,
   });

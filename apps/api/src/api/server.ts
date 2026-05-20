@@ -2585,18 +2585,40 @@ export async function buildServer() {
         orderBy: { createdAt: 'desc' },
       });
       const previewLink = offer.affiliateUrl ?? offer.url;
-      // Banner global (ex: "ESQUENTA 6.6 🚨") sobrepõe o hook AI quando setado
-      // em /settings → Marketplaces → messageBanner. Mesma lógica do dispatcher.
-      const mkt = await getSettingsSection<{ messageBanner?: string }>('marketplaces');
-      const banner = mkt.messageBanner?.trim();
-      const hookLine = banner || variant?.caption || null;
+      // Banner+footer por plataforma (Shopee/Amazon/ML) — mesma lógica do dispatcher
+      const mkt = await getSettingsSection<{
+        messageBanner?: string;
+        messageBannerShopee?: string;
+        messageBannerAmazon?: string;
+        messageBannerMercadolivre?: string;
+        messageFooterShopee?: string;
+        messageFooterAmazon?: string;
+        messageFooterMercadolivre?: string;
+      }>('marketplaces');
+      const offerSource = await prisma.source.findUnique({ where: { id: offer.sourceId } });
+      const bannerByKind: Record<string, string | undefined> = {
+        SHOPEE: mkt.messageBannerShopee,
+        AMAZON: mkt.messageBannerAmazon,
+        MERCADOLIVRE: mkt.messageBannerMercadolivre,
+      };
+      const footerByKind: Record<string, string | undefined> = {
+        SHOPEE: mkt.messageFooterShopee,
+        AMAZON: mkt.messageFooterAmazon,
+        MERCADOLIVRE: mkt.messageFooterMercadolivre,
+      };
+      const banner =
+        (offerSource?.kind ? bannerByKind[offerSource.kind]?.trim() : '') ||
+        mkt.messageBanner?.trim();
+      const footer = offerSource?.kind ? footerByKind[offerSource.kind]?.trim() : '';
       const text = formatOfferMessage({
         title: offer.title,
         price: Number(offer.price),
         originalPrice: offer.originalPrice ? Number(offer.originalPrice) : null,
         installments: offer.installments,
         couponCode: offer.coupon,
-        hookLine,
+        bannerBlock: banner || null,
+        hookLine: banner ? null : variant?.caption ?? null,
+        footerLine: footer,
         link: previewLink,
       });
       return {

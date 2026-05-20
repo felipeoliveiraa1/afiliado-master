@@ -89,10 +89,19 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     // a Shopee bloqueia com 403. Pegue do DevTools Network, header Cookie.
     // Validade típica: 7-14 dias antes de expirar.
     shopeeCookie: '',
-    // Banner global no topo de toda mensagem do WhatsApp (ex: "ESQUENTA 6.6 🚨").
-    // Quando setado, SUBSTITUI o hook AI (variant.caption). Apaga ('') pra
-    // voltar ao hook AI padrão.
+    // Banner global no topo de toda mensagem (legacy — aplica a TODA source).
+    // Use messageBannerShopee/Amazon/Mercadolivre pra ter banners por plataforma.
     messageBanner: '',
+    // Banner por plataforma — sobrescreve o legacy messageBanner.
+    // Setado em /settings → Marketplaces. Substitui o hook AI (variant.caption).
+    messageBannerShopee: '',
+    messageBannerAmazon: '',
+    messageBannerMercadolivre: '',
+    // Footer por plataforma — texto adicionado no final da mensagem (acima
+    // do "Siga nosso perfil"). Bom pra "Veja todas as ofertas aqui: <link>".
+    messageFooterShopee: '',
+    messageFooterAmazon: '',
+    messageFooterMercadolivre: '',
   },
   antiban: {
     minIntervalSec: env.DISPATCH_MIN_INTERVAL,

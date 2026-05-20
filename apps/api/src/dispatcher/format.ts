@@ -89,6 +89,10 @@ export type FormatOfferInput = {
   /** Preço unitário display (ex: "R$0,87 / unidade") — vem do Amazon scraper. */
   readonly unitPrice?: string | null;
   readonly hookLine?: string | null;
+  /** Banner multi-linha por plataforma (ex: "ESQUENTA 6.6 🚨" ou "🚨 CUPOM MUNDIAL... \nLink master..."). Preserva formatação exata, SEM uppercase/truncate. Quando setado, hookLine é ignorado. */
+  readonly bannerBlock?: string | null;
+  /** Footer custom por plataforma (ex: "Todas ofertas Semana do Bebê: amzn.to/X"). Renderiza entre cupom e Instagram. */
+  readonly footerLine?: string | null;
   readonly link: string;
   readonly instagramHandle?: string | null;
 };
@@ -96,30 +100,35 @@ export type FormatOfferInput = {
 export function formatOfferMessage(input: FormatOfferInput): string {
   const sections: string[] = [];
 
-  // 1. Hook (caps lock)
-  if (input.hookLine?.trim()) {
+  // 1. Banner multi-linha (preservado AS-IS — sem uppercase/truncate)
+  //    quando setado por plataforma. Substitui o hook AI.
+  if (input.bannerBlock?.trim()) {
+    sections.push(input.bannerBlock.trim());
+  } else if (input.hookLine?.trim()) {
+    // 1b. Hook AI legacy: ALL CAPS, single line, 120 chars max
     sections.push(input.hookLine.trim().replace(/[\r\n]+/g, ' ').slice(0, 120).toUpperCase());
   }
 
   // 2. Título
   sections.push(`🛍️ ${input.title.trim()}`);
 
-  // 3. Bloco de preços (com riscado quando há original ou cupom)
+  // 3. Bloco de preços — destaques em negrito (WhatsApp: *bold*, ~strikethrough~)
   const priceLines: string[] = [];
   const showOriginal =
     typeof input.originalPrice === 'number' && input.originalPrice > input.price;
   const hasCouponPrice =
     typeof input.priceWithCoupon === 'number' && input.priceWithCoupon < input.price;
   if (showOriginal) {
-    priceLines.push(`De: ${formatBRL(input.originalPrice as number)} ❌`);
+    // ~R$ 160,80~ ❌  (strikethrough explícito + emoji)
+    priceLines.push(`De: ~${formatBRL(input.originalPrice as number)}~ ❌`);
   } else if (hasCouponPrice) {
-    // Sem original mas tem cupom → mostra preço normal como riscado
-    priceLines.push(`De: ${formatBRL(input.price)} ❌`);
+    priceLines.push(`De: ~${formatBRL(input.price)}~ ❌`);
   }
   if (hasCouponPrice) {
-    priceLines.push(`💸 Por: ${formatBRL(input.priceWithCoupon as number)} com cupom`);
+    // 💸 Por: *R$ 108,99* com cupom  (bold no preço final)
+    priceLines.push(`💸 Por: *${formatBRL(input.priceWithCoupon as number)}* com cupom`);
   } else {
-    priceLines.push(`💸 Por: ${formatBRL(input.price)}`);
+    priceLines.push(`💸 Por: *${formatBRL(input.price)}*`);
   }
   // Linha PIX — só renderiza se for menor que o preço final (com cupom ou normal)
   // Ex: "OU R$ 179,55 no PIX" abaixo da linha "Por: R$ 189,00"
@@ -146,16 +155,21 @@ export function formatOfferMessage(input: FormatOfferInput): string {
   //   - Automático (sem code, com redeemLink): padrão @achadinhoo_do_bebe
   //     "🎟️ USE O CUPOM R$X OFF| 𝐫𝐞𝐬𝐠𝐚𝐭𝐞 𝐨 𝐜𝐮𝐩𝐨𝐦 𝐚𝐪𝐮𝐢 ⤵️ <shortlink>"
   if (input.couponCode?.trim()) {
-    sections.push(`🎟️ Use o cupom ${input.couponCode.trim().toUpperCase()} onde tem cupom Shopee`);
+    // Code em bold WhatsApp pra destacar visualmente
+    sections.push(`🎟️ Use o cupom *${input.couponCode.trim().toUpperCase()}* onde tem cupom Shopee`);
   } else if (input.couponRedeemLink?.trim() && typeof input.couponDiscountLabel === 'string') {
-    // Unicode bold "resgate o cupom aqui"
     const redeem = '𝐫𝐞𝐬𝐠𝐚𝐭𝐞 𝐨 𝐜𝐮𝐩𝐨𝐦 𝐚𝐪𝐮𝐢';
     sections.push(
-      `🎟️ USE O CUPOM ${input.couponDiscountLabel}| ${redeem} ⤵️\n${input.couponRedeemLink.trim()}`,
+      `🎟️ USE O CUPOM *${input.couponDiscountLabel}*| ${redeem} ⤵️\n${input.couponRedeemLink.trim()}`,
     );
   }
 
-  // 6. Footer Instagram
+  // 6. Footer custom por plataforma (ex: "Todas as ofertas da Semana do Bebê: <link>")
+  if (input.footerLine?.trim()) {
+    sections.push(input.footerLine.trim());
+  }
+
+  // 7. Footer Instagram
   if (input.instagramHandle?.trim()) {
     const handle = input.instagramHandle.trim().replace(/^@/, '');
     sections.push(`Siga nosso perfil:\n@${handle}`);
