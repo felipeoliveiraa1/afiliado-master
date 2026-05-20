@@ -73,6 +73,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: '/sources/SHOPEE', label: 'Visão geral', icon: Tags },
       { href: '/sources/shopee/coupons', label: 'Cupons', icon: Tag },
+      { href: '/relatorios', label: '📊 Relatórios de vendas', icon: BarChart3 },
     ],
   },
   {
