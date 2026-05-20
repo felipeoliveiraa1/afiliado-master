@@ -277,6 +277,8 @@ export async function buildServer() {
       search?: string;
       // Ordenação: 'score' (default), 'recent' (fetchedAt desc), 'oldest', 'price-asc', 'price-desc'
       sort?: string;
+      // Filtro Shopee Mall — só lojas oficiais (raw.isOfficialMall=true)
+      onlyMall?: string;
     };
     const take = Math.min(100, Number(q.take ?? 20));
     const skip = Math.max(0, Number(q.skip ?? 0));
@@ -297,6 +299,11 @@ export async function buildServer() {
             : q.sort === 'price-desc'
               ? { price: 'desc' as const }
               : { score: 'desc' as const };
+    // Filtro "só Loja Oficial Mall" (Shopee). Pesquisa no JSON do raw via
+    // path filter do Prisma.
+    if (q.onlyMall === 'true') {
+      where.raw = { path: ['isOfficialMall'], equals: true };
+    }
     const [items, total] = await Promise.all([
       prisma.offer.findMany({
         take,
@@ -307,7 +314,15 @@ export async function buildServer() {
       }),
       prisma.offer.count({ where }),
     ]);
-    return { items, total, take, skip };
+    // Deriva isOfficialMall do raw pra UI mostrar badge sem precisar
+    // re-parsear o JSON inteiro no client.
+    const enriched = items.map((o) => ({
+      ...o,
+      isOfficialMall: Boolean(
+        (o.raw as { isOfficialMall?: boolean } | null)?.isOfficialMall,
+      ),
+    }));
+    return { items: enriched, total, take, skip };
   });
 
   // Contagem agregada por plataforma — usado pelo dashboard pra mostrar

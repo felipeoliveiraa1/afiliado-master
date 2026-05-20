@@ -35,6 +35,7 @@ type OfferRow = {
   coupon: string | null;
   installments: number | null;
   fetchedAt: string;
+  isOfficialMall: boolean;
   source: { kind: 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' };
 };
 
@@ -55,6 +56,7 @@ export default function OffersPage(): React.ReactElement {
     page: 1,
     search: '',
     sort: 'score',
+    onlyMall: false,
   });
   const [view, setView] = useState<'table' | 'grid'>('grid');
   const queryClient = useQueryClient();
@@ -65,6 +67,7 @@ export default function OffersPage(): React.ReactElement {
   if (filters.take) params.set('take', filters.take);
   if (filters.search.trim()) params.set('search', filters.search.trim());
   if (filters.sort && filters.sort !== 'score') params.set('sort', filters.sort);
+  if (filters.onlyMall) params.set('onlyMall', 'true');
   const skip = (filters.page - 1) * Number(filters.take);
   if (skip > 0) params.set('skip', String(skip));
 
@@ -225,6 +228,19 @@ export default function OffersPage(): React.ReactElement {
                 <option value="AMAZON">Amazon</option>
                 <option value="MERCADOLIVRE">Mercado Livre</option>
               </Select>
+              {filters.source === 'SHOPEE' || filters.source === '' ? (
+                <label className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filters.onlyMall}
+                    onChange={(e) =>
+                      setFilters((f) => ({ ...f, onlyMall: e.target.checked, page: 1 }))
+                    }
+                    className="size-3.5 accent-amber-600"
+                  />
+                  🏪 só Loja Oficial (Mall)
+                </label>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label>Score mínimo</Label>
@@ -252,7 +268,7 @@ export default function OffersPage(): React.ReactElement {
               <Button
                 variant="ghost"
                 onClick={() =>
-                  setFilters({ source: '', minScore: '', take: '50', page: 1, search: '', sort: 'score' })
+                  setFilters({ source: '', minScore: '', take: '50', page: 1, search: '', sort: 'score', onlyMall: false })
                 }
                 disabled={
                   !filters.source &&
@@ -546,7 +562,14 @@ function OfferEditableRow({
         </div>
       </td>
       <td className="px-4 py-3">
-        <SourceBadge kind={offer.source.kind} size="sm" />
+        <div className="flex flex-col items-start gap-1">
+          <SourceBadge kind={offer.source.kind} size="sm" />
+          {offer.isOfficialMall ? (
+            <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900">
+              🏪 Mall
+            </span>
+          ) : null}
+        </div>
       </td>
       <td className="px-4 py-3 text-right tabular-nums">
         <div className="font-semibold">{formatBRL(Number(offer.price))}</div>
@@ -757,8 +780,13 @@ function OfferGridCard({
             -{formatPct(offer.discountPct)}
           </span>
         ) : null}
-        <span className="absolute top-2 right-2">
+        <span className="absolute top-2 right-2 flex flex-col items-end gap-1">
           <SourceBadge kind={offer.source.kind} size="sm" />
+          {offer.isOfficialMall ? (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900 shadow">
+              🏪 Mall
+            </span>
+          ) : null}
         </span>
       </a>
       <div className="flex flex-1 flex-col gap-2 p-3">
