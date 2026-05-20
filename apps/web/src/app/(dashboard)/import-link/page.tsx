@@ -31,8 +31,22 @@ type PreviewResp = {
   ok: boolean;
   error?: string;
   product?: PreviewProduct;
-  bestCoupon?: { code: string; discount: number; finalPrice: number };
-  allCoupons?: Array<{ code: string; description: string }>;
+  bestCoupon?: {
+    code: string | null;
+    discount: number;
+    finalPrice: number;
+    discountText: string;
+    redeemLink?: string;
+  };
+  allCoupons?: Array<{
+    code: string | null;
+    description: string;
+    discountText: string;
+    minPurchase: number | null;
+    isAuto: boolean;
+    eligible: boolean;
+  }>;
+  isOfficialMall?: boolean;
 };
 
 type ShopPreviewResp = {
@@ -361,6 +375,11 @@ export default function ImportLinkPage(): React.ReactElement {
                   )}
                   <div className="flex-1 space-y-1">
                     <h3 className="font-semibold leading-tight">{preview.product.title}</h3>
+                    {preview.isOfficialMall ? (
+                      <div className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+                        🏪 Loja Oficial Shopee Mall
+                      </div>
+                    ) : null}
                     <div className="text-2xl font-bold text-emerald-600">R$ {preview.product.price.toFixed(2)}</div>
                     {preview.product.originalPrice ? (
                       <div className="text-sm text-muted-foreground line-through">De R$ {preview.product.originalPrice.toFixed(2)}</div>
@@ -372,8 +391,14 @@ export default function ImportLinkPage(): React.ReactElement {
                       <div className="text-sm text-yellow-600">★ {preview.product.rating.toFixed(1)}{preview.product.salesCount ? ` (${preview.product.salesCount} vendidos)` : ''}</div>
                     ) : null}
                     {preview.bestCoupon ? (
-                      <div className="text-sm text-emerald-700 font-medium">
-                        🎟️ Cupom {preview.bestCoupon.code}: -R$ {preview.bestCoupon.discount.toFixed(2)} → R$ {preview.bestCoupon.finalPrice.toFixed(2)}
+                      <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-sm text-emerald-800">
+                        <div className="font-semibold">
+                          🎟️ {preview.bestCoupon.code ? `Cupom ${preview.bestCoupon.code}` : preview.bestCoupon.discountText}
+                        </div>
+                        <div className="text-xs">
+                          -R$ {preview.bestCoupon.discount.toFixed(2)} → fica R$ {preview.bestCoupon.finalPrice.toFixed(2)}
+                          {preview.bestCoupon.code ? null : ' (resgate auto no link)'}
+                        </div>
                       </div>
                     ) : null}
                     <a href={preview.product.url} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline inline-flex items-center gap-1 pt-1">
@@ -383,19 +408,27 @@ export default function ImportLinkPage(): React.ReactElement {
                 </div>
 
                 {preview.allCoupons && preview.allCoupons.length > 0 ? (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Cupom Shopee</label>
-                    <select
-                      value={couponOverride ?? preview.bestCoupon?.code ?? ''}
-                      onChange={(e) => setCouponOverride(e.target.value)}
-                      className="w-full border rounded px-3 py-2 text-sm bg-background"
-                    >
-                      <option value="">— sem cupom —</option>
-                      {preview.allCoupons.map((c) => (
-                        <option key={c.code} value={c.code}>{c.code}{c.description ? ` — ${c.description}` : ''}{preview.bestCoupon?.code === c.code ? ' ✓' : ''}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <details className="rounded border bg-muted/30 px-3 py-2 text-xs">
+                    <summary className="cursor-pointer font-medium text-muted-foreground">
+                      Todos os cupons ativos ({preview.allCoupons.filter((c) => c.eligible).length} se aplicam a este produto)
+                    </summary>
+                    <ul className="mt-2 space-y-1">
+                      {preview.allCoupons.map((c, i) => {
+                        const faltaMin =
+                          c.minPurchase && preview.product!.price < c.minPurchase
+                            ? ` (falta R$ ${(c.minPurchase - preview.product!.price).toFixed(2)} no carrinho)`
+                            : '';
+                        return (
+                          <li key={i} className={c.eligible ? 'text-emerald-700' : 'text-muted-foreground'}>
+                            {c.eligible ? '✓' : '⚠'} <span className="font-medium">{c.discountText}</span>
+                            {c.minPurchase ? ` — min R$ ${c.minPurchase}` : ''}
+                            {c.code ? ` [${c.code}]` : ' [auto]'}
+                            {faltaMin}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </details>
                 ) : null}
 
                 <Button size="xl" className="w-full" disabled={dispatchMut.isPending} onClick={() => dispatchMut.mutate()}>

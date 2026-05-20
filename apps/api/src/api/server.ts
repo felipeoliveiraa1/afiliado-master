@@ -846,16 +846,47 @@ export async function buildServer() {
         const { enrichFromUrl } = await import('@/sources/url_enrich.js');
         const enriched = await enrichFromUrl(req.body.url);
         // Cupons só aplicam pra Shopee (Amazon não tem cupom Shopee)
-        let bestCoupon: { code: string; discount: number; finalPrice: number } | null = null;
-        let allCoupons: Array<{ code: string; description: string }> = [];
+        let bestCoupon:
+          | {
+              code: string | null;
+              discount: number;
+              finalPrice: number;
+              discountText: string;
+              redeemLink?: string;
+            }
+          | null = null;
+        let allCoupons: Array<{
+          code: string | null;
+          description: string;
+          discountText: string;
+          minPurchase: number | null;
+          isAuto: boolean;
+          eligible: boolean;
+        }> = [];
+        let isOfficialMall = false;
         if (enriched.platform === 'SHOPEE') {
+          isOfficialMall = Boolean(
+            (enriched.raw as { isOfficialMall?: boolean } | undefined)?.isOfficialMall,
+          );
           const coupons = await prisma.shopeeCoupon.findMany({
             where: { enabled: true, OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }] },
-            orderBy: { code: 'asc' },
+            orderBy: [{ value: 'desc' }],
           });
+          const eligibleCoupons = coupons.filter((c) => !c.officialOnly || isOfficialMall);
           const { applyCoupon } = await import('@/dispatcher/format.js');
-          for (const c of coupons) {
-            if (!c.code) continue;
+          const shopeeSettings = await getSettingsSection<{ shopeeCouponRedeemShortlink?: string }>(
+            'marketplaces',
+          );
+          const masterLink = shopeeSettings.shopeeCouponRedeemShortlink?.trim();
+
+          const buildDiscountText = (c: typeof coupons[number]): string => {
+            if (c.discountText) return c.discountText;
+            if (c.type === 'FIXED') return `R$ ${Math.round(Number(c.value))} OFF`;
+            const max = c.maxDiscount ? ` (até R$ ${Math.round(Number(c.maxDiscount))})` : '';
+            return `${Number(c.value)}% OFF${max}`;
+          };
+
+          for (const c of eligibleCoupons) {
             const result = applyCoupon(enriched.price ?? 0, {
               code: c.code,
               type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
@@ -864,14 +895,36 @@ export async function buildServer() {
               maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
             });
             if (result.applies && (!bestCoupon || result.discountValue > bestCoupon.discount)) {
-              bestCoupon = { code: c.code, discount: result.discountValue, finalPrice: result.finalPrice };
+              bestCoupon = {
+                code: c.code,
+                discount: result.discountValue,
+                finalPrice: result.finalPrice,
+                discountText: buildDiscountText(c),
+                redeemLink: c.code ? undefined : masterLink,
+              };
             }
           }
-          allCoupons = coupons
-            .filter((c) => c.code)
-            .map((c) => ({ code: c.code as string, description: c.description ?? '' }));
+          // Lista TODOS os cupons (com e sem code), marcando eligible pra UI
+          allCoupons = coupons.map((c) => {
+            const r = applyCoupon(enriched.price ?? 0, {
+              code: c.code,
+              type: (c.type as 'PERCENT' | 'FIXED') ?? 'PERCENT',
+              value: Number(c.value),
+              minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
+              maxDiscount: c.maxDiscount ? Number(c.maxDiscount) : null,
+            });
+            const officialFilter = !c.officialOnly || isOfficialMall;
+            return {
+              code: c.code,
+              description: c.description ?? '',
+              discountText: buildDiscountText(c),
+              minPurchase: c.minPurchase ? Number(c.minPurchase) : null,
+              isAuto: !c.code,
+              eligible: r.applies && officialFilter,
+            };
+          });
         }
-        return { ok: true, product: enriched, bestCoupon, allCoupons };
+        return { ok: true, product: enriched, bestCoupon, allCoupons, isOfficialMall };
       } catch (err) {
         return { ok: false, error: (err as Error).message };
       }
