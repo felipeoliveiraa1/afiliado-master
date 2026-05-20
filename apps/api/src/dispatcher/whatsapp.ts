@@ -254,6 +254,33 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
         }
       }
     }
+  } else if (source?.kind === 'AMAZON') {
+    // Cupom Amazon — setting global de cupom default (ex: MUNDIAL 10% min R$200 max R$50)
+    // Aplicado automaticamente quando o produto atinge minPurchase.
+    const mktAmz = await getSettingsSection<{
+      amazonCouponCode?: string;
+      amazonCouponType?: 'PERCENT' | 'FIXED';
+      amazonCouponValue?: number;
+      amazonCouponMinPurchase?: number;
+      amazonCouponMaxDiscount?: number;
+    }>('marketplaces');
+    if (mktAmz.amazonCouponCode?.trim() && mktAmz.amazonCouponValue) {
+      const r = applyCoupon(price, {
+        code: mktAmz.amazonCouponCode,
+        type: (mktAmz.amazonCouponType ?? 'PERCENT') as 'PERCENT' | 'FIXED',
+        value: Number(mktAmz.amazonCouponValue),
+        minPurchase: mktAmz.amazonCouponMinPurchase
+          ? Number(mktAmz.amazonCouponMinPurchase)
+          : null,
+        maxDiscount: mktAmz.amazonCouponMaxDiscount
+          ? Number(mktAmz.amazonCouponMaxDiscount)
+          : null,
+      });
+      if (r.applies && r.discountValue > 0) {
+        couponCode = mktAmz.amazonCouponCode.trim().toUpperCase();
+        priceWithCoupon = r.finalPrice;
+      }
+    }
   } else if (dispatch.offer.coupon) {
     // ML / outros: cupom já vem como texto no offer.coupon (ex: alias ML)
     couponCode = dispatch.offer.coupon;
@@ -305,10 +332,24 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
   const banner =
     (source?.kind ? bannerByKind[source.kind]?.trim() : '') || mktExt.messageBanner?.trim();
   const footer = source?.kind ? footerByKind[source.kind]?.trim() : '';
-  // Link de resgate dos cupons DIGITÁVEIS (com code). Aparece abaixo da
-  // linha "Use o cupom *XYZ*" pro cliente resgatar/aplicar.
+  // Link de resgate dos cupons DIGITÁVEIS (com code). Só Shopee tem essa página.
   const codeRedeemLink = (mkt as { shopeeCouponCodeRedeemShortlink?: string })
     .shopeeCouponCodeRedeemShortlink?.trim();
+
+  // Texto da linha do cupom — varia por plataforma pra não misturar marcas.
+  // Shopee: "onde tem cupom Shopee" (campo cupom no checkout Shopee)
+  // Amazon: lê amazonCouponInstructionText do settings (ex: "| Para 10% OFF!")
+  let couponInstructionText: string | null = null;
+  if (couponCode) {
+    if (source?.kind === 'SHOPEE') {
+      couponInstructionText = 'onde tem cupom Shopee';
+    } else if (source?.kind === 'AMAZON') {
+      const amzInstr = (mkt as { amazonCouponInstructionText?: string })
+        .amazonCouponInstructionText?.trim();
+      couponInstructionText = amzInstr || 'no checkout';
+    }
+  }
+
   return formatOfferMessage({
     title: dispatch.offer.title,
     price,
@@ -318,6 +359,7 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     couponCode,
     couponRedeemLink,
     couponCodeRedeemLink: couponCode && source?.kind === 'SHOPEE' ? codeRedeemLink : null,
+    couponInstructionText,
     couponDiscountLabel,
     priceWithCoupon,
     pricePix,

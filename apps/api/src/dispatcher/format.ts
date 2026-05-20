@@ -85,6 +85,8 @@ export type FormatOfferInput = {
   readonly couponDiscountLabel?: string | null;
   /** Link de resgate pra cupom DIGITÁVEL (com code). Renderiza abaixo da linha "Use o cupom *XYZ*". Diferente do couponRedeemLink (auto-cupom sem code). */
   readonly couponCodeRedeemLink?: string | null;
+  /** Texto após "Use o cupom *XYZ*" — varia por plataforma (Shopee/Amazon/ML). Default "no checkout". */
+  readonly couponInstructionText?: string | null;
   /** Preço PIX calculado (preço atual × (1 - pixDiscountPct/100)). Renderiza "OU R$ X no PIX". */
   readonly pricePix?: number | null;
   readonly installments?: number | null;
@@ -158,9 +160,11 @@ export function formatOfferMessage(input: FormatOfferInput): string {
   //     "🎟️ USE O CUPOM R$X OFF| 𝐫𝐞𝐬𝐠𝐚𝐭𝐞 𝐨 𝐜𝐮𝐩𝐨𝐦 𝐚𝐪𝐮𝐢 ⤵️ <shortlink>"
   if (input.couponCode?.trim()) {
     // Code em bold WhatsApp pra destacar visualmente.
-    // Se houver couponCodeRedeemLink, adiciona linha "Resgate aqui: <link>".
+    // couponInstructionText varia por plataforma (Shopee: "onde tem cupom Shopee",
+    // Amazon: "| Para X% OFF!"). Default fallback "no checkout".
     const code = input.couponCode.trim().toUpperCase();
-    let line = `🎟️ Use o cupom *${code}* onde tem cupom Shopee`;
+    const instruction = input.couponInstructionText?.trim() || 'no checkout';
+    let line = `🎟️ Use o cupom *${code}* ${instruction}`;
     if (input.couponCodeRedeemLink?.trim()) {
       line += `\n👉 Resgate aqui: ${input.couponCodeRedeemLink.trim()}`;
     }

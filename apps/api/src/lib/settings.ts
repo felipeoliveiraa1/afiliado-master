@@ -88,6 +88,16 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     // da linha "Use o cupom XYZ" pra cliente clicar e copiar/aplicar.
     // Diferente do shopeeCouponRedeemShortlink (que é pra AUTO-cupons sem code).
     shopeeCouponCodeRedeemShortlink: '',
+    // Cupom default Amazon — código aplicado em TODA mensagem Amazon que
+    // atinge minPurchase. Diferente do Shopee (que tem tabela própria).
+    amazonCouponCode: '',
+    amazonCouponType: 'PERCENT' as 'PERCENT' | 'FIXED',
+    amazonCouponValue: 0,
+    amazonCouponMinPurchase: 0,
+    amazonCouponMaxDiscount: 0,
+    // Texto que vai depois de "Use o cupom *XYZ*" na mensagem Amazon
+    // (ex: "| Para 10% OFF!"). Customize por cupom ativo.
+    amazonCouponInstructionText: '',
     // Cookie do shopee.com.br (logado) — usado pra scraping de páginas de loja
     // específica (endpoint /api/v4/search/search_items por shopId). Sem cookie
     // a Shopee bloqueia com 403. Pegue do DevTools Network, header Cookie.
