@@ -519,6 +519,160 @@ export async function generateShopeeShortLink(
  * Retorna a lista de queries disponíveis + tipos. Útil pra descobrir
  * couponOffer, shopOfferV2 etc sem precisar da doc oficial.
  */
+/**
+ * Shopee Affiliate Open API — Conversion Report.
+ *
+ * Retorna pedidos do afiliado (cliques que viraram venda) com comissão.
+ *
+ * IMPORTANTE: Shopee atualiza dados com D+1 lag — pedido feito hoje só
+ * aparece na API amanhã de manhã. Mesma limitação do painel oficial.
+ *
+ * Status codes (conversionStatus na resposta):
+ *   - "1" = PENDING (aguardando confirmação)
+ *   - "2" = CONFIRMED (comissão liberada)
+ *   - "3" = CANCELLED (cancelado)
+ *   - "4" = INVALID (descartado por fraude)
+ *
+ * Doc: https://affiliate.shopee.com.br/open_api/list?type=conversion_report
+ */
+export type ShopeeConversion = {
+  conversionId: string;
+  clickTime: number; // unix seconds
+  purchaseTime: number;
+  conversionStatus: string; // raw "1"/"2"/"3"/"4"
+  totalCommission: number; // R$ — comissão total que o afiliado ganha
+  netCommission: number; // R$ — depois de fees
+  device: string | null;
+  referrer: string | null;
+  orders: Array<{
+    orderId: string;
+    orderStatus: string;
+    shopType: string;
+    items: Array<{
+      itemId: string;
+      itemName: string;
+      shopId: string;
+      shopName: string;
+      itemPrice: number;
+      actualAmount: number;
+      refundAmount: number;
+      qty: number;
+      imageUrl: string;
+      itemTotalCommission: number;
+      categoryLv1Name: string | null;
+      categoryLv2Name: string | null;
+      fraudStatus: string | null;
+      completeTime: number | null;
+    }>;
+  }>;
+};
+
+export async function fetchShopeeConversions(opts: {
+  purchaseTimeStart: number; // unix seconds
+  purchaseTimeEnd: number;
+  status?: '' | '1' | '2' | '3' | '4'; // ''=todos
+  limit?: number;
+  scrollId?: string;
+}): Promise<{ nodes: ShopeeConversion[]; nextScrollId: string | null }> {
+  const limit = opts.limit ?? 100;
+  const statusArg = opts.status !== undefined ? `conversionStatus: "${opts.status}",` : '';
+  const scrollArg = opts.scrollId ? `scrollId: "${opts.scrollId}",` : '';
+  const query = `
+    query {
+      conversionReport(
+        purchaseTimeStart: ${opts.purchaseTimeStart},
+        purchaseTimeEnd: ${opts.purchaseTimeEnd},
+        ${statusArg}
+        ${scrollArg}
+        limit: ${limit}
+      ) {
+        nodes {
+          conversionId
+          clickTime
+          purchaseTime
+          conversionStatus
+          totalCommission
+          netCommission
+          device
+          referrer
+          orders {
+            orderId
+            orderStatus
+            shopType
+            items {
+              itemId itemName shopId shopName itemPrice actualAmount refundAmount
+              qty imageUrl itemTotalCommission categoryLv1Name categoryLv2Name
+              fraudStatus completeTime
+            }
+          }
+        }
+        pageInfo { scrollId hasNextPage }
+      }
+    }
+  `;
+  type Resp = {
+    conversionReport: {
+      nodes: Array<{
+        conversionId: string | number;
+        clickTime: number;
+        purchaseTime: number;
+        conversionStatus: string;
+        totalCommission?: string;
+        netCommission?: string;
+        device?: string;
+        referrer?: string;
+        orders?: Array<{
+          orderId: string;
+          orderStatus: string;
+          shopType: string;
+          items?: Array<Record<string, unknown>>;
+        }>;
+      }>;
+      pageInfo: { scrollId: string | null; hasNextPage: boolean };
+    };
+  };
+  const data = await gql<Resp>(query);
+  const conn = data.conversionReport;
+  const num = (s: unknown): number => {
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  };
+  return {
+    nodes: (conn?.nodes ?? []).map((n) => ({
+      conversionId: String(n.conversionId),
+      clickTime: n.clickTime,
+      purchaseTime: n.purchaseTime,
+      conversionStatus: n.conversionStatus,
+      totalCommission: num(n.totalCommission),
+      netCommission: num(n.netCommission),
+      device: n.device ?? null,
+      referrer: n.referrer ?? null,
+      orders: (n.orders ?? []).map((o) => ({
+        orderId: String(o.orderId),
+        orderStatus: o.orderStatus,
+        shopType: o.shopType,
+        items: (o.items ?? []).map((it: Record<string, unknown>) => ({
+          itemId: String(it.itemId ?? ''),
+          itemName: String(it.itemName ?? ''),
+          shopId: String(it.shopId ?? ''),
+          shopName: String(it.shopName ?? ''),
+          itemPrice: num(it.itemPrice),
+          actualAmount: num(it.actualAmount),
+          refundAmount: num(it.refundAmount),
+          qty: Number(it.qty ?? 0),
+          imageUrl: String(it.imageUrl ?? ''),
+          itemTotalCommission: num(it.itemTotalCommission),
+          categoryLv1Name: (it.categoryLv1Name as string) ?? null,
+          categoryLv2Name: (it.categoryLv2Name as string) ?? null,
+          fraudStatus: (it.fraudStatus as string) ?? null,
+          completeTime: (it.completeTime as number) ?? null,
+        })),
+      })),
+    })),
+    nextScrollId: conn?.pageInfo?.hasNextPage ? conn?.pageInfo?.scrollId ?? null : null,
+  };
+}
+
 export async function introspectShopeeSchema(): Promise<{
   queries: { name: string; description?: string | null; type: string }[];
   types: { name: string; fields?: { name: string; type: string }[] }[];

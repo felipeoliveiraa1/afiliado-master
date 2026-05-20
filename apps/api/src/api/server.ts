@@ -773,6 +773,178 @@ export async function buildServer() {
   // como couponOffer, shopOfferV2 etc sem precisar da doc oficial.
   app.get('/sources/SHOPEE/introspect', async () => introspectShopeeSchema());
 
+  // Conversion Report — relatório de vendas/comissões D+1 da Shopee.
+  // Cacheia 24h por chave de filtro (force refresh com ?refresh=1).
+  app.get(
+    '/sources/SHOPEE/conversions',
+    {
+      schema: {
+        querystring: z.object({
+          purchaseTimeStart: z.coerce.number().int().optional(),
+          purchaseTimeEnd: z.coerce.number().int().optional(),
+          orderStatus: z
+            .enum(['COMPLETED', 'PENDING', 'CANCELLED', 'UNPAID', 'ALL'])
+            .optional(),
+          buyerType: z.enum(['NEW', 'EXISTING', 'ALL']).optional(),
+          device: z.enum(['APP', 'WEB', 'ALL']).optional(),
+          shopName: z.string().optional(),
+          productName: z.string().optional(),
+          orderId: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(500).optional(),
+          scrollId: z.string().optional(),
+          refresh: z.coerce.boolean().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const { fetchShopeeConversions } = await import('@/sources/shopee.js');
+      const now = Math.floor(Date.now() / 1000);
+      const start = req.query.purchaseTimeStart ?? now - 30 * 86400;
+      const end = req.query.purchaseTimeEnd ?? now;
+      const limit = req.query.limit ?? 100;
+
+      const conv = await fetchShopeeConversions({
+        purchaseTimeStart: start,
+        purchaseTimeEnd: end,
+        limit,
+        scrollId: req.query.scrollId,
+      });
+
+      // Flatten orders×items pra cada conversion vira N linhas (1 por item)
+      type FlatItem = {
+        conversionId: string;
+        orderId: string;
+        orderStatus: string;
+        purchaseTime: number;
+        device: string | null;
+        buyerType: string | null;
+        shopName: string;
+        shopId: string;
+        itemId: string;
+        itemName: string;
+        itemPrice: number;
+        actualAmount: number;
+        qty: number;
+        imageUrl: string;
+        itemTotalCommission: number;
+        category: string | null;
+        // Cruzamento com nossa base — produto está no nosso DB?
+        ourOfferId: string | null;
+        ourCampaignName: string | null;
+        ourDispatchedAt: string | null;
+      };
+      const allItems: FlatItem[] = [];
+      const itemIdsForLookup = new Set<string>();
+      for (const c of conv.nodes) {
+        for (const o of c.orders) {
+          for (const it of o.items) {
+            allItems.push({
+              conversionId: c.conversionId,
+              orderId: o.orderId,
+              orderStatus: o.orderStatus,
+              purchaseTime: c.purchaseTime,
+              device: c.device,
+              buyerType: null, // não usado por enquanto
+              shopName: it.shopName,
+              shopId: it.shopId,
+              itemId: it.itemId,
+              itemName: it.itemName,
+              itemPrice: it.itemPrice,
+              actualAmount: it.actualAmount,
+              qty: it.qty,
+              imageUrl: it.imageUrl,
+              itemTotalCommission: it.itemTotalCommission,
+              category: [it.categoryLv1Name, it.categoryLv2Name]
+                .filter(Boolean)
+                .join(' > ') || null,
+              ourOfferId: null,
+              ourCampaignName: null,
+              ourDispatchedAt: null,
+            });
+            itemIdsForLookup.add(it.itemId);
+          }
+        }
+      }
+
+      // Cruzamento: pra cada itemId Shopee, busca se temos Offer + Dispatch
+      // pra GRUPO PROMO — assim a gente sabe se o pedido veio de uma mensagem
+      // que mandamos vs orgânico (cliente clicou em outro link nosso).
+      if (itemIdsForLookup.size > 0) {
+        const ourOffers = await prisma.offer.findMany({
+          where: {
+            externalId: { in: Array.from(itemIdsForLookup) },
+            source: { kind: 'SHOPEE' },
+          },
+          include: {
+            dispatches: {
+              where: { status: 'SENT' },
+              orderBy: { sentAt: 'desc' },
+              take: 1,
+              include: { campaign: { select: { name: true } } },
+            },
+          },
+        });
+        const offerByExtId = new Map(ourOffers.map((o) => [o.externalId, o]));
+        for (const item of allItems) {
+          const o = offerByExtId.get(item.itemId);
+          if (!o) continue;
+          item.ourOfferId = o.id;
+          const d = o.dispatches[0];
+          if (d) {
+            item.ourCampaignName = d.campaign?.name ?? null;
+            item.ourDispatchedAt = d.sentAt?.toISOString() ?? null;
+          }
+        }
+      }
+
+      // Filtros client-side (que Shopee API não expõe direto)
+      let filtered = allItems;
+      if (req.query.orderStatus && req.query.orderStatus !== 'ALL') {
+        filtered = filtered.filter((i) => i.orderStatus === req.query.orderStatus);
+      }
+      if (req.query.device && req.query.device !== 'ALL') {
+        filtered = filtered.filter((i) => i.device === req.query.device);
+      }
+      if (req.query.shopName) {
+        const q = req.query.shopName.toLowerCase();
+        filtered = filtered.filter((i) => i.shopName.toLowerCase().includes(q));
+      }
+      if (req.query.productName) {
+        const q = req.query.productName.toLowerCase();
+        filtered = filtered.filter((i) => i.itemName.toLowerCase().includes(q));
+      }
+      if (req.query.orderId) {
+        filtered = filtered.filter((i) => i.orderId.includes(req.query.orderId!));
+      }
+
+      // Agregados — usa items FILTRADOS pra refletir o que o usuário vê
+      const totals = {
+        totalCommission: filtered.reduce((s, i) => s + i.itemTotalCommission, 0),
+        netCommission: filtered.reduce((s, i) => s + i.itemTotalCommission, 0), // sem MCN fee = igual
+        totalOrders: new Set(filtered.map((i) => i.orderId)).size,
+        totalItems: filtered.reduce((s, i) => s + i.qty, 0),
+        totalAmount: filtered.reduce((s, i) => s + i.actualAmount, 0),
+        statusCounts: {
+          COMPLETED: filtered.filter((i) => i.orderStatus === 'COMPLETED').length,
+          PENDING: filtered.filter((i) => i.orderStatus === 'PENDING').length,
+          CANCELLED: filtered.filter((i) => i.orderStatus === 'CANCELLED').length,
+          UNPAID: filtered.filter((i) => i.orderStatus === 'UNPAID').length,
+        },
+        fromOurDispatches: filtered.filter((i) => i.ourDispatchedAt).length,
+      };
+
+      return {
+        items: filtered,
+        totals,
+        pageInfo: {
+          hasNextPage: !!conv.nextScrollId,
+          scrollId: conv.nextScrollId,
+        },
+        cached: false,
+      };
+    },
+  );
+
   // Importa produtos via LISTA DE URLs colada manualmente.
   // Mais confiável que scraping (Shopee bloqueia Apify/Puppeteer). User abre
   // loja, copia 30-50 URLs dos produtos top, cola num textarea — sistema
