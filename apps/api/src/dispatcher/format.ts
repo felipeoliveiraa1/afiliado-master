@@ -83,6 +83,8 @@ export type FormatOfferInput = {
   readonly couponRedeemLink?: string | null;
   /** Label do desconto pro post (ex: "R$90 OFF" ou "15% OFF"). Só exibido junto com redeemLink. */
   readonly couponDiscountLabel?: string | null;
+  /** Link de resgate pra cupom DIGITÁVEL (com code). Renderiza abaixo da linha "Use o cupom *XYZ*". Diferente do couponRedeemLink (auto-cupom sem code). */
+  readonly couponCodeRedeemLink?: string | null;
   /** Preço PIX calculado (preço atual × (1 - pixDiscountPct/100)). Renderiza "OU R$ X no PIX". */
   readonly pricePix?: number | null;
   readonly installments?: number | null;
@@ -155,8 +157,14 @@ export function formatOfferMessage(input: FormatOfferInput): string {
   //   - Automático (sem code, com redeemLink): padrão @achadinhoo_do_bebe
   //     "🎟️ USE O CUPOM R$X OFF| 𝐫𝐞𝐬𝐠𝐚𝐭𝐞 𝐨 𝐜𝐮𝐩𝐨𝐦 𝐚𝐪𝐮𝐢 ⤵️ <shortlink>"
   if (input.couponCode?.trim()) {
-    // Code em bold WhatsApp pra destacar visualmente
-    sections.push(`🎟️ Use o cupom *${input.couponCode.trim().toUpperCase()}* onde tem cupom Shopee`);
+    // Code em bold WhatsApp pra destacar visualmente.
+    // Se houver couponCodeRedeemLink, adiciona linha "Resgate aqui: <link>".
+    const code = input.couponCode.trim().toUpperCase();
+    let line = `🎟️ Use o cupom *${code}* onde tem cupom Shopee`;
+    if (input.couponCodeRedeemLink?.trim()) {
+      line += `\n👉 Resgate aqui: ${input.couponCodeRedeemLink.trim()}`;
+    }
+    sections.push(line);
   } else if (input.couponRedeemLink?.trim() && typeof input.couponDiscountLabel === 'string') {
     const redeem = '𝐫𝐞𝐬𝐠𝐚𝐭𝐞 𝐨 𝐜𝐮𝐩𝐨𝐦 𝐚𝐪𝐮𝐢';
     sections.push(

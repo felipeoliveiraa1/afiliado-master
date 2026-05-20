@@ -241,9 +241,9 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
       } else {
         // Cupom AUTOMÁTICO — mostra link de resgate em vez de "use o cupom XYZ"
         // Usa o shortlink master da settings (gerado 1x via /sources/SHOPEE/coupon-page-shortlink)
-        const shopeeSettings = await getSettingsSection<{ shopeeCouponRedeemShortlink?: string }>(
-          'marketplaces',
-        );
+        const shopeeSettings = await getSettingsSection<{
+          shopeeCouponRedeemShortlink?: string;
+        }>('marketplaces');
         const masterLink = shopeeSettings.shopeeCouponRedeemShortlink?.trim();
         if (masterLink) {
           couponRedeemLink = masterLink;
@@ -305,6 +305,10 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
   const banner =
     (source?.kind ? bannerByKind[source.kind]?.trim() : '') || mktExt.messageBanner?.trim();
   const footer = source?.kind ? footerByKind[source.kind]?.trim() : '';
+  // Link de resgate dos cupons DIGITÁVEIS (com code). Aparece abaixo da
+  // linha "Use o cupom *XYZ*" pro cliente resgatar/aplicar.
+  const codeRedeemLink = (mkt as { shopeeCouponCodeRedeemShortlink?: string })
+    .shopeeCouponCodeRedeemShortlink?.trim();
   return formatOfferMessage({
     title: dispatch.offer.title,
     price,
@@ -313,6 +317,7 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     unitPrice: dispatch.offer.unitPrice,
     couponCode,
     couponRedeemLink,
+    couponCodeRedeemLink: couponCode && source?.kind === 'SHOPEE' ? codeRedeemLink : null,
     couponDiscountLabel,
     priceWithCoupon,
     pricePix,
