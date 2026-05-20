@@ -89,6 +89,10 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     // a Shopee bloqueia com 403. Pegue do DevTools Network, header Cookie.
     // Validade típica: 7-14 dias antes de expirar.
     shopeeCookie: '',
+    // Banner global no topo de toda mensagem do WhatsApp (ex: "ESQUENTA 6.6 🚨").
+    // Quando setado, SUBSTITUI o hook AI (variant.caption). Apaga ('') pra
+    // voltar ao hook AI padrão.
+    messageBanner: '',
   },
   antiban: {
     minIntervalSec: env.DISPATCH_MIN_INTERVAL,

@@ -280,6 +280,10 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
   }
 
   const instagramHandle = process.env.INSTAGRAM_HANDLE || 'promodahelena.oficial';
+  // Banner global (ex: "ESQUENTA 6.6 🚨") sobrepõe o hook AI quando setado
+  // em /settings → Marketplaces → messageBanner. Vazio = volta ao hook AI.
+  const banner = (mkt as { messageBanner?: string }).messageBanner?.trim();
+  const hookLine = banner || variant?.caption || null;
   return formatOfferMessage({
     title: dispatch.offer.title,
     price,
@@ -291,7 +295,7 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     couponDiscountLabel,
     priceWithCoupon,
     pricePix,
-    hookLine: variant?.caption ?? null,
+    hookLine,
     link: trackingLink,
     instagramHandle,
   });
