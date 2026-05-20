@@ -128,13 +128,24 @@ export async function enrichAmazonFromUrl(url: string): Promise<EnrichedAmazonPr
     logger.warn({ asin }, 'amazon enrich: amazonAffiliateTag vazio — link não será tagueado!');
   }
 
-  const items = await runApifyActor<ApifyAmazonItem>(
-    APIFY_AMAZON_ACTOR,
-    { url: `https://www.amazon.com.br/dp/${asin}` },
-    env.APIFY_TOKEN,
-  );
+  // Retry automático — pratikdani às vezes retorna vazio na 1ª chamada
+  // (anti-bot transiente). Tenta 2x antes de desistir. Custo: $0.01 OU $0.02.
+  const fetchItem = async (): Promise<ApifyAmazonItem | null> => {
+    const items = await runApifyActor<ApifyAmazonItem>(
+      APIFY_AMAZON_ACTOR,
+      { url: `https://www.amazon.com.br/dp/${asin}` },
+      env.APIFY_TOKEN!,
+    );
+    return items.find((i) => i.asin === asin) ?? items[0] ?? null;
+  };
 
-  const item = items.find((i) => i.asin === asin) ?? items[0];
+  let item = await fetchItem();
+  // Se 1ª chamada veio sem title OU sem preço útil → tenta de novo (1x)
+  if (!item || !item.title?.trim() || !pickPrice(item)) {
+    logger.warn({ asin, attempt: 1 }, 'amazon enrich: 1ª chamada vazia, retry...');
+    await new Promise((r) => setTimeout(r, 1500)); // 1.5s entre tentativas
+    item = await fetchItem();
+  }
   if (!item) {
     throw new Error(`Amazon: produto ASIN ${asin} não encontrado no scraper`);
   }
