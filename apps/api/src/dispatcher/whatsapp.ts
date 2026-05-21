@@ -332,6 +332,17 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
   const banner =
     (source?.kind ? bannerByKind[source.kind]?.trim() : '') || mktExt.messageBanner?.trim();
   const footer = source?.kind ? footerByKind[source.kind]?.trim() : '';
+
+  // Variety: cache antigo tem "OFERTA IMPERDÍVEL🔥" engessado (fallback quando
+  // OpenAI 429ou). Substitui em runtime por pick aleatório de pool variado pra
+  // dar variedade nas mensagens sem precisar regerar DB.
+  let resolvedCaption = variant?.caption ?? null;
+  if (resolvedCaption === 'OFERTA IMPERDÍVEL🔥') {
+    const { pickRandomFallbackCaption } = await import('@/curator/describe.js');
+    resolvedCaption = pickRandomFallbackCaption({
+      discountPct: dispatch.offer.discountPct ? Number(dispatch.offer.discountPct) : null,
+    });
+  }
   // Link de resgate dos cupons DIGITÁVEIS (com code). Só Shopee tem essa página.
   const codeRedeemLink = (mkt as { shopeeCouponCodeRedeemShortlink?: string })
     .shopeeCouponCodeRedeemShortlink?.trim();
@@ -366,7 +377,7 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     // Banner multi-linha (preserva formatação) sobrepõe o hook AI. Se vazio,
     // hook AI ainda aparece (variant.caption uppercased).
     bannerBlock: banner || null,
-    hookLine: banner ? null : variant?.caption ?? null,
+    hookLine: banner ? null : resolvedCaption,
     footerLine: footer,
     link: trackingLink,
     instagramHandle,

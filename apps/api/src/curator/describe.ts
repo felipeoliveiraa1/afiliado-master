@@ -64,6 +64,55 @@ function hashInput(input: Input): string {
   return createHash('sha256').update(JSON.stringify(stable)).digest('hex').slice(0, 16);
 }
 
+// Pool de heads chamativas — usado quando OpenAI 429/sem-crédito.
+// Escolhido aleatoriamente, com tendência por desconto (% alto → mais urgência).
+// Estilo @achadinhoo_do_bebe (mãe/bebê/promo).
+const FALLBACK_POOL_HIGH_DISCOUNT = [
+  'PROMO RELÂMPAGO ⚡🚨',
+  'OFERTA RELÂMPAGO HOJE SÓ 🔥',
+  'CORRE QUE VAI ACABAR! ⚡',
+  'PREÇO ABSURDO HOJE 🤯',
+  'BAIXOU MUITO! 😱🔥',
+  'MAIS DE 40% OFF AGORA ⚡',
+  'OFERTA EXTRA 🚨🔥',
+];
+const FALLBACK_POOL_MED_DISCOUNT = [
+  'APROVEITA O CUPONZÃO 😍🤌🏻',
+  'PROMO IMPERDÍVEL HOJE 💕',
+  'PRECINHO ÓTIMO MAMÃES 😍',
+  'OFERTA DO DIA 🛒💖',
+  'CHEGOU NA CONTA CERTA 😍🤌🏻',
+  'OPORTUNIDADE PRA MAMÃES 👶💖',
+  'VAI VOAR DO ESTOQUE 🚀',
+];
+const FALLBACK_POOL_LOW_DISCOUNT = [
+  'CHEGOU NO PRECINHO ✨',
+  'ESSENCIAL DA MAMÃE 💕',
+  'PEQUENO LUXO PRA HOJE 🤌🏻',
+  'CUSTO BENEFÍCIO TOP 👶',
+  'A GENTE INDICA DEMAIS 💖',
+  'ITEM QUERIDINHO 🥰',
+  'NÃO PODE FALTAR EM CASA 🏠',
+];
+
+export function pickRandomFallbackCaption(opts: { discountPct?: number | null } = {}): string {
+  const disc = opts.discountPct ?? 0;
+  const pool =
+    disc >= 40 ? FALLBACK_POOL_HIGH_DISCOUNT :
+    disc >= 20 ? FALLBACK_POOL_MED_DISCOUNT :
+    FALLBACK_POOL_LOW_DISCOUNT;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function pickFallbackCaption(input: Input): string {
+  const disc = input.discountPct ?? 0;
+  const pool =
+    disc >= 40 ? FALLBACK_POOL_HIGH_DISCOUNT :
+    disc >= 20 ? FALLBACK_POOL_MED_DISCOUNT :
+    FALLBACK_POOL_LOW_DISCOUNT;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 export async function describeOffer(offerId: string, input: Input, channelKind: 'WHATSAPP_GROUP' | 'TELEGRAM_CHANNEL'): Promise<Output> {
   const promptHash = hashInput(input);
   const cached = await prisma.variant.findFirst({
@@ -76,7 +125,7 @@ export async function describeOffer(offerId: string, input: Input, channelKind: 
 
   // Se OPENAI_API_KEY vazia, pula IA e salva fallback — evita 3 retries por job.
   if (!env.OPENAI_API_KEY) {
-    const fallback: Output = { caption: 'OFERTA IMPERDÍVEL🔥', hashtags: [], urgency: 'low' };
+    const fallback: Output = { caption: pickFallbackCaption(input), hashtags: [], urgency: 'low' };
     await prisma.variant.create({
       data: {
         offerId,
@@ -106,7 +155,7 @@ export async function describeOffer(offerId: string, input: Input, channelKind: 
   } catch (err) {
     // Quota/auth/rate limit — salva fallback E não falha o job (BullMQ não retenta).
     logger.warn({ err: (err as Error).message }, 'openai call failed — using fallback caption');
-    const fallback: Output = { caption: 'OFERTA IMPERDÍVEL🔥', hashtags: [], urgency: 'low' };
+    const fallback: Output = { caption: pickFallbackCaption(input), hashtags: [], urgency: 'low' };
     await prisma.variant.create({
       data: {
         offerId,
@@ -126,7 +175,7 @@ export async function describeOffer(offerId: string, input: Input, channelKind: 
     parsed = JSON.parse(jsonMatch?.[0] ?? text);
   } catch (err) {
     logger.error({ err, text }, 'failed to parse curator response');
-    parsed = { caption: 'OFERTA IMPERDÍVEL🔥', hashtags: [], urgency: 'low' };
+    parsed = { caption: pickFallbackCaption(input), hashtags: [], urgency: 'low' };
   }
 
   await prisma.variant.create({
