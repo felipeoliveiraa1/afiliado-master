@@ -117,6 +117,54 @@ export async function buildServer() {
 
   app.get('/health', async () => ({ ok: true, ts: new Date().toISOString() }));
 
+  // PÚBLICO — vitrine de produtos pra página /ofertas (sem auth).
+  // Amazon's bot precisa indexar pra aprovar o programa de afiliados.
+  // Retorna top N produtos por score, com affiliateUrl tagueado.
+  app.get(
+    '/public/featured-products',
+    {
+      schema: {
+        querystring: z.object({
+          source: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']).optional(),
+          limit: z.coerce.number().int().min(1).max(50).optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const limit = req.query.limit ?? 20;
+      const where: Record<string, unknown> = {
+        affiliateUrl: { not: null },
+        imageUrl: { not: null },
+        price: { gt: 0 },
+      };
+      if (req.query.source) {
+        where.source = { kind: req.query.source };
+      }
+      const items = await prisma.offer.findMany({
+        where,
+        orderBy: [{ score: 'desc' }, { rating: 'desc' }],
+        take: limit,
+        include: { source: { select: { kind: true } } },
+      });
+      return {
+        items: items.map((o) => ({
+          id: o.id,
+          externalId: o.externalId,
+          title: o.title,
+          imageUrl: o.imageUrl,
+          price: Number(o.price),
+          originalPrice: o.originalPrice ? Number(o.originalPrice) : null,
+          discountPct: o.discountPct ? Number(o.discountPct) : null,
+          rating: o.rating ? Number(o.rating) : null,
+          ratingCount: o.ratingCount,
+          salesCount: o.salesCount,
+          affiliateUrl: o.affiliateUrl,
+          source: o.source.kind,
+        })),
+      };
+    },
+  );
+
   // Endpoint PÚBLICO — landing page (/) consome essa config sem auth.
   // Devolve só dados de display (sem secrets).
   app.get('/landing-config', async () => {
