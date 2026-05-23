@@ -1,11 +1,11 @@
 // Conteúdo estático dos guias da Helena. Cada produto leva pra Amazon com
-// a tag de afiliado promodahele07-20. Atualizar manualmente quando produto
+// a tag de afiliado promodahele03-20. Atualizar manualmente quando produto
 // sair de linha.
 //
 // Por que estático: Amazon's bot precisa ler o HTML server-rendered, e
 // o tempo de aprovação valoriza conteúdo curado/honesto > vitrines automáticas.
 
-const TAG = 'promodahele07-20';
+const TAG = 'promodahele03-20';
 
 function az(asin: string): string {
   return `https://www.amazon.com.br/dp/${asin}?tag=${TAG}`;

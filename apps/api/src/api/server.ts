@@ -146,21 +146,32 @@ export async function buildServer() {
         take: limit,
         include: { source: { select: { kind: true } } },
       });
+      // Pra Amazon: reconstrói affiliateUrl com a tag ATUAL do settings.
+      // Evita servir links com tag antiga gravada no DB quando a tag muda
+      // (ex: reaprovação Amazon Associates gera nova ID).
+      const mkt = await getSettingsSection<{ amazonAffiliateTag?: string }>('marketplaces');
+      const currentAmazonTag = mkt.amazonAffiliateTag?.trim();
       return {
-        items: items.map((o) => ({
-          id: o.id,
-          externalId: o.externalId,
-          title: o.title,
-          imageUrl: o.imageUrl,
-          price: Number(o.price),
-          originalPrice: o.originalPrice ? Number(o.originalPrice) : null,
-          discountPct: o.discountPct ? Number(o.discountPct) : null,
-          rating: o.rating ? Number(o.rating) : null,
-          ratingCount: o.ratingCount,
-          salesCount: o.salesCount,
-          affiliateUrl: o.affiliateUrl,
-          source: o.source.kind,
-        })),
+        items: items.map((o) => {
+          let affiliateUrl = o.affiliateUrl;
+          if (o.source.kind === 'AMAZON' && currentAmazonTag) {
+            affiliateUrl = `https://www.amazon.com.br/dp/${o.externalId}?tag=${encodeURIComponent(currentAmazonTag)}`;
+          }
+          return {
+            id: o.id,
+            externalId: o.externalId,
+            title: o.title,
+            imageUrl: o.imageUrl,
+            price: Number(o.price),
+            originalPrice: o.originalPrice ? Number(o.originalPrice) : null,
+            discountPct: o.discountPct ? Number(o.discountPct) : null,
+            rating: o.rating ? Number(o.rating) : null,
+            ratingCount: o.ratingCount,
+            salesCount: o.salesCount,
+            affiliateUrl,
+            source: o.source.kind,
+          };
+        }),
       };
     },
   );
