@@ -192,9 +192,22 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     where: { offerId: dispatch.offerId, channelKind: dispatch.channel.kind },
     orderBy: { createdAt: 'desc' },
   });
-  const trackingLink = dispatch.offer.affiliateUrl ?? dispatch.offer.url;
   const source = await prisma.source.findUnique({ where: { id: dispatch.offer.sourceId } });
   const price = Number(dispatch.offer.price);
+
+  // Pra Amazon: reconstrói affiliateUrl com tag ATUAL do settings (em vez de
+  // usar a gravada no DB). Garante que troca de tag (ex: reaprovação Amazon)
+  // se aplica imediatamente em TODOS os dispatches (manual + cron) sem
+  // precisar migrar o DB. Shopee/ML mantêm o affiliateUrl gravado (já tem
+  // shortlink complexo que não dá pra reconstruir trivialmente).
+  let trackingLink = dispatch.offer.affiliateUrl ?? dispatch.offer.url;
+  if (source?.kind === 'AMAZON') {
+    const mkt = await getSettingsSection<{ amazonAffiliateTag?: string }>('marketplaces');
+    const currentTag = mkt.amazonAffiliateTag?.trim();
+    if (currentTag) {
+      trackingLink = `https://www.amazon.com.br/dp/${dispatch.offer.externalId}?tag=${encodeURIComponent(currentTag)}`;
+    }
+  }
 
   // Aplica cupom Shopee — pega o que dá MAIOR desconto e é elegível (price >= minPurchase).
   // Sistema testa todos cupons ativos e escolhe o melhor pra esse produto específico.
