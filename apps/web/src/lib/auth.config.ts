@@ -19,6 +19,9 @@ export const authConfig: NextAuthConfig = {
       // Landing pages públicas (anúncios direcionam pra cá — sem auth)
       if (url.pathname === '/') return true;
       if (url.pathname.startsWith('/promo')) return true;
+      // Páginas públicas pra Amazon Associates indexar (vitrine + guias)
+      if (url.pathname.startsWith('/ofertas')) return true;
+      if (url.pathname.startsWith('/guia')) return true;
       return isLogged;
     },
   },
