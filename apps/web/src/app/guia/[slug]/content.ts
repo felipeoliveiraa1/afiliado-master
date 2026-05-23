@@ -187,6 +187,158 @@ export const GUIDES: Record<string, Guide> = {
     ],
   },
 
+  'baba-eletronica-vale-a-pena': {
+    title: 'Babá eletrônica vale a pena? Comparativo honesto 2026',
+    excerpt:
+      'Comparativo entre babá só áudio, com vídeo, e babá inteligente com Wi-Fi. Em quais casos cada uma faz sentido e quais armadilhas evitar.',
+    readTime: '7 min de leitura',
+    updatedAt: '2026-05-23',
+    sections: [
+      {
+        heading: 'Vale ou não vale comprar?',
+        paragraphs: [
+          'A resposta honesta: depende da sua casa. Se você mora em apartamento pequeno (até 60m²) e o quarto da criança fica colado ao seu, talvez o monitor seja desnecessário — você escuta tudo. Mas pra apartamentos maiores, casas ou pais que dormem profundo, a babá eletrônica é um item de PAZ MENTAL.',
+          'Eu sou time "vale a pena". Mesmo morando em apartamento, instalei a babá no primeiro mês e dormi MUITO melhor. Saber que vou ver se ela acordar, sem precisar levantar pra checar a cada som estranho, fez diferença real no meu sono.',
+        ],
+      },
+      {
+        heading: 'Os 3 tipos de babá eletrônica',
+        paragraphs: [
+          '**1) Babá só áudio (sem câmera)** — A mais barata (R$ 50-150). Funciona em rádio frequência, sem precisar de Wi-Fi. Bom pra quem só quer ouvir e a casa é pequena. Limitação: você ouve o bebê chorando mas não vê o que tá acontecendo.',
+          '**2) Babá com câmera + monitor próprio** — Faixa R$ 200-500. Tem uma câmera no quarto do bebê + um "tablet" pra você ver. Não precisa de Wi-Fi nem celular. É a opção MAIS CONFIÁVEL pra quem não quer depender de internet.',
+          '**3) Babá Wi-Fi (smart cam)** — Faixa R$ 250-800. Câmera conectada na sua rede, você vê pelo celular ou Alexa. Vantagem: pode ver fora de casa. Risco: se o Wi-Fi cai, você fica cego — e tem questão de segurança (hacking).',
+        ],
+      },
+      {
+        heading: 'O que olhar na hora da compra',
+        paragraphs: [
+          '**Visão noturna infravermelho** — Inegociável. Quarto de bebê fica escuro, sem isso a câmera vira inútil à noite.',
+          '**Áudio bidirecional (talk back)** — Você fala pelo monitor/app e bebê escuta. Útil pra acalmar antes de levantar.',
+          '**Alcance (pra câmeras com monitor próprio)** — Mínimo 50m em ambiente interno. Babá VB603 tem 250m exterior.',
+          '**Bateria do monitor (se não for Wi-Fi)** — Mínimo 8h de uso contínuo. Se a bateria dura só 4h, você acorda no meio da noite sem monitor.',
+          '**Resolução da câmera** — 720p já basta pra ver bebê dormindo. 1080p é overkill (e o monitor próprio geralmente não exibe em 1080p mesmo).',
+        ],
+      },
+      {
+        heading: 'Modelos que indico',
+        paragraphs: [
+          'Eu uso a VB603 desde os 2 meses da Sofia. Custo-benefício imbatível pra quem não quer Wi-Fi.',
+        ],
+        products: [
+          {
+            name: 'Babá Eletrônica Baby Monitor VB603 Visão Noturna Dual Audio',
+            why: 'A QUE EU USO. Visão noturna, áudio bidirecional, alcance 50m interno / 250m externo, bateria 8h. Não depende de Wi-Fi. R$ 200-300.',
+            url: az('B0B1RSP997'),
+          },
+        ],
+      },
+      {
+        heading: 'Erros comuns que vejo mães cometendo',
+        paragraphs: [
+          '**1) Comprar babá smart antes de ter Wi-Fi confiável.** Se o roteador trava 2x por semana, vai dar problema. Teste a estabilidade do Wi-Fi ANTES de comprar smart cam.',
+          '**2) Ignorar segurança da smart cam.** Tem MUITA babá Wi-Fi barata chinesa com senha padrão "admin/admin" que qualquer um invade. Se for smart, escolha marca conhecida (Motorola, Avent, ou nossa indicação acima).',
+          '**3) Posicionar câmera direto em cima do berço.** Algumas mães colocam a câmera no teto sobre o bebê — risco de cair. Sempre 1.5m de distância, de lado, fixada na parede.',
+          '**4) Confiar 100% na babá eletrônica.** Não substitui checagem física. Se ouvir/ver algo estranho, levante e vai ver. Tecnologia falha.',
+        ],
+      },
+      {
+        heading: 'Resumo: vale a pena pra você?',
+        paragraphs: [
+          'Vale se: apartamento médio/grande, casa, pais que dormem profundo, mãe ansiosa (e tá tudo bem).',
+          'Pode pular se: apartamento muito pequeno e quartos colados, e você acorda com qualquer som.',
+          'Comece pela babá com monitor próprio (sem Wi-Fi) se quer simplicidade. Smart cam só se você já confia no seu Wi-Fi e tem uso adicional (ver bebê do trabalho, por exemplo).',
+        ],
+      },
+    ],
+  },
+
+  'brinquedos-por-idade-do-bebe': {
+    title: 'Brinquedos por faixa etária: o que comprar de 0 a 12 meses',
+    excerpt:
+      'Guia mensal do que o bebê REALMENTE usa em cada fase. Sem comprar brinquedo que ele só vai brincar daqui 6 meses.',
+    readTime: '9 min de leitura',
+    updatedAt: '2026-05-23',
+    sections: [
+      {
+        heading: 'A regra de ouro',
+        paragraphs: [
+          'O bebê desenvolve habilidades diferentes a cada 2-3 meses. Brinquedo certo pra fase = ele engaja, aprende e fica entretido. Brinquedo de fase ERRADA = vai pro fundo do baú até ele crescer (ou nem isso, porque até lá ele já enjoou).',
+          'Erro mais comum: comprar brinquedo de 6+ meses pra recém-nascido "pra durar". Resultado: ele NÃO BRINCA com nada até os 6 meses, e quando chega lá, você já comprou outro mais legal.',
+        ],
+      },
+      {
+        heading: '0-2 meses: foco em estímulos sensoriais simples',
+        paragraphs: [
+          'Bebê recém-nascido enxerga muito pouco — visão preto-e-branco, foco em 20-30cm. Não precisa de brinquedo colorido nem com som. Quanto MAIS SIMPLES, melhor.',
+          'O que ele faz: dorme, mama, observa luz/sombra. Brinquedos com listras preto-branco-vermelho funcionam bem (contraste alto).',
+          'Mobile no berço com música suave também é ótimo — ajuda a acalmar pro sono.',
+        ],
+      },
+      {
+        heading: '3-5 meses: agarra tudo, leva à boca',
+        paragraphs: [
+          'Aqui ele começa a pegar coisas. Tudo que cai na mão dele vai pra boca. Brinquedo precisa ser:',
+          '**Macio** (não machuca quando ele bate no rosto), **lavável** (vai babar muito), **sem peças pequenas** (engasgo), **chocalho** (entende causa-efeito: "balanço a mão = som").',
+          'Tapete de atividades com móbiles pendurados é a melhor compra dessa fase. Bebê deita, vê os brinquedos pendurados, tenta pegar — desenvolve coordenação.',
+        ],
+        products: [
+          {
+            name: 'Tapete de Atividades Para Bebê Piano Funny Dino Maxi Baby',
+            why: 'Tem piano nos pés (bebê chuta = som), brinquedos pendurados pra ele puxar, espelho. Lavável. Usei dos 3 aos 6 meses todos os dias.',
+            url: az('B0CGBNCPC5'),
+          },
+        ],
+      },
+      {
+        heading: '6-8 meses: senta, pega objeto pequeno, transfere de mão',
+        paragraphs: [
+          'Habilidades novas: senta sozinho (com apoio), pega objetos pequenos, transfere de uma mão pra outra, leva tudo à boca.',
+          'Brinquedos ideais: blocos de empilhar (treinam coordenação), copos coloridos pra encaixar, mordedores (porque vai começar a nascer dente — sintoma é babar muito e levar tudo à boca).',
+          '**ATENÇÃO**: bebê dessa fase coloca TUDO na boca. Verifica que nenhum brinquedo tem peça menor que 4cm de diâmetro (regra do "tubo de papel higiênico" — se cabe dentro, é risco de engasgo).',
+        ],
+      },
+      {
+        heading: '9-12 meses: engatinha, "fala" balbuciando, imita',
+        paragraphs: [
+          'Fase do "tudo é brinquedo". Bebê descobre que existem objetos no mundo (sofá, panela, telefone) e quer tudo na mão.',
+          'Brinquedos certos: telefones de brinquedo (imita pai/mãe falando), livros de pano (folheia, "lê"), bolas pra rolar e perseguir, baldinho pra colocar e tirar coisas.',
+          'Fisher-Price é referência nessa faixa. Os clássicos como Chatter Phone (telefoninho) e Stack Rings (anéis de empilhar) duram décadas porque funcionam.',
+        ],
+        products: [
+          {
+            name: 'Fisher-Price Telefone De Chatter Vermelho - Mattel',
+            why: 'O telefone vermelho clássico Fisher-Price. Tem 60+ anos no mercado, ainda vende porque criança AMA. Olhos que mexem quando puxa, discagem rotativa que faz "tic-tic". Bebê passa horas com isso.',
+            url: az('B0BFXGY9B7'),
+          },
+        ],
+      },
+      {
+        heading: 'Sobre brinquedo "educativo digital"',
+        paragraphs: [
+          'Tablet de bebê, brinquedo eletrônico que fala letras/números/cores... gasta MUITO menos do que parece. Bebê de menos de 1 ano não associa "som A" com letra. Ele só gosta do som.',
+          'Sociedade Brasileira de Pediatria recomenda ZERO tela até 2 anos. Brinquedo eletrônico que faz luz e som também conta. Use com moderação.',
+          'Brinquedos analógicos (madeira, pano, plástico simples) desenvolvem mais a criatividade. Bebê precisa "criar" a brincadeira, não consumir.',
+        ],
+      },
+      {
+        heading: 'O que NÃO comprar',
+        paragraphs: [
+          '**Brinquedo de bebê fofo MAS com bateria.** Som alto e luz piscando vira chato em 2 dias. Bebê enjoa.',
+          '**Pelúcia gigante.** Bonita pra foto, mas bebê não brinca. Acumula ácaro.',
+          '**Brinquedo recomendado pra idade SUPERIOR.** "Brinquedo 6+ meses" pra recém-nascido = perda de dinheiro. Ele não engaja.',
+          '**Kit com 50 peças.** Bebê de menos de 1 ano brinca com 2-3 peças por vez. Os outros 47 ficam encaixotados.',
+        ],
+      },
+      {
+        heading: 'Resumo',
+        paragraphs: [
+          'Compra POUCO e na FASE CERTA. 4-5 brinquedos bem escolhidos pro mês atual valem mais que 30 jogados na caixa.',
+          'Bebê desenvolve em ritmo próprio — se o brinquedo de 6 meses tá parado e o seu bebê tem 7, talvez ele só vá curtir aos 9. Tudo bem. Não force.',
+        ],
+      },
+    ],
+  },
+
   'cadeirinha-de-carro': {
     title: 'Cadeirinha de carro segura: o guia completo',
     excerpt:

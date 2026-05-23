@@ -29,6 +29,20 @@ const GUIDES = [
       'O que considerar na compra (NBR 14400, ISO-Fix, idade certa), e por que cadeirinha barata pode sair cara.',
     readTime: '10 min',
   },
+  {
+    slug: 'baba-eletronica-vale-a-pena',
+    title: 'Babá eletrônica vale a pena? Comparativo honesto 2026',
+    excerpt:
+      'Comparativo entre babá só áudio, com vídeo, e babá inteligente com Wi-Fi. Em quais casos cada uma faz sentido e quais armadilhas evitar.',
+    readTime: '7 min',
+  },
+  {
+    slug: 'brinquedos-por-idade-do-bebe',
+    title: 'Brinquedos por faixa etária: 0 a 12 meses',
+    excerpt:
+      'Guia mensal do que o bebê REALMENTE usa em cada fase. Sem comprar brinquedo que ele só vai brincar daqui 6 meses.',
+    readTime: '9 min',
+  },
 ];
 
 export default function GuiaIndexPage(): React.ReactElement {
@@ -45,6 +59,7 @@ export default function GuiaIndexPage(): React.ReactElement {
           <nav className="flex items-center gap-4 text-sm">
             <Link href="/ofertas" className="text-zinc-600 hover:text-emerald-700">Ofertas</Link>
             <Link href="/guia" className="font-semibold text-emerald-700">Guias</Link>
+            <Link href="/sobre" className="text-zinc-600 hover:text-emerald-700">Sobre</Link>
             <Link href="/" className="rounded-full bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700">
               <MessageCircle className="inline size-4 mr-1" />
               Entrar no grupo

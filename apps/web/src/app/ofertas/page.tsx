@@ -61,6 +61,7 @@ export default async function OfertasPage(): Promise<React.ReactElement> {
           <nav className="flex items-center gap-4 text-sm">
             <Link href="/ofertas" className="font-semibold text-emerald-700">Ofertas</Link>
             <Link href="/guia" className="text-zinc-600 hover:text-emerald-700">Guias</Link>
+            <Link href="/sobre" className="text-zinc-600 hover:text-emerald-700">Sobre</Link>
             <Link href="/" className="rounded-full bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700">
               <MessageCircle className="inline size-4 mr-1" />
               Entrar no grupo
@@ -239,6 +240,8 @@ function Footer(): React.ReactElement {
           <Link href="/" className="hover:text-emerald-700">Início</Link>
           <Link href="/ofertas" className="hover:text-emerald-700">Ofertas</Link>
           <Link href="/guia" className="hover:text-emerald-700">Guias</Link>
+          <Link href="/sobre" className="hover:text-emerald-700">Sobre</Link>
+          <Link href="/privacidade" className="hover:text-emerald-700">Privacidade</Link>
         </p>
         <p className="mt-3 text-xs text-zinc-500">
           © {new Date().getFullYear()} Promo da Helena. Conteúdo informativo, não substitui

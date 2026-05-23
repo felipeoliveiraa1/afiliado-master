@@ -223,10 +223,14 @@ fbq('track', 'PageView');
         </div>
 
         {/* Footer credibilidade + nav pras outras páginas (Amazon precisa indexar) */}
-        <nav className="mt-4 flex justify-center gap-4 text-xs text-[#A58B7E]">
+        <nav className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-[#A58B7E]">
           <a href="/ofertas" className="hover:text-[#D89399]">Ofertas Amazon</a>
           <span>·</span>
           <a href="/guia" className="hover:text-[#D89399]">Guias da Helena</a>
+          <span>·</span>
+          <a href="/sobre" className="hover:text-[#D89399]">Sobre</a>
+          <span>·</span>
+          <a href="/privacidade" className="hover:text-[#D89399]">Privacidade</a>
         </nav>
         <p className="text-center text-xs text-[#A58B7E] mt-3">
           © Promo da Helena · Achadinhos selecionados todos os dias

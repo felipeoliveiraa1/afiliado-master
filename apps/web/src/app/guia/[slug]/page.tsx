@@ -47,6 +47,7 @@ export default async function GuiaPage({
           <nav className="flex items-center gap-4 text-sm">
             <Link href="/ofertas" className="text-zinc-600 hover:text-emerald-700">Ofertas</Link>
             <Link href="/guia" className="font-semibold text-emerald-700">Guias</Link>
+            <Link href="/sobre" className="text-zinc-600 hover:text-emerald-700">Sobre</Link>
             <Link href="/" className="rounded-full bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700">
               <MessageCircle className="inline size-4 mr-1" />
               Entrar no grupo
