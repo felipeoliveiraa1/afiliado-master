@@ -18,7 +18,9 @@ export const env = cleanEnv(process.env, {
   EVOLUTION_API_KEY: str(),
   EVOLUTION_DEFAULT_INSTANCE: str(),
 
-  OPENAI_API_KEY: str(),
+  // OpenAI é opcional — quando vazio, curator pula a chamada e usa pool
+  // fixo de captions variadas (describe.ts:pickRandomFallbackCaption).
+  OPENAI_API_KEY: str({ default: '' }),
   OPENAI_MODEL: str({ default: 'gpt-4o-mini' }),
 
   SHOPEE_APP_ID: str({ default: '' }),
