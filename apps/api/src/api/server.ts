@@ -2398,6 +2398,215 @@ export async function buildServer() {
       prisma.shopeeCoupon.update({ where: { id: req.params.id }, data: { enabled: req.body.enabled } }),
   );
 
+  // Parser de página de cupons da Shopee — esposa cola o texto inteiro da
+  // página /afiliados/coupons (ou similar) e sistema identifica os cupons,
+  // mostra preview (dry-run) ou cria em massa.
+  //
+  // Formato esperado (blocos separados por linhas em branco):
+  //   <CATEGORIA TÍTULO>
+  //   <VALOR (R$X OFF ou X% OFF ou X% DE CASHBACK)>
+  //   Nas compras acima de R$X
+  //   [Limitado a R$X]
+  //   [Oficial]
+  //   Condições
+  //   <STATUS: Eu quero / Esgotado / Resgatado>
+  //
+  // Pula: esgotados, resgatados, categorias específicas (MODA/CASA/etc),
+  // gift cards. Cadastra: "Todas as Lojas" + "Lojas Oficiais" genérico.
+  app.post(
+    '/sources/SHOPEE/coupons/parse-and-create',
+    {
+      schema: {
+        body: z.object({
+          rawText: z.string().min(20),
+          validUntil: z.string().datetime(),
+          dryRun: z.boolean().optional().default(false),
+        }),
+      },
+    },
+    async (req) => {
+      type ParsedItem = {
+        action: 'create' | 'skip';
+        reason?: string;
+        title: string;
+        type: 'PERCENT' | 'FIXED';
+        value: number;
+        minPurchase: number | null;
+        maxDiscount: number | null;
+        officialOnly: boolean;
+        discountText: string;
+        status: string;
+      };
+
+      // Categorias permitidas (sem restrição de categoria de produto)
+      const ALLOWED_TITLES = ['TODAS AS LOJAS', 'LOJAS OFICIAIS'];
+      const CATEGORY_TITLES_SKIP = [
+        'MODA OFICIAL', 'CASA E DECORAÇÃO OFICIAL', 'MÓVEIS OFICIAL',
+        'CONSTRUÇÃO E FERRAMENTAS OFICIAL', 'TECNOLOGIA OFICIAL',
+        'MODA', 'CASA E DECORAÇÃO', 'AUTOMÓVEIS E MOTOCICLETAS',
+        'CONSTRUÇÃO E FERRAMENTAS', 'TECNOLOGIA', 'BELEZA', 'ESSENCIAIS',
+        'CUPOM SHOPEE DOAÇÕES', 'CUPOM',
+      ];
+      const GIFT_CARD_PREFIX = 'GIFT CARD';
+
+      const parseValue = (line: string): { type: 'PERCENT' | 'FIXED'; value: number } | null => {
+        // "R$30 OFF", "R$ 30 OFF", "30% OFF", "30% DE CASHBACK"
+        const fixed = line.match(/^R\$\s?(\d+(?:,\d+)?)\s+OFF/i);
+        if (fixed) return { type: 'FIXED', value: Number(fixed[1].replace(',', '.')) };
+        const pct = line.match(/^(\d+(?:,\d+)?)\s?%/);
+        if (pct) return { type: 'PERCENT', value: Number(pct[1].replace(',', '.')) };
+        return null;
+      };
+
+      const parseMinPurchase = (text: string): number | null => {
+        // "Nas compras acima de R$199" / "Nas compras acima de R$1,5mil"
+        const m = text.match(/acima de R\$\s?([\d,.]+)(mil)?/i);
+        if (!m) return null;
+        let n = Number(m[1].replace(/\./g, '').replace(',', '.'));
+        if (m[2]?.toLowerCase() === 'mil') n *= 1000;
+        return n;
+      };
+
+      const parseMaxDiscount = (text: string): number | null => {
+        // "Limitado a R$20" / "Limitado a R$10 (cashback)"
+        const m = text.match(/Limitado a R\$\s?(\d+(?:,\d+)?)/i);
+        return m ? Number(m[1].replace(',', '.')) : null;
+      };
+
+      // Tokeniza por blocos (linhas em branco)
+      const blocks = req.body.rawText
+        .split(/\n\s*\n/)
+        .map((b) => b.trim())
+        .filter(Boolean);
+
+      const parsed: ParsedItem[] = [];
+
+      for (const block of blocks) {
+        const lines = block
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean);
+        if (lines.length < 3) continue;
+
+        // 1ª linha em CAIXA ALTA = título de cupom
+        const title = lines[0];
+        if (title !== title.toUpperCase() || title.length < 3) continue;
+
+        // Status (última linha geralmente)
+        const status = lines[lines.length - 1];
+        const isActive = /^Eu quero$/i.test(status);
+        const isSoldOut = /^(Esgotado|Resgatado)$/i.test(status);
+
+        // Valor (linha após o título)
+        const valueLine = lines[1];
+        const parsedValue = parseValue(valueLine);
+        if (!parsedValue) continue;
+
+        // Min/max — procurar em todas as linhas restantes
+        const restText = lines.slice(2).join(' ');
+        const minPurchase = parseMinPurchase(restText);
+        const maxDiscount = parseMaxDiscount(restText);
+        const officialOnly = /Oficial/i.test(restText) || title.endsWith('OFICIAL');
+
+        // Decide ação
+        let action: 'create' | 'skip' = 'create';
+        let reason: string | undefined;
+
+        if (isSoldOut) {
+          action = 'skip';
+          reason = 'esgotado/resgatado';
+        } else if (!isActive) {
+          action = 'skip';
+          reason = `status desconhecido: ${status}`;
+        } else if (title.startsWith(GIFT_CARD_PREFIX)) {
+          action = 'skip';
+          reason = 'gift card (produto específico)';
+        } else if (CATEGORY_TITLES_SKIP.includes(title)) {
+          action = 'skip';
+          reason = 'categoria específica (sem matching no sistema)';
+        } else if (!ALLOWED_TITLES.includes(title)) {
+          action = 'skip';
+          reason = `título não reconhecido: ${title}`;
+        }
+
+        // discountText pra mensagem WhatsApp
+        const discountText =
+          parsedValue.type === 'FIXED'
+            ? `R$${Math.round(parsedValue.value)} OFF`
+            : maxDiscount
+              ? `${parsedValue.value}% OFF (max R$${Math.round(maxDiscount)})`
+              : `${parsedValue.value}% OFF`;
+
+        parsed.push({
+          action,
+          reason,
+          title,
+          type: parsedValue.type,
+          value: parsedValue.value,
+          minPurchase,
+          maxDiscount,
+          officialOnly,
+          discountText: officialOnly ? `${discountText} Lojas Oficiais` : discountText,
+          status,
+        });
+      }
+
+      // Dry-run: só retorna preview
+      if (req.body.dryRun) {
+        return {
+          parsed,
+          summary: {
+            total: parsed.length,
+            toCreate: parsed.filter((p) => p.action === 'create').length,
+            toSkip: parsed.filter((p) => p.action === 'skip').length,
+          },
+        };
+      }
+
+      // Commit: cria os com action='create'
+      const created: Array<{ id: string; discountText: string }> = [];
+      const skipped: Array<{ title: string; reason: string }> = [];
+      for (const p of parsed) {
+        if (p.action === 'skip') {
+          skipped.push({ title: p.title, reason: p.reason ?? '' });
+          continue;
+        }
+        try {
+          const c = await prisma.shopeeCoupon.create({
+            data: {
+              code: null,
+              description: `${p.title}: ${p.discountText}${p.minPurchase ? ` (min R$${p.minPurchase})` : ''}`,
+              type: p.type,
+              value: p.value,
+              minPurchase: p.minPurchase,
+              maxDiscount: p.maxDiscount,
+              discountText: p.discountText,
+              validUntil: new Date(req.body.validUntil),
+              officialOnly: p.officialOnly,
+            },
+          });
+          created.push({ id: c.id, discountText: p.discountText });
+        } catch (err) {
+          skipped.push({
+            title: p.title,
+            reason: `erro ao criar: ${(err as Error).message}`,
+          });
+        }
+      }
+
+      return {
+        parsed,
+        summary: {
+          total: parsed.length,
+          created: created.length,
+          skipped: skipped.length,
+        },
+        created,
+        skipped,
+      };
+    },
+  );
+
   app.delete(
     '/sources/SHOPEE/coupons/:id',
     { schema: { params: z.object({ id: z.string() }) } },

@@ -39,7 +39,10 @@ type NavSection = {
 const SECTIONS: NavSection[] = [
   {
     label: '💜 Promo Helena',
-    items: [{ href: '/import-link', label: 'Enviar Link Agora', icon: Send }],
+    items: [
+      { href: '/import-link', label: 'Enviar Link Agora', icon: Send },
+      { href: '/cupons', label: '🎟️ Gerenciar cupons', icon: Tag },
+    ],
   },
   {
     label: 'Visão geral',
