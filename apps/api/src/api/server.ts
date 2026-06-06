@@ -2473,27 +2473,67 @@ export async function buildServer() {
         return m ? Number(m[1].replace(',', '.')) : null;
       };
 
-      // Tokeniza por blocos (linhas em branco)
-      const blocks = req.body.rawText
-        .split(/\n\s*\n/)
-        .map((b) => b.trim())
+      // Pre-processamento: remove HEADER + FOOTER da página Shopee.
+      // Header tem coisas tipo "Carrinho", "Buscar na Shopee", "Lojas Oficiais"
+      // como section title. Footer começa quando aparece "Cupons de Desconto:"
+      // ou similar (área de texto institucional). Tudo após = lixo.
+      let cleanText = req.body.rawText;
+      const footerCutoff = cleanText.search(
+        /Cupons de Desconto:|Como conseguir cupons|ATENDIMENTO AO CLIENTE|© \d{4} Shopee/i,
+      );
+      if (footerCutoff > 0) cleanText = cleanText.slice(0, footerCutoff);
+
+      // Section markers — separam grupos mas NÃO são cupons.
+      const SECTION_MARKERS = ['Lojas Oficiais', 'Cupons', 'Gift Cards'];
+      const isSectionMarker = (l: string): boolean =>
+        SECTION_MARKERS.some((m) => l.trim().toLowerCase() === m.toLowerCase());
+
+      // Parser stateful linha-a-linha:
+      // - Pula section markers
+      // - Detecta início de bloco quando vê linha em CAIXA ALTA
+      // - Bloco termina quando encontra status (Eu quero/Esgotado/Resgatado)
+      //   OU próxima linha em CAIXA ALTA OU section marker OU EOF
+      const STATUS_REGEX = /^(Eu quero|Esgotado|Resgatado)$/i;
+      const isTitleLine = (l: string): boolean =>
+        l.length >= 3 && l === l.toUpperCase() && /[A-Z]/.test(l) && !STATUS_REGEX.test(l);
+
+      const allLines = cleanText
+        .split('\n')
+        .map((l) => l.trim())
         .filter(Boolean);
+
+      // Agrupa em blocos: cada bloco começa numa linha de título (CAIXA ALTA)
+      // e termina quando encontra status OU próximo título OU section marker
+      const blocks: string[][] = [];
+      let current: string[] | null = null;
+      for (const line of allLines) {
+        if (isSectionMarker(line)) {
+          if (current) { blocks.push(current); current = null; }
+          continue;
+        }
+        if (isTitleLine(line)) {
+          if (current) blocks.push(current);
+          current = [line];
+        } else if (current) {
+          current.push(line);
+          if (STATUS_REGEX.test(line)) {
+            blocks.push(current);
+            current = null;
+          }
+        }
+      }
+      if (current) blocks.push(current);
 
       const parsed: ParsedItem[] = [];
 
-      for (const block of blocks) {
-        const lines = block
-          .split('\n')
-          .map((l) => l.trim())
-          .filter(Boolean);
+      for (const lines of blocks) {
         if (lines.length < 3) continue;
 
-        // 1ª linha em CAIXA ALTA = título de cupom
         const title = lines[0];
-        if (title !== title.toUpperCase() || title.length < 3) continue;
 
-        // Status (última linha geralmente)
-        const status = lines[lines.length - 1];
+        // Status: procura linha que match STATUS_REGEX (não necessariamente a última)
+        const statusLine = lines.find((l) => STATUS_REGEX.test(l));
+        const status = statusLine ?? lines[lines.length - 1];
         const isActive = /^Eu quero$/i.test(status);
         const isSoldOut = /^(Esgotado|Resgatado)$/i.test(status);
 
