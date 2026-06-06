@@ -82,7 +82,14 @@ export default function CuponsPage(): React.ReactElement {
         </button>
       </div>
 
-      {tab === 'shopee' ? <ShopeeParser /> : <AmazonForm />}
+      {tab === 'shopee' ? (
+        <>
+          <ActiveCouponsList />
+          <ShopeeParser />
+        </>
+      ) : (
+        <AmazonForm />
+      )}
     </div>
   );
 }
@@ -91,6 +98,8 @@ function ShopeeParser(): React.ReactElement {
   const [rawText, setRawText] = useState('');
   const [validUntil, setValidUntil] = useState(todayEndOfDay());
   const [preview, setPreview] = useState<ParseResp | null>(null);
+  // Set de índices selecionados (em preview.parsed). Default = todos com action='create'.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
 
   const parseMut = useMutation({
@@ -103,30 +112,56 @@ function ShopeeParser(): React.ReactElement {
           dryRun: true,
         },
       }),
-    onSuccess: (data) => setPreview(data),
+    onSuccess: (data) => {
+      setPreview(data);
+      // Default: pré-seleciona todos os ✅ (action=create)
+      const defaultSel = new Set<number>();
+      data.parsed.forEach((p, i) => { if (p.action === 'create') defaultSel.add(i); });
+      setSelected(defaultSel);
+    },
     onError: (err) => toast.error(`❌ ${(err as Error).message}`),
   });
 
   const createMut = useMutation({
-    mutationFn: () =>
-      clientFetch<ParseResp>('/sources/SHOPEE/coupons/parse-and-create', {
+    mutationFn: () => {
+      const items = (preview?.parsed ?? [])
+        .map((p, i) => ({ p, i }))
+        .filter(({ i }) => selected.has(i))
+        .map(({ p }) => ({
+          title: p.title,
+          type: p.type,
+          value: p.value,
+          minPurchase: p.minPurchase,
+          maxDiscount: p.maxDiscount,
+          discountText: p.discountText,
+          officialOnly: p.officialOnly,
+        }));
+      return clientFetch<{ created: number; failed: number }>('/sources/SHOPEE/coupons/bulk-create', {
         method: 'POST',
         body: {
-          rawText,
           validUntil: new Date(validUntil + ':00').toISOString(),
-          dryRun: false,
+          items,
         },
-      }),
+      });
+    },
     onSuccess: (data) => {
-      const c = data.summary.created ?? 0;
-      const s = data.summary.skipped ?? 0;
-      toast.success(`✅ ${c} cupom(ns) cadastrado(s) · ${s} pulado(s)`);
+      toast.success(`✅ ${data.created} cupom(ns) cadastrado(s)${data.failed ? ` · ${data.failed} falharam` : ''}`);
       setPreview(null);
       setRawText('');
-      queryClient.invalidateQueries({ queryKey: ['shopee-coupons'] });
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ['shopee-coupons-active'] });
     },
     onError: (err) => toast.error(`❌ ${(err as Error).message}`),
   });
+
+  const toggle = (i: number): void => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -179,14 +214,14 @@ Eu quero
               {parseMut.isPending ? <Loader2 className="size-4 animate-spin mr-1" /> : null}
               Analisar
             </Button>
-            {preview && preview.summary.toCreate && preview.summary.toCreate > 0 ? (
+            {preview && selected.size > 0 ? (
               <Button
                 onClick={() => createMut.mutate()}
                 disabled={createMut.isPending}
                 className="bg-emerald-600 hover:bg-emerald-700"
               >
                 {createMut.isPending ? <Loader2 className="size-4 animate-spin mr-1" /> : null}
-                Cadastrar {preview.summary.toCreate} cupom(ns)
+                Cadastrar {selected.size} selecionado(s)
               </Button>
             ) : null}
           </div>
@@ -197,41 +232,158 @@ Eu quero
         <Card>
           <CardHeader>
             <CardTitle>
-              2. Preview ({preview.summary.toCreate ?? preview.summary.created ?? 0} cadastrar · {preview.summary.toSkip ?? preview.summary.skipped ?? 0} pular)
+              2. Preview — {selected.size} de {preview.parsed.length} selecionados
             </CardTitle>
+            <div className="text-xs text-muted-foreground mt-1">
+              Marca/desmarca pra escolher quais cadastrar. Padrão: todos os ✅ marcados, ⚠️ desmarcados (mas pode forçar marcando)
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {preview.parsed.map((p, i) => (
-                <div
-                  key={i}
-                  className={`flex items-start gap-3 rounded border p-3 text-sm ${
-                    p.action === 'create' ? 'border-emerald-200 bg-emerald-50/40' : 'border-zinc-200 bg-zinc-50/40'
-                  }`}
-                >
-                  <span className="text-lg shrink-0">{p.action === 'create' ? '✅' : '⚠️'}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold">{p.title}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {p.type === 'PERCENT' ? `${p.value}% OFF` : `R$ ${p.value} OFF`}
-                      {p.minPurchase ? ` · min R$ ${p.minPurchase}` : ''}
-                      {p.maxDiscount ? ` · max R$ ${p.maxDiscount}` : ''}
-                      {p.officialOnly ? ' · só Mall' : ''}
+              {preview.parsed.map((p, i) => {
+                const isSel = selected.has(i);
+                return (
+                  <label
+                    key={i}
+                    className={`flex items-start gap-3 rounded border p-3 text-sm cursor-pointer transition ${
+                      isSel
+                        ? 'border-emerald-300 bg-emerald-50/60'
+                        : p.action === 'skip'
+                          ? 'border-zinc-200 bg-zinc-50/40 opacity-60'
+                          : 'border-zinc-200 bg-white'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSel}
+                      onChange={() => toggle(i)}
+                      className="mt-1 size-4 accent-emerald-600 shrink-0"
+                    />
+                    <span className="text-lg shrink-0">{p.action === 'create' ? '✅' : '⚠️'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold">{p.title}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {p.type === 'PERCENT' ? `${p.value}% OFF` : `R$ ${p.value} OFF`}
+                        {p.minPurchase ? ` · min R$ ${p.minPurchase}` : ''}
+                        {p.maxDiscount ? ` · max R$ ${p.maxDiscount}` : ''}
+                        {p.officialOnly ? ' · só Mall' : ''}
+                      </div>
+                      {p.action === 'skip' ? (
+                        <div className="text-xs text-amber-700 mt-1">⚠️ {p.reason}</div>
+                      ) : null}
                     </div>
-                    {p.action === 'skip' ? (
-                      <div className="text-xs text-amber-700 mt-1">⚠️ {p.reason}</div>
-                    ) : (
-                      <div className="text-xs text-emerald-700 mt-1">→ vai cadastrar como auto-cupom</div>
-                    )}
-                  </div>
-                  <Badge variant={p.status === 'Eu quero' ? 'success' : 'secondary'}>{p.status}</Badge>
-                </div>
-              ))}
+                    <Badge variant={p.status === 'Eu quero' ? 'success' : 'secondary'}>{p.status}</Badge>
+                  </label>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
       ) : null}
     </div>
+  );
+}
+
+type ActiveCoupon = {
+  id: string;
+  code: string | null;
+  type: 'PERCENT' | 'FIXED';
+  value: number;
+  minPurchase: number | null;
+  maxDiscount: number | null;
+  discountText: string | null;
+  officialOnly: boolean;
+  enabled: boolean;
+  validUntil: string | null;
+};
+
+function ActiveCouponsList(): React.ReactElement {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery<ActiveCoupon[]>({
+    queryKey: ['shopee-coupons-active'],
+    queryFn: () => clientFetch<ActiveCoupon[]>('/sources/SHOPEE/coupons'),
+  });
+
+  const disableMut = useMutation({
+    mutationFn: (id: string) =>
+      clientFetch(`/sources/SHOPEE/coupons/${id}`, {
+        method: 'PATCH',
+        body: { enabled: false },
+      }),
+    onSuccess: () => {
+      toast.success('✅ Cupom desativado');
+      queryClient.invalidateQueries({ queryKey: ['shopee-coupons-active'] });
+    },
+    onError: (err) => toast.error(`❌ ${(err as Error).message}`),
+  });
+
+  const now = new Date();
+  const ativos = (data ?? []).filter(
+    (c) => c.enabled && (!c.validUntil || new Date(c.validUntil) > now),
+  );
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-4 text-center text-muted-foreground">
+          <Loader2 className="size-5 animate-spin mx-auto" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (ativos.length === 0) return <></>;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">🎟️ Cupons Shopee ativos agora ({ativos.length})</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1.5">
+          {ativos
+            .sort((a, b) => (a.value || 0) - (b.value || 0))
+            .map((c) => {
+              const expSoon = c.validUntil
+                ? new Date(c.validUntil).getTime() - now.getTime() < 3 * 3600 * 1000
+                : false;
+              const expStr = c.validUntil
+                ? new Date(c.validUntil).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : 'sem validade';
+              return (
+                <div
+                  key={c.id}
+                  className="flex items-center gap-3 rounded border bg-white px-3 py-2 text-sm"
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="font-mono text-xs bg-zinc-100 px-1.5 py-0.5 rounded mr-2">
+                      {c.code ?? '(auto)'}
+                    </span>
+                    <span className="font-semibold">
+                      {c.type === 'PERCENT' ? `${c.value}% OFF` : `R$ ${c.value} OFF`}
+                    </span>
+                    {c.maxDiscount ? <span className="text-xs text-muted-foreground"> (max R$ {c.maxDiscount})</span> : null}
+                    {c.minPurchase ? <span className="text-xs text-muted-foreground"> · min R$ {c.minPurchase}</span> : null}
+                    {c.officialOnly ? <span className="ml-2 text-[10px] uppercase font-bold text-amber-700">Mall</span> : null}
+                  </div>
+                  <span className={`text-xs ${expSoon ? 'text-rose-600 font-semibold' : 'text-muted-foreground'}`}>
+                    exp {expStr}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => disableMut.mutate(c.id)}
+                    disabled={disableMut.isPending}
+                    className="text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

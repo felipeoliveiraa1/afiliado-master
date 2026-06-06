@@ -2398,6 +2398,57 @@ export async function buildServer() {
       prisma.shopeeCoupon.update({ where: { id: req.params.id }, data: { enabled: req.body.enabled } }),
   );
 
+  // Bulk-create de cupons Shopee a partir de array já parseado (do frontend
+  // depois do usuário escolher quais incluir no preview). Mais flexível que
+  // parse-and-create porque permite seleção parcial.
+  app.post(
+    '/sources/SHOPEE/coupons/bulk-create',
+    {
+      schema: {
+        body: z.object({
+          validUntil: z.string().datetime(),
+          items: z.array(
+            z.object({
+              title: z.string(),
+              type: z.enum(['PERCENT', 'FIXED']),
+              value: z.number().min(0),
+              minPurchase: z.number().nullable().optional(),
+              maxDiscount: z.number().nullable().optional(),
+              discountText: z.string(),
+              officialOnly: z.boolean(),
+            }),
+          ).min(1).max(50),
+        }),
+      },
+    },
+    async (req) => {
+      const created: Array<{ id: string; title: string; discountText: string }> = [];
+      const failed: Array<{ title: string; error: string }> = [];
+      const validUntil = new Date(req.body.validUntil);
+      for (const it of req.body.items) {
+        try {
+          const c = await prisma.shopeeCoupon.create({
+            data: {
+              code: null,
+              description: `${it.title}: ${it.discountText}${it.minPurchase ? ` (min R$${it.minPurchase})` : ''}`,
+              type: it.type,
+              value: it.value,
+              minPurchase: it.minPurchase ?? null,
+              maxDiscount: it.maxDiscount ?? null,
+              discountText: it.discountText,
+              validUntil,
+              officialOnly: it.officialOnly,
+            },
+          });
+          created.push({ id: c.id, title: it.title, discountText: it.discountText });
+        } catch (err) {
+          failed.push({ title: it.title, error: (err as Error).message });
+        }
+      }
+      return { created: created.length, failed: failed.length, items: created, errors: failed };
+    },
+  );
+
   // Parser de página de cupons da Shopee — esposa cola o texto inteiro da
   // página /afiliados/coupons (ou similar) e sistema identifica os cupons,
   // mostra preview (dry-run) ou cria em massa.
