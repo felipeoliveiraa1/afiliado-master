@@ -215,6 +215,8 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
   let priceWithCoupon: number | null = null;
   let couponRedeemLink: string | null = null;
   let couponDiscountLabel: string | null = null;
+  // Amazon: instructionText do cupom escolhido (sobrepõe o fallback de settings)
+  let chosenAmazonInstruction: string | null = null;
   if (source?.kind === 'SHOPEE') {
     const activeCoupons = await prisma.shopeeCoupon.findMany({
       where: {
@@ -268,30 +270,56 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
       }
     }
   } else if (source?.kind === 'AMAZON') {
-    // Cupom Amazon — setting global de cupom default (ex: MUNDIAL 10% min R$200 max R$50)
-    // Aplicado automaticamente quando o produto atinge minPurchase.
-    const mktAmz = await getSettingsSection<{
-      amazonCouponCode?: string;
-      amazonCouponType?: 'PERCENT' | 'FIXED';
-      amazonCouponValue?: number;
-      amazonCouponMinPurchase?: number;
-      amazonCouponMaxDiscount?: number;
-    }>('marketplaces');
-    if (mktAmz.amazonCouponCode?.trim() && mktAmz.amazonCouponValue) {
+    // Cupons Amazon — busca todos ativos da tabela AmazonCoupon e escolhe o
+    // de MAIOR desconto válido pro produto. Fallback: setting legacy
+    // (amazonCouponCode etc) quando tabela vazia — retrocompat.
+    const activeCoupons = await prisma.amazonCoupon.findMany({
+      where: { enabled: true, OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }] },
+    });
+    let bestAmzCoupon: typeof activeCoupons[number] | null = null;
+    let bestAmzResult: { finalPrice: number; discount: number } | null = null;
+    for (const c of activeCoupons) {
       const r = applyCoupon(price, {
-        code: mktAmz.amazonCouponCode,
-        type: (mktAmz.amazonCouponType ?? 'PERCENT') as 'PERCENT' | 'FIXED',
-        value: Number(mktAmz.amazonCouponValue),
-        minPurchase: mktAmz.amazonCouponMinPurchase
-          ? Number(mktAmz.amazonCouponMinPurchase)
-          : null,
-        maxDiscount: mktAmz.amazonCouponMaxDiscount
-          ? Number(mktAmz.amazonCouponMaxDiscount)
-          : null,
+        code: c.code,
+        type: (c.type === 'FIXED' ? 'FIXED' : 'PERCENT') as 'PERCENT' | 'FIXED',
+        value: c.value,
+        minPurchase: c.minPurchase,
+        maxDiscount: c.maxDiscount,
       });
-      if (r.applies && r.discountValue > 0) {
-        couponCode = mktAmz.amazonCouponCode.trim().toUpperCase();
-        priceWithCoupon = r.finalPrice;
+      if (r.applies && r.discountValue > 0 && (!bestAmzResult || r.discountValue > bestAmzResult.discount)) {
+        bestAmzResult = { finalPrice: r.finalPrice, discount: r.discountValue };
+        bestAmzCoupon = c;
+      }
+    }
+    if (bestAmzCoupon && bestAmzResult) {
+      couponCode = bestAmzCoupon.code.toUpperCase();
+      priceWithCoupon = bestAmzResult.finalPrice;
+      // Salva o instructionText do cupom escolhido pra renderizar abaixo
+      // (pra não cair no fallback genérico do settings se cupom tem o próprio).
+      if (bestAmzCoupon.instructionText?.trim()) {
+        chosenAmazonInstruction = bestAmzCoupon.instructionText.trim();
+      }
+    } else {
+      // Fallback legacy — settings.amazonCoupon* (1 cupom default)
+      const mktAmz = await getSettingsSection<{
+        amazonCouponCode?: string;
+        amazonCouponType?: 'PERCENT' | 'FIXED';
+        amazonCouponValue?: number;
+        amazonCouponMinPurchase?: number;
+        amazonCouponMaxDiscount?: number;
+      }>('marketplaces');
+      if (mktAmz.amazonCouponCode?.trim() && mktAmz.amazonCouponValue) {
+        const r = applyCoupon(price, {
+          code: mktAmz.amazonCouponCode,
+          type: (mktAmz.amazonCouponType ?? 'PERCENT') as 'PERCENT' | 'FIXED',
+          value: Number(mktAmz.amazonCouponValue),
+          minPurchase: mktAmz.amazonCouponMinPurchase ? Number(mktAmz.amazonCouponMinPurchase) : null,
+          maxDiscount: mktAmz.amazonCouponMaxDiscount ? Number(mktAmz.amazonCouponMaxDiscount) : null,
+        });
+        if (r.applies && r.discountValue > 0) {
+          couponCode = mktAmz.amazonCouponCode.trim().toUpperCase();
+          priceWithCoupon = r.finalPrice;
+        }
       }
     }
   } else if (dispatch.offer.coupon) {
@@ -368,9 +396,10 @@ async function buildMessageText(dispatch: LoadedDispatch): Promise<string> {
     if (source?.kind === 'SHOPEE') {
       couponInstructionText = 'onde tem cupom Shopee';
     } else if (source?.kind === 'AMAZON') {
-      const amzInstr = (mkt as { amazonCouponInstructionText?: string })
+      const settingInstr = (mkt as { amazonCouponInstructionText?: string })
         .amazonCouponInstructionText?.trim();
-      couponInstructionText = amzInstr || 'no checkout';
+      // Prioridade: instructionText do cupom escolhido > setting legacy > default
+      couponInstructionText = chosenAmazonInstruction || settingInstr || 'no checkout';
     }
   }
 

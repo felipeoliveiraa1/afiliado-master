@@ -2489,13 +2489,16 @@ export async function buildServer() {
         status: string;
       };
 
-      // Categorias permitidas (sem restrição de categoria de produto)
-      const ALLOWED_TITLES = ['TODAS AS LOJAS', 'LOJAS OFICIAIS'];
-      const CATEGORY_TITLES_SKIP = [
-        'MODA OFICIAL', 'CASA E DECORAÇÃO OFICIAL', 'MÓVEIS OFICIAL',
-        'CONSTRUÇÃO E FERRAMENTAS OFICIAL', 'TECNOLOGIA OFICIAL',
-        'MODA', 'CASA E DECORAÇÃO', 'AUTOMÓVEIS E MOTOCICLETAS',
-        'CONSTRUÇÃO E FERRAMENTAS', 'TECNOLOGIA', 'BELEZA', 'ESSENCIAIS',
+      // Universais — sempre cadastra
+      const ALLOWED_EXACT = ['TODAS AS LOJAS', 'LOJAS OFICIAIS'];
+      const ALLOWED_PREFIXES = ['CUPOM RELÂMPAGO', 'CUPOM RELAMPAGO', 'PROMO RELÂMPAGO'];
+      // Categorias específicas — sempre pula (não temos matching de categoria)
+      const CATEGORY_DENY = [
+        'MODA', 'MODA OFICIAL', 'CASA E DECORAÇÃO', 'CASA E DECORAÇÃO OFICIAL',
+        'MÓVEIS', 'MÓVEIS OFICIAL', 'CONSTRUÇÃO E FERRAMENTAS',
+        'CONSTRUÇÃO E FERRAMENTAS OFICIAL', 'TECNOLOGIA', 'TECNOLOGIA OFICIAL',
+        'AUTOMÓVEIS E MOTOCICLETAS', 'AUTOMÓVEIS E MOTOCICLETAS OFICIAL',
+        'BELEZA', 'BELEZA OFICIAL', 'ESSENCIAIS', 'ESSENCIAIS OFICIAL',
         'CUPOM SHOPEE DOAÇÕES', 'CUPOM',
       ];
       const GIFT_CARD_PREFIX = 'GIFT CARD';
@@ -2618,12 +2621,15 @@ export async function buildServer() {
         } else if (title.startsWith(GIFT_CARD_PREFIX)) {
           action = 'skip';
           reason = 'gift card (produto específico)';
-        } else if (CATEGORY_TITLES_SKIP.includes(title)) {
+        } else if (CATEGORY_DENY.includes(title)) {
           action = 'skip';
           reason = 'categoria específica (sem matching no sistema)';
-        } else if (!ALLOWED_TITLES.includes(title)) {
+        } else if (
+          !ALLOWED_EXACT.includes(title) &&
+          !ALLOWED_PREFIXES.some((p) => title.startsWith(p))
+        ) {
           action = 'skip';
-          reason = `título não reconhecido: ${title}`;
+          reason = `título não reconhecido: ${title} (marcar manualmente se for universal)`;
         }
 
         // discountText pra mensagem WhatsApp
@@ -2709,6 +2715,70 @@ export async function buildServer() {
     { schema: { params: z.object({ id: z.string() }) } },
     async (req) => {
       await prisma.shopeeCoupon.delete({ where: { id: req.params.id } });
+      return { deleted: true };
+    },
+  );
+
+  // ===========================================================================
+  // CUPONS AMAZON — tabela própria, suporta N cupons simultâneos.
+  // Dispatcher escolhe o de MAIOR desconto válido pra cada produto.
+  // ===========================================================================
+  app.get('/sources/AMAZON/coupons', async () =>
+    prisma.amazonCoupon.findMany({ orderBy: [{ enabled: 'desc' }, { createdAt: 'desc' }] }),
+  );
+
+  app.post(
+    '/sources/AMAZON/coupons',
+    {
+      schema: {
+        body: z.object({
+          code: z.string().min(3).max(40),
+          description: z.string().max(200).optional(),
+          type: z.enum(['PERCENT', 'FIXED']).default('PERCENT'),
+          value: z.number().min(0).max(10000),
+          minPurchase: z.number().min(0).optional(),
+          maxDiscount: z.number().min(0).optional(),
+          discountText: z.string().max(80).optional(),
+          instructionText: z.string().max(80).optional(),
+          validUntil: z.string().datetime().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const code = req.body.code.toUpperCase();
+      const data = {
+        code,
+        description: req.body.description,
+        type: req.body.type,
+        value: req.body.value,
+        minPurchase: req.body.minPurchase,
+        maxDiscount: req.body.maxDiscount,
+        discountText: req.body.discountText,
+        instructionText: req.body.instructionText,
+        validUntil: req.body.validUntil ? new Date(req.body.validUntil) : null,
+      };
+      // Upsert por code — recadastrar mesmo code atualiza
+      return prisma.amazonCoupon.upsert({ where: { code }, create: data, update: data });
+    },
+  );
+
+  app.patch(
+    '/sources/AMAZON/coupons/:id',
+    {
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: z.object({ enabled: z.boolean() }),
+      },
+    },
+    async (req) =>
+      prisma.amazonCoupon.update({ where: { id: req.params.id }, data: { enabled: req.body.enabled } }),
+  );
+
+  app.delete(
+    '/sources/AMAZON/coupons/:id',
+    { schema: { params: z.object({ id: z.string() }) } },
+    async (req) => {
+      await prisma.amazonCoupon.delete({ where: { id: req.params.id } });
       return { deleted: true };
     },
   );

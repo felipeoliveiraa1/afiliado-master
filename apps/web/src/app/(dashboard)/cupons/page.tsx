@@ -387,104 +387,143 @@ function ActiveCouponsList(): React.ReactElement {
   );
 }
 
+type AmazonCoupon = {
+  id: string;
+  code: string;
+  type: 'PERCENT' | 'FIXED';
+  value: number;
+  minPurchase: number | null;
+  maxDiscount: number | null;
+  discountText: string | null;
+  instructionText: string | null;
+  validUntil: string | null;
+  enabled: boolean;
+};
+
 function AmazonForm(): React.ReactElement {
   const queryClient = useQueryClient();
-  const { data: settings, isLoading } = useQuery<{ marketplaces: AmazonCouponSettings }>({
-    queryKey: ['settings-mkt'],
-    queryFn: () => clientFetch<{ marketplaces: AmazonCouponSettings }>('/settings'),
+  const { data: coupons, isLoading } = useQuery<AmazonCoupon[]>({
+    queryKey: ['amazon-coupons'],
+    queryFn: () => clientFetch<AmazonCoupon[]>('/sources/AMAZON/coupons'),
   });
 
-  const mkt = settings?.marketplaces;
-
+  // Form state
   const [code, setCode] = useState('');
   const [type, setType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
   const [value, setValue] = useState('');
   const [minPurchase, setMinPurchase] = useState('');
   const [maxDiscount, setMaxDiscount] = useState('');
   const [instructionText, setInstructionText] = useState('');
+  const [validUntil, setValidUntil] = useState(todayEndOfDay());
 
-  // Sync form com settings (uma vez quando carrega)
-  useState(() => {
-    if (mkt && !code) {
-      setCode(mkt.amazonCouponCode ?? '');
-      setType(mkt.amazonCouponType ?? 'PERCENT');
-      setValue(String(mkt.amazonCouponValue ?? ''));
-      setMinPurchase(String(mkt.amazonCouponMinPurchase ?? ''));
-      setMaxDiscount(String(mkt.amazonCouponMaxDiscount ?? ''));
-      setInstructionText(mkt.amazonCouponInstructionText ?? '');
-    }
-  });
-
-  const saveMut = useMutation({
+  const addMut = useMutation({
     mutationFn: () =>
-      clientFetch<AmazonCouponSettings>('/settings/marketplaces', {
-        method: 'PATCH',
+      clientFetch<AmazonCoupon>('/sources/AMAZON/coupons', {
+        method: 'POST',
         body: {
-          amazonCouponCode: code.trim().toUpperCase() || '',
-          amazonCouponType: type,
-          amazonCouponValue: Number(value) || 0,
-          amazonCouponMinPurchase: Number(minPurchase) || 0,
-          amazonCouponMaxDiscount: Number(maxDiscount) || 0,
-          amazonCouponInstructionText: instructionText.trim(),
+          code: code.trim().toUpperCase(),
+          type,
+          value: Number(value),
+          minPurchase: Number(minPurchase) || undefined,
+          maxDiscount: Number(maxDiscount) || undefined,
+          instructionText: instructionText.trim() || undefined,
+          validUntil: validUntil ? new Date(validUntil + ':00').toISOString() : undefined,
         },
       }),
     onSuccess: () => {
-      toast.success('✅ Cupom Amazon atualizado');
-      queryClient.invalidateQueries({ queryKey: ['settings-mkt'] });
+      toast.success(`✅ Cupom ${code.toUpperCase()} cadastrado`);
+      setCode(''); setValue(''); setMinPurchase(''); setMaxDiscount(''); setInstructionText('');
+      queryClient.invalidateQueries({ queryKey: ['amazon-coupons'] });
     },
     onError: (err) => toast.error(`❌ ${(err as Error).message}`),
   });
 
-  const clearMut = useMutation({
-    mutationFn: () =>
-      clientFetch<AmazonCouponSettings>('/settings/marketplaces', {
-        method: 'PATCH',
-        body: {
-          amazonCouponCode: '',
-          amazonCouponValue: 0,
-          amazonCouponMinPurchase: 0,
-          amazonCouponMaxDiscount: 0,
-          amazonCouponInstructionText: '',
-        },
-      }),
+  const deleteMut = useMutation({
+    mutationFn: (id: string) =>
+      clientFetch(`/sources/AMAZON/coupons/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       toast.success('✅ Cupom Amazon removido');
-      setCode(''); setValue(''); setMinPurchase(''); setMaxDiscount(''); setInstructionText('');
-      queryClient.invalidateQueries({ queryKey: ['settings-mkt'] });
+      queryClient.invalidateQueries({ queryKey: ['amazon-coupons'] });
+    },
+    onError: (err) => toast.error(`❌ ${(err as Error).message}`),
+  });
+
+  const disableMut = useMutation({
+    mutationFn: (id: string) =>
+      clientFetch(`/sources/AMAZON/coupons/${id}`, {
+        method: 'PATCH',
+        body: { enabled: false },
+      }),
+    onSuccess: () => {
+      toast.success('✅ Cupom Amazon desativado');
+      queryClient.invalidateQueries({ queryKey: ['amazon-coupons'] });
     },
   });
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-center text-muted-foreground">
-          <Loader2 className="size-6 animate-spin mx-auto" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const hasActiveCoupon = mkt?.amazonCouponCode && (mkt?.amazonCouponValue ?? 0) > 0;
+  const now = new Date();
+  const ativos = (coupons ?? []).filter(
+    (c) => c.enabled && (!c.validUntil || new Date(c.validUntil) > now),
+  );
 
   return (
     <div className="space-y-4">
-      {hasActiveCoupon ? (
-        <Card className="border-emerald-200 bg-emerald-50/30">
-          <CardContent className="py-4">
-            <div className="flex items-start gap-3">
-              <div className="grid size-10 place-items-center rounded-full bg-emerald-100 text-emerald-700">
-                🎟️
-              </div>
-              <div className="flex-1">
-                <div className="text-xs uppercase tracking-wide text-emerald-700 font-bold">Cupom ativo</div>
-                <div className="text-lg font-semibold">
-                  {mkt!.amazonCouponCode} · {mkt!.amazonCouponType === 'PERCENT' ? `${mkt!.amazonCouponValue}% OFF` : `R$ ${mkt!.amazonCouponValue} OFF`}
-                  {mkt!.amazonCouponMaxDiscount ? ` (max R$ ${mkt!.amazonCouponMaxDiscount})` : ''}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Min compra: R$ {mkt!.amazonCouponMinPurchase ?? 0}
-                </div>
-              </div>
+      {ativos.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">🎟️ Cupons Amazon ativos ({ativos.length})</CardTitle>
+            <div className="text-xs text-muted-foreground mt-1">
+              Sistema escolhe automaticamente o de maior desconto válido pra cada produto Amazon
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {ativos
+                .sort((a, b) => (a.value || 0) - (b.value || 0))
+                .map((c) => {
+                  const expSoon = c.validUntil
+                    ? new Date(c.validUntil).getTime() - now.getTime() < 3 * 3600 * 1000
+                    : false;
+                  const expStr = c.validUntil
+                    ? new Date(c.validUntil).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : 'sem validade';
+                  return (
+                    <div key={c.id} className="flex items-center gap-3 rounded border bg-white px-3 py-2 text-sm">
+                      <div className="flex-1 min-w-0">
+                        <span className="font-mono text-xs bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded mr-2 font-bold">
+                          {c.code}
+                        </span>
+                        <span className="font-semibold">
+                          {c.type === 'PERCENT' ? `${c.value}% OFF` : `R$ ${c.value} OFF`}
+                        </span>
+                        {c.maxDiscount ? <span className="text-xs text-muted-foreground"> (max R$ {c.maxDiscount})</span> : null}
+                        {c.minPurchase ? <span className="text-xs text-muted-foreground"> · min R$ {c.minPurchase}</span> : null}
+                      </div>
+                      <span className={`text-xs ${expSoon ? 'text-rose-600 font-semibold' : 'text-muted-foreground'}`}>
+                        exp {expStr}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => disableMut.mutate(c.id)}
+                        disabled={disableMut.isPending}
+                        title="Desativar (mantém histórico)"
+                      >
+                        Desativar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          if (confirm(`Apagar cupom ${c.code} permanentemente?`)) deleteMut.mutate(c.id);
+                        }}
+                        disabled={deleteMut.isPending}
+                        className="text-destructive"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
             </div>
           </CardContent>
         </Card>
@@ -492,104 +531,95 @@ function AmazonForm(): React.ReactElement {
 
       <Card>
         <CardHeader>
-          <CardTitle>
-            {hasActiveCoupon ? 'Editar cupom Amazon' : 'Cadastrar cupom Amazon'}
-          </CardTitle>
+          <CardTitle>Cadastrar novo cupom Amazon</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Código <span className="text-destructive">*</span></Label>
-              <Input
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="MUNDIAL"
-                className="font-mono uppercase"
-              />
-              <div className="text-xs text-muted-foreground">Vai aparecer em todas mensagens Amazon que atingirem o mínimo</div>
-            </div>
-
-            <div className="space-y-1">
-              <Label>Tipo de desconto</Label>
-              <Select value={type} onChange={(e) => setType(e.target.value as 'PERCENT' | 'FIXED')}>
-                <option value="PERCENT">% Porcentagem</option>
-                <option value="FIXED">R$ Fixo</option>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <Label>Valor do desconto <span className="text-destructive">*</span></Label>
-              <Input
-                type="number"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder={type === 'PERCENT' ? '10' : '20'}
-                min="0"
-                step="0.01"
-              />
-              <div className="text-xs text-muted-foreground">{type === 'PERCENT' ? 'Ex: 10 = 10% OFF' : 'Ex: 20 = R$ 20 OFF'}</div>
-            </div>
-
-            <div className="space-y-1">
-              <Label>Compra mínima (R$)</Label>
-              <Input
-                type="number"
-                value={minPurchase}
-                onChange={(e) => setMinPurchase(e.target.value)}
-                placeholder="200"
-                min="0"
-              />
-              <div className="text-xs text-muted-foreground">Produto abaixo disso não recebe o cupom na mensagem</div>
-            </div>
-
-            {type === 'PERCENT' ? (
-              <div className="space-y-1">
-                <Label>Até qual valor de desconto (R$)</Label>
-                <Input
-                  type="number"
-                  value={maxDiscount}
-                  onChange={(e) => setMaxDiscount(e.target.value)}
-                  placeholder="50"
-                  min="0"
-                />
-                <div className="text-xs text-muted-foreground">Ex: cap de R$ 50 em 10% — produto de R$ 1000 desconta só R$ 50</div>
+          {isLoading ? (
+            <Loader2 className="size-6 animate-spin mx-auto" />
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Código <span className="text-destructive">*</span></Label>
+                  <Input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    placeholder="MUNDIAL"
+                    className="font-mono uppercase"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Tipo</Label>
+                  <Select value={type} onChange={(e) => setType(e.target.value as 'PERCENT' | 'FIXED')}>
+                    <option value="PERCENT">% Porcentagem</option>
+                    <option value="FIXED">R$ Fixo</option>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Valor <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="number"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder={type === 'PERCENT' ? '10' : '20'}
+                    min="0"
+                    step="0.01"
+                  />
+                  <div className="text-xs text-muted-foreground">{type === 'PERCENT' ? 'Ex: 10 = 10% OFF' : 'Ex: 20 = R$ 20 OFF'}</div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Compra mínima (R$)</Label>
+                  <Input
+                    type="number"
+                    value={minPurchase}
+                    onChange={(e) => setMinPurchase(e.target.value)}
+                    placeholder="200"
+                    min="0"
+                  />
+                </div>
+                {type === 'PERCENT' ? (
+                  <div className="space-y-1">
+                    <Label>Até qual valor de desconto (R$)</Label>
+                    <Input
+                      type="number"
+                      value={maxDiscount}
+                      onChange={(e) => setMaxDiscount(e.target.value)}
+                      placeholder="50"
+                      min="0"
+                    />
+                    <div className="text-xs text-muted-foreground">Ex: cap de R$ 50 em 10% — R$ 1000 desconta só R$ 50</div>
+                  </div>
+                ) : null}
+                <div className="space-y-1">
+                  <Label>Validade</Label>
+                  <Input
+                    type="datetime-local"
+                    value={validUntil}
+                    onChange={(e) => setValidUntil(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label>Texto da chamada (opcional)</Label>
+                  <Input
+                    value={instructionText}
+                    onChange={(e) => setInstructionText(e.target.value)}
+                    placeholder="| Para 10% OFF!"
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    Aparece depois de "Use o cupom *CODE*". Ex: "| Para 10% OFF!"
+                  </div>
+                </div>
               </div>
-            ) : null}
-
-            <div className="space-y-1 md:col-span-2">
-              <Label>Texto da chamada (opcional)</Label>
-              <Input
-                value={instructionText}
-                onChange={(e) => setInstructionText(e.target.value)}
-                placeholder="| Para 10% OFF!"
-              />
-              <div className="text-xs text-muted-foreground">
-                Aparece depois do código. Ex: "Use o cupom <strong>MUNDIAL</strong> | Para 10% OFF!"
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 pt-2 border-t">
-            <Button
-              onClick={() => saveMut.mutate()}
-              disabled={!code.trim() || !value || saveMut.isPending}
-              className="bg-amber-700 hover:bg-amber-800"
-            >
-              {saveMut.isPending ? <Loader2 className="size-4 animate-spin mr-1" /> : <Save className="size-4 mr-1" />}
-              Salvar cupom
-            </Button>
-            {hasActiveCoupon ? (
               <Button
-                onClick={() => clearMut.mutate()}
-                variant="outline"
-                className="text-destructive"
-                disabled={clearMut.isPending}
+                onClick={() => addMut.mutate()}
+                disabled={!code.trim() || !value || addMut.isPending}
+                className="bg-amber-700 hover:bg-amber-800"
               >
-                <Trash2 className="size-4 mr-1" />
-                Remover cupom atual
+                {addMut.isPending ? <Loader2 className="size-4 animate-spin mr-1" /> : <Save className="size-4 mr-1" />}
+                Cadastrar cupom
               </Button>
-            ) : null}
-          </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
