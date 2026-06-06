@@ -2494,8 +2494,14 @@ export async function buildServer() {
       // - Bloco termina quando encontra status (Eu quero/Esgotado/Resgatado)
       //   OU próxima linha em CAIXA ALTA OU section marker OU EOF
       const STATUS_REGEX = /^(Eu quero|Esgotado|Resgatado)$/i;
+      // Título é CAIXA ALTA, tem letra, NÃO tem dígito nem $ nem % (pra não
+      // capturar "R$20 OFF" ou "30%" como título de bloco). Mín 3 chars.
       const isTitleLine = (l: string): boolean =>
-        l.length >= 3 && l === l.toUpperCase() && /[A-Z]/.test(l) && !STATUS_REGEX.test(l);
+        l.length >= 3 &&
+        l === l.toUpperCase() &&
+        /[A-Z]/.test(l) &&
+        !/[\d$%]/.test(l) &&
+        !STATUS_REGEX.test(l);
 
       const allLines = cleanText
         .split('\n')
