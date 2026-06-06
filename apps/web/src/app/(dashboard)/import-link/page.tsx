@@ -24,7 +24,7 @@ type PreviewProduct = {
   url: string;
   affiliateUrl?: string;
   source?: 'graphql' | 'apify' | 'html-scrape';
-  platform?: 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE';
+  platform?: 'SHOPEE' | 'AMAZON' | 'MERCADOLIVRE' | 'RIACHUELO';
   raw?: { isOfficialMall?: boolean } & Record<string, unknown>;
 };
 

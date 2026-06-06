@@ -210,6 +210,7 @@ export async function buildServer() {
     'evolution',
     'mercadolivre_panel',
     'shopee_panel',
+    'riachuelo_panel',
     'marketplaces',
     'antiban',
     'automation',
@@ -832,6 +833,78 @@ export async function buildServer() {
   // como couponOffer, shopOfferV2 etc sem precisar da doc oficial.
   app.get('/sources/SHOPEE/introspect', async () => introspectShopeeSchema());
 
+  // ===========================================================================
+  // AWIN / RIACHUELO — endpoints pra Settings UI validar credenciais + listar
+  // programmes (find advertiserId), feeds e gerar deeplinks ad-hoc.
+  // ===========================================================================
+  app.get('/sources/RIACHUELO/verify', async (_req, reply) => {
+    try {
+      const { listAccounts } = await import('@/sources/awin.js');
+      const accounts = await listAccounts();
+      return { ok: true, accounts };
+    } catch (err) {
+      return reply.code(400).send({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  app.get(
+    '/sources/RIACHUELO/programmes',
+    {
+      schema: {
+        querystring: z.object({
+          relationship: z
+            .enum(['joined', 'pending', 'notjoined', 'suspended', 'rejected'])
+            .optional()
+            .default('joined'),
+        }),
+      },
+    },
+    async (req, reply) => {
+      try {
+        const { listProgrammes } = await import('@/sources/awin.js');
+        const programmes = await listProgrammes(req.query.relationship);
+        return { ok: true, programmes };
+      } catch (err) {
+        return reply.code(400).send({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  app.get('/sources/RIACHUELO/feeds', async (_req, reply) => {
+    try {
+      const { listFeeds } = await import('@/sources/awin.js');
+      const feeds = await listFeeds();
+      return { ok: true, feeds };
+    } catch (err) {
+      return reply.code(400).send({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  app.post(
+    '/sources/RIACHUELO/generate-deeplink',
+    {
+      schema: {
+        body: z.object({
+          destinationUrl: z.string().url(),
+          advertiserId: z.number().int().optional(),
+          clickRef: z.string().optional(),
+        }),
+      },
+    },
+    async (req, reply) => {
+      try {
+        const { generateDeeplink } = await import('@/sources/awin.js');
+        const deeplink = await generateDeeplink(req.body.destinationUrl, {
+          advertiserId: req.body.advertiserId,
+          clickRef: req.body.clickRef,
+        });
+        return { ok: true, deeplink };
+      } catch (err) {
+        return reply.code(400).send({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
   // Conversion Report — relatório de vendas/comissões D+1 da Shopee.
   // Cacheia 24h por chave de filtro (force refresh com ?refresh=1).
   app.get(
@@ -1409,7 +1482,7 @@ export async function buildServer() {
                 salesCount: z.number().int().optional(),
                 commissionPct: z.number().optional(),
                 affiliateUrl: z.string().url().optional(),
-                platform: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']).optional().default('SHOPEE'),
+                platform: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'RIACHUELO']).optional().default('SHOPEE'),
                 // Flag Shopee Mall propagado do preview pro dispatch — sem isso
                 // o cupom officialOnly:true seria filtrado fora indevidamente.
                 isOfficialMall: z.boolean().optional(),

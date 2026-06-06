@@ -46,6 +46,7 @@ type Section =
   | 'evolution'
   | 'mercadolivre_panel'
   | 'shopee_panel'
+  | 'riachuelo_panel'
   | 'marketplaces'
   | 'antiban'
   | 'automation'
@@ -229,6 +230,57 @@ const SECTIONS: SectionMeta[] = [
         label: 'PA-API min desconto %',
         type: 'number',
         hint: 'Filtro MinSavingPercent. Default 20 = só produtos com ≥20% off.',
+      },
+    ],
+  },
+  {
+    key: 'riachuelo_panel',
+    title: '🟣 Riachuelo (via Awin)',
+    description:
+      'Credenciais Awin pra Vitrine Riachuelo BR. OAuth2 Bearer token + Product Feed API key + IDs. Doc: https://help.awin.com/apidocs/introduction-1',
+    icon: Tag,
+    badge: '🟣',
+    shortHint: 'Awin / Riachuelo (deeplinks + feed CSV)',
+    configuredKey: 'publisherApiToken',
+    fields: [
+      { key: 'autoEnabled', label: 'Auto-fetch feed (cron)', type: 'boolean' },
+      {
+        key: 'publisherApiToken',
+        label: 'Publisher API Token (OAuth2 Bearer)',
+        secret: true,
+        type: 'password',
+        hint: 'Account > API Credentials no painel Awin. Token formato UUID (3c2c...-...).',
+      },
+      {
+        key: 'feedApiKey',
+        label: 'Product Feed API Key',
+        secret: true,
+        type: 'password',
+        hint: 'SEPARADA do Publisher Token. Pega em Toolbox > Create-a-Feed > "Download da Lista de Feed". Aparece embutida no link feedList.',
+      },
+      {
+        key: 'publisherId',
+        label: 'Publisher ID',
+        placeholder: '2924393',
+        hint: 'Seu ID Awin. Auto-detectado pela rota /verify se vazio.',
+      },
+      {
+        key: 'advertiserId',
+        label: 'Advertiser ID (Riachuelo)',
+        placeholder: '86589',
+        hint: 'ID do advertiser "Vitrine Riachuelo BR". Use /sources/RIACHUELO/programmes?relationship=joined pra confirmar.',
+      },
+      {
+        key: 'clickRef',
+        label: 'Click Reference (UTM tracking)',
+        placeholder: 'promodahelena',
+        hint: 'Tag que rastreia origem do clique (aparece nos relatórios Awin). Default: promodahelena.',
+      },
+      {
+        key: 'dailyLimit',
+        label: 'Limite diário de deeplinks',
+        type: 'number',
+        hint: 'Awin permite 20 req/min. Default 100/dia conservador.',
       },
     ],
   },

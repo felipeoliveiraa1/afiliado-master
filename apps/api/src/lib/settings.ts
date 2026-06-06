@@ -21,6 +21,7 @@ export type SettingsSection =
   | 'evolution'
   | 'mercadolivre_panel'
   | 'shopee_panel'
+  | 'riachuelo_panel'
   | 'marketplaces'
   | 'antiban'
   | 'automation'
@@ -53,6 +54,24 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
     dailyLimit: env.SHOPEE_PANEL_DAILY_LIMIT,
     minIntervalSec: env.SHOPEE_PANEL_MIN_INTERVAL_SEC,
     maxIntervalSec: env.SHOPEE_PANEL_MAX_INTERVAL_SEC,
+  },
+  // Riachuelo via Awin Brasil — credenciais OAuth2 + Product Feed API.
+  // Doc: https://help.awin.com/apidocs/introduction-1
+  // Tudo cadastrável em /settings → Riachuelo (não precisa redeploy).
+  riachuelo_panel: {
+    autoEnabled: false,
+    // OAuth2 Bearer token da Publisher API (Account > API Credentials)
+    publisherApiToken: '',
+    // Product Feed API key (separada — Toolbox > Create-a-Feed → "Download da Lista de Feed")
+    feedApiKey: '',
+    // Seu Publisher ID (ex: 2924393). Descobrível via GET /accounts
+    publisherId: '',
+    // Advertiser ID da Vitrine Riachuelo BR (atual: 86589)
+    advertiserId: '',
+    // Tag UTM customizada pra rastrear cliques que vieram do nosso sistema
+    clickRef: 'promodahelena',
+    // Limite diário de geração de deeplinks (Awin permite 20/min)
+    dailyLimit: 100,
   },
   marketplaces: {
     amazonAffiliateTag: env.AMAZON_AFFILIATE_TAG,

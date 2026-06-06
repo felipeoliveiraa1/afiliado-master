@@ -4,12 +4,14 @@ import {
   enrichMercadoLivreFromUrl,
   type EnrichedMercadoLivreProduct,
 } from './mercadolivre_url_enrich.js';
+import { enrichRiachueloFromUrl, type EnrichedRiachueloProduct } from './awin.js';
 import type { SourceKind } from '@prisma/client';
 
 export type EnrichedAnyProduct =
   | (EnrichedShopeeProduct & { platform: 'SHOPEE' })
   | (EnrichedAmazonProduct & { platform: 'AMAZON' })
-  | (EnrichedMercadoLivreProduct & { platform: 'MERCADOLIVRE' });
+  | (EnrichedMercadoLivreProduct & { platform: 'MERCADOLIVRE' })
+  | (EnrichedRiachueloProduct & { platform: 'RIACHUELO' });
 
 /** Detecta plataforma da URL (Shopee, Amazon ou Mercado Livre). Retorna null se não reconhecida. */
 export function detectPlatform(url: string): SourceKind | null {
@@ -22,6 +24,9 @@ export function detectPlatform(url: string): SourceKind | null {
     )
   ) {
     return 'MERCADOLIVRE';
+  }
+  if (/riachuelo\.com\.br|tidd\.ly|awin1\.com/.test(u)) {
+    return 'RIACHUELO';
   }
   return null;
 }
@@ -74,9 +79,12 @@ export async function enrichFromUrl(url: string): Promise<EnrichedAnyProduct> {
   } else if (platform === 'MERCADOLIVRE') {
     const p = await enrichMercadoLivreFromUrl(url);
     enriched = { ...p, platform: 'MERCADOLIVRE' };
+  } else if (platform === 'RIACHUELO') {
+    const p = await enrichRiachueloFromUrl(url);
+    enriched = { ...p, platform: 'RIACHUELO' };
   } else {
     throw new Error(
-      'URL não reconhecida — aceito apenas Shopee (shopee.com.br, s.shopee.com.br, br.shp.ee), Amazon (amazon.com.br, amzn.to) e Mercado Livre (mercadolivre.com.br, meli.la)',
+      'URL não reconhecida — aceito Shopee, Amazon, Mercado Livre e Riachuelo (riachuelo.com.br)',
     );
   }
 

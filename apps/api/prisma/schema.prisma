@@ -13,6 +13,7 @@ enum SourceKind {
   AMAZON
   MERCADOLIVRE
   PROMOBIT
+  RIACHUELO
 }
 
 enum ChannelKind {
