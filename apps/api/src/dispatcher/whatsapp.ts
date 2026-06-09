@@ -120,6 +120,37 @@ export async function executeWhatsappDispatch(
     return { kind: 'SKIPPED', dispatchId, reason: missingAffiliate };
   }
 
+  // PRE-FLIGHT: re-busca o produto ANTES de enviar pra detectar fora-de-estoque
+  // ou mudança grande de preço. Snapshot do DB pode ter dias e produto pode ter
+  // sumido — disparar morto destrói reputação no grupo. Shopee/ML são grátis;
+  // Amazon paga ~$0.01 (mas só raramente, já que a maioria é Shopee).
+  const validity = await checkOfferStillValid(dispatch);
+  if (!validity.valid) {
+    await prisma.dispatch.update({
+      where: { id: dispatch.id },
+      data: { status: 'SKIPPED', errorMessage: `pre-flight: ${validity.reason}` },
+    });
+    // Marca a oferta como expirada pra não tentar de novo em outros dispatches.
+    await prisma.offer.update({
+      where: { id: dispatch.offerId },
+      data: { expiresAt: new Date() },
+    });
+    logger.warn(
+      { dispatchId, offerId: dispatch.offerId, reason: validity.reason },
+      'dispatch SKIPPED — produto não passou no pre-flight',
+    );
+    return { kind: 'SKIPPED', dispatchId, reason: validity.reason };
+  }
+  // Atualiza preço/imagem se mudaram (mas dentro do aceitável) — assim a mensagem
+  // sai com info fresca em vez do snapshot antigo.
+  if (validity.updated) {
+    await prisma.offer.update({
+      where: { id: dispatch.offerId },
+      data: validity.updated,
+    });
+    Object.assign(dispatch.offer, validity.updated);
+  }
+
   const fullText = await buildMessageText(dispatch);
 
   return await sendAndPersist(dispatch, fullText, antiban, {
@@ -165,6 +196,74 @@ async function applyDailyLimit(dispatch: LoadedDispatch, dailyLimit: number): Pr
     return true;
   }
   return false;
+}
+
+type OfferUpdate = Partial<Pick<Offer, 'price' | 'originalPrice' | 'imageUrl' | 'title'>>;
+type ValidityResult =
+  | { valid: true; updated: OfferUpdate | null }
+  | { valid: false; reason: string };
+
+/**
+ * Pre-flight: re-busca o produto no marketplace e compara com o snapshot do DB.
+ * Detecta produto removido/esgotado (enricher lança erro) e mudança grande de preço.
+ *
+ * Threshold de variação: ±30% — abaixo disso atualiza silenciosamente. Acima,
+ * trata como "produto trocou" (vendedor mudou o item no mesmo SKU, ou preço
+ * disparou tanto que oferta deixou de fazer sentido) e cancela o dispatch.
+ *
+ * Custos: Shopee/ML são gratuitos (Open API / scrape com cookie). Amazon paga
+ * ~$0.01 via Apify por dispatch — aceitável já que >90% dos envios são Shopee.
+ */
+async function checkOfferStillValid(dispatch: LoadedDispatch): Promise<ValidityResult> {
+  const { enrichFromUrl } = await import('@/sources/url_enrich.js');
+  const url = dispatch.offer.url;
+  let fresh: Awaited<ReturnType<typeof enrichFromUrl>>;
+  try {
+    fresh = await enrichFromUrl(url);
+  } catch (err) {
+    const msg = (err as Error).message?.slice(0, 200) || 'enrich failed';
+    return { valid: false, reason: `produto indisponível (${msg})` };
+  }
+
+  // Compara preços com tolerância. Mudança grande = trata como inválido.
+  // Se enricher não retornou preço, mantém o snapshot.
+  const freshPrice =
+    'price' in fresh && typeof fresh.price === 'number' && fresh.price > 0 ? fresh.price : null;
+  if (freshPrice === null) {
+    return { valid: true, updated: null };
+  }
+  const oldPrice = Number(dispatch.offer.price);
+  const diff = Math.abs(freshPrice - oldPrice) / oldPrice;
+  if (diff > 0.3) {
+    return {
+      valid: false,
+      reason: `preço variou ${(diff * 100).toFixed(0)}% (DB: R$${oldPrice.toFixed(2)}, agora: R$${freshPrice.toFixed(2)})`,
+    };
+  }
+
+  const updated: OfferUpdate = {};
+  if (Math.abs(freshPrice - oldPrice) > 0.01) {
+    updated.price = freshPrice as unknown as Offer['price'];
+  }
+  if (
+    'originalPrice' in fresh &&
+    typeof fresh.originalPrice === 'number' &&
+    fresh.originalPrice > 0
+  ) {
+    const oldOrig = dispatch.offer.originalPrice ? Number(dispatch.offer.originalPrice) : null;
+    if (oldOrig === null || Math.abs(fresh.originalPrice - oldOrig) > 0.01) {
+      updated.originalPrice = fresh.originalPrice as unknown as Offer['originalPrice'];
+    }
+  }
+  if (
+    'imageUrl' in fresh &&
+    typeof fresh.imageUrl === 'string' &&
+    fresh.imageUrl &&
+    fresh.imageUrl !== dispatch.offer.imageUrl
+  ) {
+    updated.imageUrl = fresh.imageUrl;
+  }
+  return { valid: true, updated: Object.keys(updated).length ? updated : null };
 }
 
 async function rejectIfMissingAffiliateUrl(dispatch: LoadedDispatch): Promise<string | null> {
