@@ -4,6 +4,7 @@ import { getSettingsSection } from '@/lib/settings.js';
 import { shopeeSource } from './shopee.js';
 import { mercadoLivreSource } from './mercadolivre.js';
 import { amazonPaapiSource } from './amazon_paapi.js';
+import { riachueloSource } from './riachuelo.js';
 import type { SourceAdapter } from './types.js';
 
 // ML: usa só API pública como fallback. O caminho principal é o cookie
@@ -48,6 +49,8 @@ export async function getAdapter(kind: SourceKind): Promise<SourceAdapter | null
       return shopeeSource;
     case 'MERCADOLIVRE':
       return mercadoLivreAdapter;
+    case 'RIACHUELO':
+      return riachueloSource;
     case 'PROMOBIT':
       // Removido — não usado em prod. Source row pode existir no DB legacy
       // mas adapter retorna null = cron pula silenciosamente.

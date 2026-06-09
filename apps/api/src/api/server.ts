@@ -271,7 +271,7 @@ export async function buildServer() {
     '/sources/:kind/fetch',
     {
       schema: {
-        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE']) }),
+        params: z.object({ kind: z.enum(['SHOPEE', 'AMAZON', 'MERCADOLIVRE', 'RIACHUELO']) }),
         body: z.object({ limit: z.number().int().min(1).max(200).optional() }).nullish(),
       },
     },
