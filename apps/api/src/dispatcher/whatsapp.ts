@@ -221,8 +221,26 @@ async function checkOfferStillValid(dispatch: LoadedDispatch): Promise<ValidityR
   try {
     fresh = await enrichFromUrl(url);
   } catch (err) {
-    const msg = (err as Error).message?.slice(0, 200) || 'enrich failed';
-    return { valid: false, reason: `produto indisponível (${msg})` };
+    const msg = (err as Error).message?.slice(0, 300) || 'enrich failed';
+    // ERROS TRANSIENTES (rate limit, network) — NÃO marca offer como expirada.
+    // Antes esse caso bloqueava ENVIO + marcava EXPIRED, criando loop infinito:
+    // pre-flight falha por rate limit → marca EXPIRED → cron tenta de novo →
+    // rate limit de novo → todos os jobs ficavam reciclando sem progresso.
+    // Solução: trata como "valid:true sem update" — o envio sai com o snapshot
+    // do DB (preço/imagem que já tínhamos). Pior caso é mandar info um pouco
+    // stale, melhor que não mandar nada.
+    const transient =
+      /rate limit|rate_limit|10030|429|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|tenta de novo/i.test(
+        msg,
+      );
+    if (transient) {
+      logger.warn(
+        { dispatchId: dispatch.id, offerId: dispatch.offerId, msg },
+        'pre-flight transient error — enviando com snapshot do DB',
+      );
+      return { valid: true, updated: null };
+    }
+    return { valid: false, reason: `produto indisponível (${msg.slice(0, 150)})` };
   }
 
   // Compara preços com tolerância. Mudança grande = trata como inválido.
