@@ -200,17 +200,21 @@ async function creatorsRequest<T>(
     body: JSON.stringify(body),
   });
   if (res.status === 401 || res.status === 403) {
-    cachedToken = null; // força refresh no próximo
     const text = await res.text().catch(() => '');
-    if (/eligibility|10 sales|10 qualified/i.test(text)) {
+    // 403 AssociateNotEligible = token OK, conta ainda não bateu 10 vendas
+    // qualificadas em 30 dias. Mantém o token cacheado (auth de fato funciona).
+    if (/AssociateNotEligible|not currently meet the eligibility|10 sales|10 qualified/i.test(text)) {
       throw new AmazonCreatorsError(
-        `Creators API: conta Associates ainda não tem 10 vendas qualificadas nos últimos 30 dias (${res.status})`,
+        'Creators API: conta Associates ainda não bateu 10 vendas qualificadas em 30 dias. ' +
+          'Continue divulgando links Amazon — quando bater o threshold, esse adapter liga sozinho.',
         'eligibility',
         res.status,
       );
     }
+    // Auth de verdade falhou (token errado/expirado) — força refresh.
+    cachedToken = null;
     throw new AmazonCreatorsError(
-      `Creators API auth ${res.status}: ${text.slice(0, 200)}`,
+      `Creators API auth ${res.status}: ${text.slice(0, 300)}`,
       'auth',
       res.status,
     );
