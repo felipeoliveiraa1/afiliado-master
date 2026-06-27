@@ -171,20 +171,45 @@ const SECTIONS: SectionMeta[] = [
     key: 'marketplaces',
     title: '🔵 Amazon',
     description:
-      'PA-API 5.0 oficial. Liberado APÓS 10 vendas qualificadas em 180 dias. Antes disso o provider fica "disabled" e o cron não fetcha.',
+      'Creators API (OAuth 2.0, jun/2026) substitui a PA-API (retirada em 15/mai/2026). Liberada após 10 vendas qualificadas/30d em Associates Central → Tools → Creators API.',
     icon: Tag,
     fields: [
       {
         key: 'amazonProvider',
-        label: 'Provider Amazon (disabled | paapi)',
+        label: 'Provider Amazon (disabled | creators | paapi)',
         placeholder: 'disabled',
-        hint: 'Default disabled (não fetcha). Mude pra "paapi" só quando tiver as credenciais PA-API.',
+        hint: 'Use "creators" pra Creators API (novo padrão). "paapi" é legacy. "disabled" desliga o cron.',
       },
       {
         key: 'amazonAffiliateTag',
-        label: 'Amazon affiliate tag (legado)',
-        placeholder: 'seunome-20',
-        hint: 'Tag de afiliado. Usado como fallback se Partner Tag PA-API estiver vazio.',
+        label: 'Amazon affiliate tag (associate)',
+        placeholder: 'promodahele03-20',
+        hint: 'Tag de afiliado da sua conta Associates. Vai no partnerTag de cada request Creators API.',
+      },
+      {
+        key: 'amazonCreatorsClientId',
+        label: 'Creators API — Credential ID',
+        placeholder: 'amzn1.application-oa2-client.xxxxxxxx',
+        hint: 'Gere em Associates Central → Tools → Creators API → Add new credential.',
+      },
+      {
+        key: 'amazonCreatorsClientSecret',
+        label: 'Creators API — Credential Secret',
+        secret: true,
+        type: 'password',
+        hint: 'Mostrado APENAS uma vez na criação. Se perder, gera outra credencial.',
+      },
+      {
+        key: 'amazonCreatorsVersion',
+        label: 'Versão (3.1 = NA · 3.2 = EU · 3.3 = FE)',
+        placeholder: '3.1',
+        hint: '3.1 cobre US/CA/MX/BR. Use 3.1 pra Amazon Brasil.',
+      },
+      {
+        key: 'amazonCreatorsMinDiscount',
+        label: 'Creators API — min desconto %',
+        type: 'number',
+        hint: 'Filtro adapter-side. Default 20 = só produtos com ≥20% off.',
       },
       {
         key: 'amazonPaapiAccessKey',

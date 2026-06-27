@@ -4,6 +4,7 @@ import { getSettingsSection } from '@/lib/settings.js';
 import { shopeeSource } from './shopee.js';
 import { mercadoLivreSource } from './mercadolivre.js';
 import { amazonPaapiSource } from './amazon_paapi.js';
+import { amazonCreatorsSource } from './amazon_creators.js';
 import { riachueloSource } from './riachuelo.js';
 import type { SourceAdapter } from './types.js';
 
@@ -14,16 +15,18 @@ const mercadoLivreAdapter: SourceAdapter = mercadoLivreSource;
 
 /**
  * Amazon: provider switch via settings.marketplaces.amazonProvider
- *   - 'paapi'    → adapter PA-API oficial (precisa credentials válidas)
+ *   - 'creators' (NOVO, jun/2026) → Creators API (OAuth 2.0, substitui PA-API
+ *      que foi retirada em 15/mai/2026). Default pra contas que bateram 10
+ *      vendas qualificadas/30d e geraram Client ID em Associates Central.
+ *   - 'paapi'    → adapter PA-API legacy (precisa AKIA + Secret antigos)
  *   - 'disabled' (default) → null, cron pula silenciosamente
- *
- * Apify-Amazon foi removido — decisão é usar só PA-API quando liberar (10
- * vendas qualificadas em 180 dias). Pra Shopee, adapter Open API único.
  */
 async function pickAmazonAdapter(): Promise<SourceAdapter | null> {
   try {
     const cfg = await getSettingsSection<{ amazonProvider?: string }>('marketplaces');
     switch (cfg.amazonProvider) {
+      case 'creators':
+        return amazonCreatorsSource;
       case 'paapi':
         return amazonPaapiSource;
       case 'disabled':

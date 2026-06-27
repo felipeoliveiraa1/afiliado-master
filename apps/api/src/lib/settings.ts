@@ -76,10 +76,26 @@ export const ENV_DEFAULTS: Record<SettingsSection, Record<string, unknown>> = {
   marketplaces: {
     amazonAffiliateTag: env.AMAZON_AFFILIATE_TAG,
     mercadoLivreAffiliateTag: env.MERCADOLIVRE_AFFILIATE_TAG,
-    // Amazon PA-API (oficial). Provider switch: 'paapi' | 'disabled'
-    // Default 'disabled' — só liga quando você bater 10 vendas qualificadas
-    // em 180 dias e Amazon BR liberar PA-API pra você.
+    // Amazon provider switch: 'creators' | 'paapi' | 'disabled'
+    // 'creators' (NOVO 2026) → Creators API com OAuth 2.0, substitui PA-API
+    //  (retirada em 15/mai/2026). Requer Credential ID + Secret de Associates
+    //  Central → Tools → Creators API. v3.1 cobre US/CA/MX/BR.
+    // 'paapi' (LEGADO) → Mantido só pra ambiente que ainda tem AKIA + Secret.
+    //  Em prod novo, sempre use 'creators'.
+    // 'disabled' (default) → Adapter retorna null, cron pula. /import-link
+    //  manual ainda funciona via Apify.
     amazonProvider: 'disabled',
+    // — Creators API (OAuth 2.0 client_credentials) —
+    amazonCreatorsClientId: '',
+    amazonCreatorsClientSecret: '',
+    // Versão amarra região do endpoint LWA + qual marketplace você consulta:
+    //   '3.1' → NA = US/CA/MX/BR  (api.amazon.com)
+    //   '3.2' → EU              (api.amazon.co.uk)
+    //   '3.3' → FE              (api.amazon.co.jp)
+    amazonCreatorsVersion: '3.1' as '3.1' | '3.2' | '3.3',
+    // Filtro adapter-side. Default 20% pra alinhar com Shopee/ML.
+    amazonCreatorsMinDiscount: 20,
+    // — PA-API (legacy, retirada 15/mai/2026) —
     amazonPaapiAccessKey: env.AMAZON_PAAPI_ACCESS_KEY,
     amazonPaapiSecretKey: env.AMAZON_PAAPI_SECRET_KEY,
     amazonPaapiPartnerTag: env.AMAZON_PAAPI_PARTNER_TAG,
