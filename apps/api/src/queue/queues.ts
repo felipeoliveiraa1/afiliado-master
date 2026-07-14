@@ -18,7 +18,18 @@ export type MercadoLivreShortlinkJob = { offerId: string };
 function createQueue<DataType, ResultType = any, NameType extends string = string>(
   name: NameType,
 ): Queue<DataType, ResultType, NameType> {
-  const queue = new Queue<DataType, ResultType, NameType>(name, { connection: redisConnection });
+  const queue = new Queue<DataType, ResultType, NameType>(name, {
+    connection: redisConnection,
+    // Auto-limpeza de jobs terminados. Sem isso, cada job completado deixa um
+    // hash `bull:<queue>:<id>` órfão pra sempre — em jul/2026 o curate-offers
+    // acumulou 1M+ chaves (~2GB RSS) e derrubou o Redis por OOM em loop.
+    // completed: mantém 1h/1000 últimos (debug recente). failed: 24h/5000
+    // (janela maior pra investigar erros).
+    defaultJobOptions: {
+      removeOnComplete: { age: 3600, count: 1000 },
+      removeOnFail: { age: 86400, count: 5000 },
+    },
+  });
   queue.on('error', (err: Error) => {
     logger.error({ err, queueName: name }, 'bullmq queue error');
   });
